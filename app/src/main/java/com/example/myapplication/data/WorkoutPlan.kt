@@ -4,6 +4,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class WorkoutPlan(
+    val explanation: String,
     val weeks: List<WeeklyPlan>
 )
 
@@ -26,5 +27,6 @@ data class Exercise(
     val name: String,
     val sets: Int,
     val reps: String,
-    val rest: String
+    val rest: String,
+    val explanation: String
 )

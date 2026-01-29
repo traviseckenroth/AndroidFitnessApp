@@ -1,15 +1,17 @@
 package com.example.myapplication.data.remote
 
 import android.util.Log
-import com.example.myapplication.BuildConfig
-import com.example.myapplication.data.local.CompletedWorkoutEntity
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-
+import aws.sdk.kotlin.runtime.auth.credentials.StaticCredentialsProvider
 import aws.sdk.kotlin.services.bedrockruntime.BedrockRuntimeClient
 import aws.sdk.kotlin.services.bedrockruntime.model.InvokeModelRequest
-import aws.sdk.kotlin.runtime.auth.credentials.StaticCredentialsProvider
 import aws.smithy.kotlin.runtime.auth.awscredentials.Credentials
+// FIX: Changed OkHttp to OkHttpEngine
+import aws.smithy.kotlin.runtime.http.engine.okhttp.OkHttpEngine
+import com.example.myapplication.BuildConfig
+import com.example.myapplication.data.local.CompletedWorkoutEntity
+import kotlin.time.Duration.Companion.seconds
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 // --- AI RESPONSE DATA MODEL ---
 
@@ -85,6 +87,11 @@ suspend fun invokeBedrock(
             credentialsProvider = StaticCredentialsProvider {
                 accessKeyId = BuildConfig.AWS_ACCESS_KEY
                 secretAccessKey = BuildConfig.AWS_SECRET_KEY
+            }
+            // FIX: Use OkHttpEngine and correct property names
+            httpClient = OkHttpEngine {
+                maxConcurrency = 100u // 'maxConcurrency' -> 'maxConnections' (UInt)
+                connectTimeout = 30.seconds
             }
         }
 

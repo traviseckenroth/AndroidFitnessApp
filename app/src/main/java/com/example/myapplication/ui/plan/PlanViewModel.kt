@@ -90,7 +90,8 @@ class PlanViewModel @Inject constructor(
                                         name = ex.name,
                                         sets = ex.sets,
                                         reps = ex.suggestedReps.toString(),
-                                        rest = "60s"
+                                        rest = "60s",
+                                        explanation = ""
                                     )
                                 }
                             )
@@ -98,7 +99,7 @@ class PlanViewModel @Inject constructor(
                     )
                 }
 
-                val plan = WorkoutPlan(weeks = weeklyPlans)
+                val plan = WorkoutPlan(weeks = weeklyPlans, explanation = "")
                 _uiState.value = PlanUiState.Success(plan)
 
             } catch (e: Exception) {

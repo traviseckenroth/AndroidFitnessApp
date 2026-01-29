@@ -15,6 +15,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.WorkoutPlan
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.temporal.TemporalAdjusters
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -186,19 +189,34 @@ fun PlanInputForm(
 @Composable
 fun PlanDisplay(plan: WorkoutPlan) {
     val daysOrder = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    val dateFormatter = DateTimeFormatter.ofPattern("MMM d")
+    val today = LocalDate.now()
+
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        // Header with explanation
+        Text(plan.explanation, style = MaterialTheme.typography.bodyLarge)
+        Spacer(modifier = Modifier.height(16.dp))
+
         plan.weeks.forEach { week ->
+            val weekStartDate = today.plusWeeks((week.week - 1).toLong()).with(TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+            val weekEndDate = weekStartDate.plusDays(6)
+            val dateRange = "${weekStartDate.format(dateFormatter)} - ${weekEndDate.format(dateFormatter)}"
+
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Week ${week.week}", style = MaterialTheme.typography.headlineSmall)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Week ${week.week}", style = MaterialTheme.typography.headlineSmall)
+                        Text(dateRange, style = MaterialTheme.typography.bodySmall)
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
                     week.days.sortedBy { daysOrder.indexOf(it.day) }.forEach { day ->
-                        Column(modifier = Modifier.padding(bottom = 8.dp)) {
-                            Text("${day.day}: ${day.title}", style = MaterialTheme.typography.titleMedium)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            day.exercises.forEach { exercise ->
-                                Text("  - ${exercise.name}: ${exercise.sets} sets of ${exercise.reps} reps, ${exercise.rest} rest")
-                            }
+                        Row(modifier = Modifier.padding(bottom = 4.dp)) {
+                            Text("${day.day}: ", style = MaterialTheme.typography.titleMedium)
+                            Text(day.title, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }
