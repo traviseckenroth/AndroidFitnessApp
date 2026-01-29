@@ -1,0 +1,49 @@
+[
+  {
+    "name": "Full Body Starter",
+    "description": "A classic beginner routine hitting all major groups.",
+    "exercises": [
+      {
+        "name": "Barbell Squat",
+        "muscle": "Legs",
+        "type": "Barbell",
+        "sets": 3,
+        "reps": "8-10"
+      },
+      {
+        "name": "Bench Press",
+        "muscle": "Chest",
+        "type": "Barbell",
+        "sets": 3,
+        "reps": "8-12"
+      },
+      {
+        "name": "Bent Over Row",
+        "muscle": "Back",
+        "type": "Barbell",
+        "sets": 3,
+        "reps": "10-12"
+      }
+    ]
+  },
+  {
+    "name": "Upper Body Focus",
+    "description": "Hypertrophy focused upper body day.",
+    "exercises": [
+      {
+        "name": "Bench Press",
+        "muscle": "Chest",
+        "type": "Barbell",
+        "sets": 4,
+        "reps": "6-8"
+      },
+      {
+        "name": "Pull Up",
+        "muscle": "Back",
+        "type": "Bodyweight",
+        "sets": 3,
+        "reps": "AMRAP"
+      }
+    ]
+  }
+]
