@@ -6,10 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.DailyWorkout
 import com.example.myapplication.data.WeeklyPlan
 import com.example.myapplication.data.WorkoutPlan
-import com.example.myapplication.data.local.CompletedWorkoutEntity
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutDao
-import com.example.myapplication.data.remote.GeneratedDay
 import com.example.myapplication.data.remote.invokeBedrock
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -47,7 +45,7 @@ class PlanViewModel @Inject constructor(
             _uiState.value = PlanUiState.Loading
             try {
                 val generatedDays = withContext(Dispatchers.IO) {
-                    val allExercises = workoutDao.getAllExercises().first()
+                    workoutDao.getAllExercises().first()
                     val workoutHistory = workoutDao.getAllCompletedWorkouts().first()
                     invokeBedrock(goal, program, days, duration, workoutHistory)
                 }
@@ -91,6 +89,7 @@ class PlanViewModel @Inject constructor(
                                         sets = ex.sets,
                                         reps = ex.suggestedReps.toString(),
                                         rest = "60s",
+                                        tier = ex.tier,
                                         explanation = ""
                                     )
                                 }

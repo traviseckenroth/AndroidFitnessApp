@@ -144,6 +144,19 @@ fun PlanInputForm(
         }
     }
 
+    Text("Days:", style = MaterialTheme.typography.labelMedium)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        daysOfWeek.forEach { day ->
+            val selected = selectedDays.contains(day)
+            FilterChip(
+                selected = selected,
+                onClick = { onDaySelected(day) },
+                label = { Text(day) })
+        }
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -171,17 +184,6 @@ fun PlanInputForm(
             Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(modifier = Modifier.width(4.dp))
             Text("Manual")
-        }
-    }
-
-    Text("Days:", style = MaterialTheme.typography.labelMedium)
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        daysOfWeek.forEach { day ->
-            val selected = selectedDays.contains(day)
-            FilterChip(
-                selected = selected,
-                onClick = { onDaySelected(day) },
-                label = { Text(day) })
         }
     }
 }

@@ -28,5 +28,6 @@ data class Exercise(
     val sets: Int,
     val reps: String,
     val rest: String,
+    val tier: Int,
     val explanation: String
 )

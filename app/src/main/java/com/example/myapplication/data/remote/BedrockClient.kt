@@ -69,6 +69,7 @@ private val jsonConfig = Json {
     encodeDefaults = true
     isLenient = true
     coerceInputValues = true
+    allowTrailingComma= true // <--- ADD THIS LINE
 }
 
 // --- MAIN FUNCTION ---
@@ -90,7 +91,7 @@ suspend fun invokeBedrock(
             }
             // FIX: Use OkHttpEngine and correct property names
             httpClient = OkHttpEngine {
-                maxConcurrency = 100u // 'maxConcurrency' -> 'maxConnections' (UInt)
+                maxConcurrency = 100u // '''maxConcurrency''' -> '''maxConnections''' (UInt)
                 connectTimeout = 30.seconds
             }
         }
@@ -119,14 +120,14 @@ suspend fun invokeBedrock(
         val totalMinutes = (duration * 60).toInt()
 
         val systemPrompt = """
-            You are an expert strength coach. Create a 4-week training block.
+            You are an expert strength coach. Generate a workout plan for 4 full weeks.
 
             USER HISTORY:
             $historyString
 
             STRICT OUTPUT FORMAT:
             Return a valid JSON object with a single root key "schedule".
-            Inside "schedule", include a list of daily sessions.
+            Inside "schedule", include a list of daily sessions for all 4 weeks.
 
             JSON EXAMPLE:
             {
@@ -135,33 +136,40 @@ suspend fun invokeBedrock(
                   "week": 1,
                   "day": "Monday",
                   "title": "Upper Body Power",
-                  "exercises": [
-                    {
-                      "name": "Barbell Bench Press",
-                      "muscleGroup": "Chest",
-                      "equipment": "Barbell",
-                      "tier": 1,
-                      "loadability": "High",
-                      "fatigue": "High",
-                      "notes": "Retract scapula",
-                      "suggestedReps": 5,
-                      "suggestedRpe": 8,
-                      "sets": 3,
-                      "estimatedTimeMinutes": 15
-                    }
-                  ]
+                  "exercises": [ { "name": "Barbell Bench Press", "tier": 1, "sets": 5, "suggestedReps": 5, "estimatedTimeMinutes": 15 } ]
+                },
+                {
+                  "week": 4,
+                  "day": "Friday",
+                  "title": "Full Body",
+                  "exercises": [ { "name": "Deadlift", "tier": 1, "sets": 3, "suggestedReps": 3, "estimatedTimeMinutes": 9 } ]
                 }
               ]
             }
 
             RULES:
-            1. "sets", "suggestedRpe", and "estimatedTimeMinutes" must be Integers.
-            2. $tierDefinitions
-            3. The user has selected the following days: ${days.joinToString()}. Generate a workout for *each* of these selected days within *each* week of the 4-week plan.
-            4. A week is from Monday to Sunday. All selected days must be grouped within the same week number (e.g., all selected days appear for week 1, then all appear for week 2, etc.).
-            5. The total `estimatedTimeMinutes` for a daily workout MUST add up to be as close as possible to the user's requested session duration of $totalMinutes minutes. Add or remove exercises to meet this duration.
-            6. Prescribe a `suggestedRpe` for each exercise based on the program type and tier.
-            7. CONSIDER USER HISTORY FOR PROGRESSIVE OVERLOAD.
+            1. Generate a plan for 4 full weeks.
+            2. "sets", "suggestedRpe", and "estimatedTimeMinutes" must be Integers.
+            3. $tierDefinitions
+            4. The user has selected the following days: ${days.joinToString()}. Generate a workout for *each* of these selected days for all 4 weeks.
+            5. A week is from Monday to Sunday.
+            
+            6. *** CRITICAL TIME CALCULATION FORMULA ***:
+               'estimatedTimeMinutes' is the total time for all sets of an exercise, including rest.
+               Use this exact math:
+               - TIER 1 (Heavy Compound): 3 minutes per set.
+               - TIER 2 (Accessory): 2.5 minutes per set.
+               - TIER 3 (Isolation): 2 minutes per set.
+               
+               EXAMPLE: 
+               - Arnold Press is Tier 2 and has 3 sets.
+               - Time = 3 * 2.5 = 7.5 minutes. Round to 8.
+
+            7. TOTAL DURATION:
+               The sum of all 'estimatedTimeMinutes' for a single day's workout must equal the user's requested duration of $totalMinutes minutes.
+               - Add or remove exercises or sets to meet the duration.
+
+            8. CONSIDER USER HISTORY FOR PROGRESSIVE OVERLOAD.
 
             Do not include preamble or markdown formatting.
         """.trimIndent()
@@ -169,7 +177,7 @@ suspend fun invokeBedrock(
         val userPrompt = "Goal: $goal. Schedule: ${days.joinToString()}. Session Duration: $duration hours."
 
         val requestBody = ClaudeRequest(
-            max_tokens = 4096,
+            max_tokens = 8192,
             system = systemPrompt,
             messages = listOf(Message(role = "user", content = userPrompt))
         )

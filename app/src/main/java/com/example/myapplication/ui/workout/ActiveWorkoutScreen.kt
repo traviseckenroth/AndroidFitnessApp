@@ -23,6 +23,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -83,8 +84,7 @@ fun ActiveWorkoutScreen(
                     }
                 }
             )
-        },
-        bottomBar = { RestTimer() }
+        }
     ) { padding ->
         if (workoutState.exercises.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -104,6 +104,8 @@ fun ActiveWorkoutScreen(
                     workoutState.exercises.getOrNull(workoutState.currentExerciseIndex)?.let { exercise ->
                         ExerciseHeader(workoutState, exercise)
                         Spacer(modifier = Modifier.height(16.dp))
+                        ExerciseTimer(workoutState, workoutViewModel)
+                        Spacer(modifier = Modifier.height(16.dp))
                         SetsTable(exercise, workoutState.currentExerciseIndex, workoutViewModel)
                         Spacer(modifier = Modifier.height(24.dp))
                         NextExercises(workoutState.exercises, workoutState.currentExerciseIndex)
@@ -122,14 +124,38 @@ fun ExerciseHeader(uiState: WorkoutUiState, exercise: Exercise) {
     Column(horizontalAlignment = Alignment.Start, modifier = Modifier.fillMaxWidth()) {
         Text("EXERCISE ${uiState.currentExerciseIndex + 1} OF ${uiState.exercises.size}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
         Text(exercise.name, color = MaterialTheme.colorScheme.onSurface, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        if (exercise.tier.isNotBlank()) {
+        if (exercise.tier > 0) {
             Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(4.dp)) {
                 Text(
-                    text = exercise.tier,
+                    text = "Tier ${exercise.tier}",
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                     fontSize = 12.sp,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun ExerciseTimer(uiState: WorkoutUiState, viewModel: WorkoutViewModel) {
+    val minutes = uiState.timerValue / 60
+    val seconds = uiState.timerValue % 60
+    val currentExercise = uiState.exercises[uiState.currentExerciseIndex]
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(text = "Set ${uiState.currentSet} of ${currentExercise.sets.size}", fontSize = 20.sp)
+        Text(text = String.format("%02d:%02d", minutes, seconds), fontSize = 48.sp, fontWeight = FontWeight.Bold)
+
+        if (uiState.isExerciseComplete) {
+            Text("Exercise Complete", fontSize = 20.sp)
+        } else if (uiState.isTimerRunning) {
+            OutlinedButton(onClick = { viewModel.skipTimer() }) {
+                Text("Skip Rest")
+            }
+        } else {
+            Button(onClick = { viewModel.startTimer() }) {
+                Text("Start Timer")
             }
         }
     }
@@ -147,7 +173,7 @@ fun SetsTable(exercise: Exercise, exerciseIndex: Int, viewModel: WorkoutViewMode
         }
         Spacer(modifier = Modifier.height(8.dp))
         exercise.sets.forEachIndexed { index, set ->
-            SetRow(set = set, isCurrent = index == 0, exerciseIndex, index, viewModel) 
+            SetRow(set = set, isCurrent = index == 0, exerciseIndex, index, viewModel)
         }
     }
 }
@@ -196,24 +222,6 @@ fun ExerciseItem(number: Int, name: String) {
             Text("$number.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.width(16.dp))
             Text(name, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-fun RestTimer() {
-    Surface(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)) {
-        Row(
-            modifier = Modifier
-                .padding(horizontal = 16.dp, vertical = 24.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("REST TIMER: 00:45", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
-            Button(onClick = { /* TODO */ }) {
-                Text("+ 30s")
-            }
         }
     }
 }

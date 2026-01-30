@@ -6,6 +6,8 @@ import com.example.myapplication.data.DailyWorkout
 import com.example.myapplication.data.local.CompletedWorkoutEntity
 import com.example.myapplication.data.local.WorkoutDao
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -16,14 +18,19 @@ data class WorkoutUiState(
     val workoutTitle: String = "",
     val exercises: List<Exercise> = emptyList(),
     val currentExerciseIndex: Int = 0,
-    val workoutFinished: Boolean = false
+    val workoutFinished: Boolean = false,
+    val timerValue: Long = 0,
+    val isTimerRunning: Boolean = false,
+    val currentSet: Int = 1,
+    val isExerciseComplete: Boolean = false
 )
 
 data class Exercise(
     val exerciseId: Long,
     val name: String,
-    val tier: String, 
-    val sets: List<WorkoutSet>
+    val sets: List<WorkoutSet>,
+    val rest: String,
+    val tier: Int
 )
 
 data class WorkoutSet(
@@ -42,22 +49,25 @@ class WorkoutViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(WorkoutUiState())
     val uiState: StateFlow<WorkoutUiState> = _uiState
 
+    private var timerJob: Job? = null
+
     fun loadWorkout(dailyWorkout: DailyWorkout) {
         val exercises = dailyWorkout.exercises.map { dataExercise ->
             val workoutSets = (1..dataExercise.sets).map { setNum ->
                 WorkoutSet(
                     setNumber = setNum,
-                    lbs = "", 
-                    reps = dataExercise.reps, 
-                    rpe = "", 
+                    lbs = "",
+                    reps = dataExercise.reps,
+                    rpe = "",
                     isDone = false
                 )
             }
             Exercise(
                 exerciseId = dataExercise.exerciseId,
                 name = dataExercise.name,
-                tier = "", 
-                sets = workoutSets
+                sets = workoutSets,
+                rest = dataExercise.rest,
+                tier = dataExercise.tier
             )
         }
         _uiState.value = WorkoutUiState(
@@ -90,12 +100,60 @@ class WorkoutViewModel @Inject constructor(
             newExercises[exerciseIndex] = newExercises[exerciseIndex].copy(sets = newSets)
             currentState.copy(exercises = newExercises)
         }
+
+        if (isDone) {
+            val currentExercise = _uiState.value.exercises[exerciseIndex]
+            if (setIndex < currentExercise.sets.size - 1) {
+                startTimer()
+            } else {
+                _uiState.update { it.copy(isExerciseComplete = true) }
+            }
+        }
+    }
+
+    fun startTimer() {
+        if (_uiState.value.isTimerRunning) return
+
+        val currentExercise = _uiState.value.exercises[_uiState.value.currentExerciseIndex]
+        val restTime = currentExercise.rest.toLongOrNull() ?: 60L
+        _uiState.update { it.copy(isTimerRunning = true, timerValue = restTime) }
+
+        timerJob = viewModelScope.launch {
+            while (_uiState.value.timerValue > 0) {
+                delay(1000)
+                _uiState.update { it.copy(timerValue = it.timerValue - 1) }
+            }
+            _uiState.update { it.copy(isTimerRunning = false) }
+            nextSet()
+        }
+    }
+
+    fun skipTimer() {
+        timerJob?.cancel()
+        _uiState.update { it.copy(isTimerRunning = false, timerValue = 0) }
+        nextSet()
+    }
+
+    private fun nextSet() {
+        val currentExercise = _uiState.value.exercises[_uiState.value.currentExerciseIndex]
+        if (_uiState.value.currentSet < currentExercise.sets.size) {
+            _uiState.update { it.copy(currentSet = it.currentSet + 1) }
+        } else {
+            // Last set was finished, do nothing, wait for user to click next
+        }
     }
 
     fun nextExercise() {
+        timerJob?.cancel()
         _uiState.update { currentState ->
             if (currentState.currentExerciseIndex < currentState.exercises.size - 1) {
-                currentState.copy(currentExerciseIndex = currentState.currentExerciseIndex + 1)
+                currentState.copy(
+                    currentExerciseIndex = currentState.currentExerciseIndex + 1,
+                    currentSet = 1,
+                    isTimerRunning = false,
+                    timerValue = 0,
+                    isExerciseComplete = false
+                )
             } else {
                 currentState
             }
@@ -103,9 +161,16 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun previousExercise() {
+        timerJob?.cancel()
         _uiState.update { currentState ->
             if (currentState.currentExerciseIndex > 0) {
-                currentState.copy(currentExerciseIndex = currentState.currentExerciseIndex - 1)
+                currentState.copy(
+                    currentExerciseIndex = currentState.currentExerciseIndex - 1,
+                    currentSet = 1,
+                    isTimerRunning = false,
+                    timerValue = 0,
+                    isExerciseComplete = false
+                )
             } else {
                 currentState
             }
