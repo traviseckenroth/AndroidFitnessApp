@@ -44,11 +44,13 @@ class PlanViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = PlanUiState.Loading
             try {
-                val generatedDays = withContext(Dispatchers.IO) {
+                val generatedPlanResponse = withContext(Dispatchers.IO) {
                     workoutDao.getAllExercises().first()
                     val workoutHistory = workoutDao.getAllCompletedWorkouts().first()
                     invokeBedrock(goal, program, days, duration, workoutHistory)
                 }
+
+                val generatedDays = generatedPlanResponse.schedule
 
                 // --- UPSERT GENERATED EXERCISES ---
                 val allGeneratedExercises = generatedDays.flatMap { it.exercises }.distinctBy { it.name.lowercase() }
@@ -98,7 +100,7 @@ class PlanViewModel @Inject constructor(
                     )
                 }
 
-                val plan = WorkoutPlan(weeks = weeklyPlans, explanation = "")
+                val plan = WorkoutPlan(weeks = weeklyPlans, explanation = generatedPlanResponse.explanation)
                 _uiState.value = PlanUiState.Success(plan)
 
             } catch (e: Exception) {

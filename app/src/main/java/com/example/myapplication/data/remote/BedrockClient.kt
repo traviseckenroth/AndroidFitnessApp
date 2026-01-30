@@ -17,6 +17,7 @@ import kotlinx.serialization.json.Json
 
 @Serializable
 data class GeneratedPlanResponse(
+    val explanation: String = "",
     val schedule: List<GeneratedDay> = emptyList()
 )
 
@@ -80,7 +81,7 @@ suspend fun invokeBedrock(
     days: List<String>,
     duration: Float,
     workoutHistory: List<CompletedWorkoutEntity>
-): List<GeneratedDay> {
+): GeneratedPlanResponse {
 
     try {
         val client = BedrockRuntimeClient {
@@ -126,11 +127,13 @@ suspend fun invokeBedrock(
             $historyString
 
             STRICT OUTPUT FORMAT:
-            Return a valid JSON object with a single root key "schedule".
-            Inside "schedule", include a list of daily sessions for all 4 weeks.
+            Return a valid JSON object with two root keys: "explanation" and "schedule".
+            - "explanation": A string explaining the reasoning for the chosen exercises, progressions, and overall structure of the plan.
+            - "schedule": A list of daily sessions for all 4 weeks.
 
             JSON EXAMPLE:
             {
+              "explanation": "This plan is designed to increase your strength on the main lifts by using a block periodization model...",
               "schedule": [
                 {
                   "week": 1,
@@ -205,10 +208,10 @@ suspend fun invokeBedrock(
 
         client.close()
 
-        return planResponse.schedule
+        return planResponse
 
     } catch (e: Exception) {
         Log.e("BedrockError", "Error invoking model", e)
-        return emptyList()
+        return GeneratedPlanResponse()
     }
 }

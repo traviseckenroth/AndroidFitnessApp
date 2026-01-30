@@ -1,6 +1,5 @@
 package com.example.myapplication.ui.home
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,8 +11,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -29,10 +26,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.myapplication.ui.plan.PlanUiState
 import com.example.myapplication.ui.plan.PlanViewModel
@@ -49,8 +48,7 @@ fun HomeScreen(
     onNavigateToExerciseList: () -> Unit,
     planViewModel: PlanViewModel // Ensure this is the SHARED instance
 ) {
-    val today = LocalDate.now()
-    val weekDays = (0..6).map { today.minusDays(today.dayOfWeek.value.toLong() - 1).plusDays(it.toLong()) }
+    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
     val planUiState by planViewModel.uiState.collectAsState()
 
     Column(
@@ -58,49 +56,11 @@ fun HomeScreen(
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        Text(
-            text = "Jan 2026",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+        InfiniteScrollingCalendar(
+            initialDate = LocalDate.now(),
+            selectedDate = selectedDate,
+            onDateSelected = { newDate -> selectedDate = newDate }
         )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        LazyRow(
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            items(weekDays) { date ->
-                val isToday = date == today
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(4.dp)
-                ) {
-                    Text(
-                        text = date.dayOfWeek.getDisplayName(TextStyle.NARROW, Locale.getDefault()),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(40.dp)
-                            .background(
-                                color = if (isToday) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                shape = CircleShape
-                            )
-                    ) {
-                        Text(
-                            text = date.dayOfMonth.toString(),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = if (isToday) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                            fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal
-                        )
-                    }
-                }
-            }
-        }
 
         Spacer(modifier = Modifier.height(32.dp))
 
@@ -112,15 +72,15 @@ fun HomeScreen(
             val plan = successState.plan
             val startDate = successState.startDate
 
-            val todayName = today.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault())
+            val selectedDayName = selectedDate.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault())
 
-            val daysSinceStart = TimeUnit.MILLISECONDS.toDays(System.currentTimeMillis() - startDate)
+            val daysSinceStart = TimeUnit.MILLISECONDS.toDays(selectedDate.toEpochDay() * 86400000 - startDate)
             val currentWeek = (daysSinceStart / 7).toInt() + 1
 
             val todayWorkout = plan.weeks
                 .find { it.week == currentWeek }
                 ?.days
-                ?.find { it.day.equals(todayName, ignoreCase = true) || it.day.startsWith(todayName, ignoreCase = true) }
+                ?.find { it.day.equals(selectedDayName, ignoreCase = true) || it.day.startsWith(selectedDayName, ignoreCase = true) }
 
             if (todayWorkout != null) {
                 ElevatedCard(
