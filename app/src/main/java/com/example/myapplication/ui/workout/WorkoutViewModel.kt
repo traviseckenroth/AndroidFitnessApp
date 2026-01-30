@@ -29,7 +29,6 @@ data class Exercise(
     val exerciseId: Long,
     val name: String,
     val sets: List<WorkoutSet>,
-    val rest: String,
     val tier: Int
 )
 
@@ -66,7 +65,6 @@ class WorkoutViewModel @Inject constructor(
                 exerciseId = dataExercise.exerciseId,
                 name = dataExercise.name,
                 sets = workoutSets,
-                rest = dataExercise.rest,
                 tier = dataExercise.tier
             )
         }
@@ -115,7 +113,12 @@ class WorkoutViewModel @Inject constructor(
         if (_uiState.value.isTimerRunning) return
 
         val currentExercise = _uiState.value.exercises[_uiState.value.currentExerciseIndex]
-        val restTime = currentExercise.rest.toLongOrNull() ?: 60L
+        val restTime = when (currentExercise.tier) {
+            1 -> 180L
+            2 -> 150L
+            3 -> 120L
+            else -> 60L
+        }
         _uiState.update { it.copy(isTimerRunning = true, timerValue = restTime) }
 
         timerJob = viewModelScope.launch {

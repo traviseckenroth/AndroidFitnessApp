@@ -126,7 +126,7 @@ suspend fun invokeBedrock(
             USER HISTORY:
             $historyString
 
-            STRICT OUTPUT FORMAT:
+            STRICT OUTPUT FORMAT: 
             Return a valid JSON object with two root keys: "explanation" and "schedule".
             - "explanation": A string explaining the reasoning for the chosen exercises, progressions, and overall structure of the plan.
             - "schedule": A list of daily sessions for all 4 weeks.
@@ -165,8 +165,8 @@ suspend fun invokeBedrock(
                - TIER 3 (Isolation): 2 minutes per set.
                
                EXAMPLE: 
-               - Arnold Press is Tier 2 and has 3 sets.
-               - Time = 3 * 2.5 = 7.5 minutes. Round to 8.
+               - Arnold Press is Tier 2 and has 4 sets.
+               - Time = 4 * 2.5 = 10 minutes.
 
             7. TOTAL DURATION:
                The sum of all 'estimatedTimeMinutes' for a single day's workout must equal the user's requested duration of $totalMinutes minutes.
