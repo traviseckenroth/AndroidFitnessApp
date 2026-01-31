@@ -16,6 +16,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -34,6 +36,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -163,12 +168,31 @@ fun ExerciseTimer(uiState: WorkoutUiState, viewModel: WorkoutViewModel) {
 
 @Composable
 fun SetsTable(exercise: Exercise, exerciseIndex: Int, viewModel: WorkoutViewModel) {
+    var showRpeInfo by remember { mutableStateOf(false) }
+
+    if (showRpeInfo) {
+        RpeInfoDialog { showRpeInfo = false }
+    }
+
     Column {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text("SET", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
             Text("LBS", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
             Text("REPS", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-            Text("RPE", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                Text("RPE", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                IconButton(onClick = { showRpeInfo = true }) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = "RPE Info",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
             Text("DONE", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
         }
         Spacer(modifier = Modifier.height(8.dp))
@@ -264,4 +288,27 @@ fun WorkoutFinishedScreen(onNavigateBack: () -> Unit) {
             }
         }
     }
+}
+
+@Composable
+fun RpeInfoDialog(onDismissRequest: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = { Text("RPE Scale (5-10)") },
+        text = {
+            Column {
+                Text("RPE 10: Max Effort, No reps left")
+                Text("RPE 9:   1 rep left")
+                Text("RPE 8:   2 reps left")
+                Text("RPE 7:   3 reps left")
+                Text("RPE 6:   4-5 reps left")
+                Text("RPE 5:   5-6 reps left")
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismissRequest) {
+                Text("Close")
+            }
+        }
+    )
 }

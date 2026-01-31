@@ -29,7 +29,7 @@ data class Exercise(
     val exerciseId: Long,
     val name: String,
     val sets: List<WorkoutSet>,
-    val tier: Int
+    val tier: Int,
 )
 
 data class WorkoutSet(
@@ -57,7 +57,7 @@ class WorkoutViewModel @Inject constructor(
                     setNumber = setNum,
                     lbs = "",
                     reps = dataExercise.reps,
-                    rpe = "",
+                    rpe = dataExercise.rpe.toString(),
                     isDone = false
                 )
             }

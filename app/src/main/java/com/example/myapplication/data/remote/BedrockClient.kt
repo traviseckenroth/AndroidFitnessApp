@@ -149,7 +149,7 @@ suspend fun invokeBedrock(
                   "week": 1,
                   "day": "Monday",
                   "title": "Upper Body Power",
-                  "exercises": [ { "name": "Barbell Bench Press", "tier": 1, "sets": 5, "suggestedReps": 5, "estimatedTimeMinutes": 15 } ]
+                  "exercises": [ { "name": "Barbell Bench Press", "tier": 1, "sets": 5, "suggestedReps": 5, "suggestedRpe": 8, "estimatedTimeMinutes": 15 } ]
                 },              
               ]
             }

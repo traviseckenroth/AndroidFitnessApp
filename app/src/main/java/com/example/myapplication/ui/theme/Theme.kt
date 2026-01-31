@@ -14,15 +14,33 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import androidx.compose.ui.graphics.Color
+import com.example.myapplication.ui.theme.Typography
 
-private val DarkColorScheme = darkColorScheme()
-private val LightColorScheme = lightColorScheme()
+
+private val DarkColorScheme = darkColorScheme(
+    primary = Color(0xFFD0BCFF),     // Muted Lavender
+    secondary = Color(0xFFCCC2DC),
+    tertiary = Color(0xFFEFB8C8),
+    background = Color(0xFF0E1116),  // True dark mode
+    surface = Color(0xFF1C1F26),     // Slightly lighter than background
+    onBackground = Color(0xFFE6E1E5),
+    onSurface = Color(0xFFE6E1E5)
+)
+
+private val LightColorScheme = lightColorScheme(
+    primary = Color(0xFF6750A4),
+    secondary = Color(0xFF625B71),
+    background = Color(0xFFFDFBFF), // Off-white for less eye strain
+    surface = Color.White,
+    onBackground = Color(0xFF1C1B1F),
+    onSurface = Color(0xFF1C1B1F)
+)
 
 @Composable
 fun MyApplicationTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false, // Set to false for a more consistent branded look
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
@@ -38,14 +56,20 @@ fun MyApplicationTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.primary.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = darkTheme
+            // Modern look: Transparent status bar with content flowing behind it
+            window.statusBarColor = Color.Transparent.toArgb()
+            window.navigationBarColor = Color.Transparent.toArgb()
+
+            val controller = WindowCompat.getInsetsController(window, view)
+            // Light icons for dark theme, dark icons for light theme
+            controller.isAppearanceLightStatusBars = !darkTheme
+            controller.isAppearanceLightNavigationBars = !darkTheme
         }
     }
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = androidx.compose.material3.Typography(),
+        typography = Typography, // Ensure you have defined modern fonts like Inter or Roboto
         content = content
     )
 }
