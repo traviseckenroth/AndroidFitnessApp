@@ -30,6 +30,9 @@ interface WorkoutDao {
     @Query("SELECT * FROM completed_workouts")
     fun getAllCompletedWorkouts(): Flow<List<CompletedWorkoutEntity>>
 
+    @Query("SELECT * FROM exercises WHERE name = :name LIMIT 1")
+    suspend fun getExerciseByName(name: String): ExerciseEntity?
+
     // --- WRITES ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPlan(plan: WorkoutPlanEntity): Long

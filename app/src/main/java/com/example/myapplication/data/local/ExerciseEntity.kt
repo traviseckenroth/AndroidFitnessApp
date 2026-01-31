@@ -17,6 +17,7 @@ data class ExerciseEntity(
     val loadability: String,
     val fatigue: String,
     val notes: String,
+    val estimatedTimePerSet: Double,
     val videoUrl: String? = null
 )
 

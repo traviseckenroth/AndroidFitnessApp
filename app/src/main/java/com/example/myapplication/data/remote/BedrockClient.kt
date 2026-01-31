@@ -9,6 +9,7 @@ import aws.smithy.kotlin.runtime.auth.awscredentials.Credentials
 import aws.smithy.kotlin.runtime.http.engine.okhttp.OkHttpEngine
 import com.example.myapplication.BuildConfig
 import com.example.myapplication.data.local.CompletedWorkoutEntity
+import com.example.myapplication.data.local.ExerciseEntity
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -41,7 +42,7 @@ data class GeneratedExercise(
     val suggestedReps: Int = 5,
     val suggestedRpe: Int = 7,
     val sets: Int = 3,
-    val estimatedTimeMinutes: Int = 10
+    val estimatedTimeMinutes: Int = 0,
 )
 
 // --- CLAUDE API REQUEST MODELS ---
@@ -80,7 +81,8 @@ suspend fun invokeBedrock(
     programType: String,
     days: List<String>,
     duration: Float,
-    workoutHistory: List<CompletedWorkoutEntity>
+    workoutHistory: List<CompletedWorkoutEntity>,
+    availableExercises: List<ExerciseEntity>
 ): GeneratedPlanResponse {
 
     try {
@@ -92,8 +94,9 @@ suspend fun invokeBedrock(
             }
             // FIX: Use OkHttpEngine and correct property names
             httpClient = OkHttpEngine {
-                maxConcurrency = 100u // '''maxConcurrency''' -> '''maxConnections''' (UInt)
-                connectTimeout = 30.seconds
+                connectTimeout = 60.seconds
+                // socketReadTimeout is the correct property name for read timeouts in this engine
+                socketReadTimeout = 120.seconds
             }
         }
 
@@ -117,15 +120,22 @@ suspend fun invokeBedrock(
         val historyString = workoutHistory.joinToString(separator = "\n") { item ->
             "- ${item.date}: ${item.reps} reps at ${item.weight} lbs (RPE ${item.rpe})"
         }
-
+        val exerciseListString = availableExercises.joinToString("/n") { ex ->
+            "- ${ex.name} (${ex.tier}, ${ex.estimatedTimePerSet} mins/set): ${ex.notes}"
+        }
         val totalMinutes = (duration * 60).toInt()
 
         val systemPrompt = """
             You are an expert strength coach. Generate a workout plan for 4 full weeks.
-
-            USER HISTORY:
-            $historyString
-
+            USER CONTEXT:
+            - Goal: ${goal}
+            - Schedule: ${days.joinToString()}
+            - Duration: ${totalMinutes} minutes per session.
+            - History: ${historyString}
+  
+            AVAILABLE EXERCISES (Use these when possible):
+            ${exerciseListString}
+            
             STRICT OUTPUT FORMAT: 
             Return a valid JSON object with two root keys: "explanation" and "schedule".
             - "explanation": A string explaining the reasoning for the chosen exercises, progressions, and overall structure of the plan.
@@ -140,20 +150,14 @@ suspend fun invokeBedrock(
                   "day": "Monday",
                   "title": "Upper Body Power",
                   "exercises": [ { "name": "Barbell Bench Press", "tier": 1, "sets": 5, "suggestedReps": 5, "estimatedTimeMinutes": 15 } ]
-                },
-                {
-                  "week": 4,
-                  "day": "Friday",
-                  "title": "Full Body",
-                  "exercises": [ { "name": "Deadlift", "tier": 1, "sets": 3, "suggestedReps": 3, "estimatedTimeMinutes": 9 } ]
-                }
+                },              
               ]
             }
 
             RULES:
             1. Generate a plan for 4 full weeks.
-            2. "sets", "suggestedRpe", and "estimatedTimeMinutes" must be Integers.
-            3. $tierDefinitions
+            2. "sets", "suggestedRpe", "suggestedReps", and "estimatedTimeMinutes" must be Integers.
+            3. ${tierDefinitions}
             4. The user has selected the following days: ${days.joinToString()}. Generate a workout for *each* of these selected days for all 4 weeks.
             5. A week is from Monday to Sunday.
             
@@ -169,7 +173,7 @@ suspend fun invokeBedrock(
                - Time = 4 * 2.5 = 10 minutes.
 
             7. TOTAL DURATION:
-               The sum of all 'estimatedTimeMinutes' for a single day's workout must equal the user's requested duration of $totalMinutes minutes.
+               The sum of all 'estimatedTimeMinutes' for a single day's workout must equal the user's requested duration of ${totalMinutes} minutes.
                - Add or remove exercises or sets to meet the duration.
 
             8. CONSIDER USER HISTORY FOR PROGRESSIVE OVERLOAD.
@@ -177,7 +181,7 @@ suspend fun invokeBedrock(
             Do not include preamble or markdown formatting.
         """.trimIndent()
 
-        val userPrompt = "Goal: $goal. Schedule: ${days.joinToString()}. Session Duration: $duration hours."
+        val userPrompt = "Goal: ${goal}. Schedule: ${days.joinToString()}. Session Duration: ${duration} hours."
 
         val requestBody = ClaudeRequest(
             max_tokens = 8192,
@@ -202,7 +206,7 @@ suspend fun invokeBedrock(
 
         val cleanJson = rawJson.replace("```json", "").replace("```", "").trim()
 
-        Log.d("BedrockService", "Clean JSON: $cleanJson")
+        Log.d("BedrockService", "Clean JSON: ${cleanJson}")
 
         val planResponse = jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
 

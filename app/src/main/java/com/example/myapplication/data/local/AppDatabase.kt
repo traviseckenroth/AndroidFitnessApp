@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
         WorkoutSetEntity::class,
         CompletedWorkoutEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -52,7 +52,7 @@ abstract class AppDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "workout_db_v15"
+                    "workout_db_v16" // Increment this string to force a wipe/re-populate if needed
                 )
                     .fallbackToDestructiveMigration()
                     .addCallback(Callback(scope))
@@ -64,16 +64,24 @@ abstract class AppDatabase : RoomDatabase() {
     }
 }
 
-// --- POPULATION LOGIC (Updated to use ExerciseEntity) ---
+// --- POPULATION LOGIC (Updated with Auto-Time Calculation) ---
 suspend fun populateDatabase(dao: WorkoutDao) {
     dao.deleteAllExercises()
 
     suspend fun ex(name: String, group: String, equip: String, tierString: String, load: String, fatigue: String, note: String) {
-        // Parse "T1", "T2" string to Int for the new 'tier' field
+        // 1. Parse "T1", "T2" string to Int
         val tierInt = when {
             tierString.contains("1") -> 1
             tierString.contains("2") -> 2
             else -> 3
+        }
+
+        // 2. AUTO-CALCULATE TIME BASED ON TIER (The logic we discussed)
+        val timeVal = when (tierString) {
+            "T1" -> 3.0  // Heavy Compound (includes warmup/rest)
+            "T2" -> 2.5  // Accessory
+            "T3" -> 2.0  // Isolation
+            else -> 2.5
         }
 
         dao.insertExercise(
@@ -84,12 +92,13 @@ suspend fun populateDatabase(dao: WorkoutDao) {
                 tier = tierInt,
                 loadability = load,
                 fatigue = fatigue,
-                notes = note
+                notes = note,
+                estimatedTimePerSet = timeVal // This saves the calculated time to the DB
             )
         )
     }
 
-// ==================== CHEST ====================
+    // ==================== CHEST ====================
     ex("Barbell Bench Press", "Chest", "Barbell", "T1", "High", "High", "Primary horizontal push for max loading. Targets sternal pecs and triceps.")
     ex("Dumbbell Bench Press", "Chest", "Dumbbell", "T1", "Med", "Med", "Increases range of motion over barbell. excellent for fixing asymmetry.")
     ex("Incline Barbell Press", "Chest", "Barbell", "T1", "High", "High", "Biases clavicular head (upper chest). Essential for full shelf development.")
@@ -168,7 +177,7 @@ suspend fun populateDatabase(dao: WorkoutDao) {
     ex("Deficit Deadlift", "Back", "Barbell", "T2", "High", "High", "Increases ROM to strengthen floor pull. Very taxing.")
     ex("Board Press", "Arms", "Barbell", "T2", "High", "Med", "Overloads the lockout (triceps). Allows supramaximal weight.")
 
-// ==================== KETTLEBELL ====================
+    // ==================== KETTLEBELL ====================
     ex("Kettlebell Swing (Russian)", "Legs", "Kettlebell", "T1", "High", "Med", "Explosive hip hinge. Primary driver is glute max, not shoulders. Keep spine neutral.")
     ex("Goblet Squat", "Legs", "Kettlebell", "T2", "Med", "Med", "Front-loaded squat. Counterbalance helps achieve depth. Excellent for teaching squat mechanics.")
     ex("Turkish Get-Up", "Full Body", "Kettlebell", "T1", "High", "High", "Complex stabilizer. Massive time under tension for rotator cuff. Moves through multiple planes.")

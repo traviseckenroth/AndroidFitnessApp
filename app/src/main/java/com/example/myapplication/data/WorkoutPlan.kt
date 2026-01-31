@@ -29,5 +29,7 @@ data class Exercise(
     val reps: String,
     val rest: String,
     val tier: Int,
-    val explanation: String
+    val explanation: String,
+    val estimatedTimePerSet: Double,
+    val rpe: Int
 )
