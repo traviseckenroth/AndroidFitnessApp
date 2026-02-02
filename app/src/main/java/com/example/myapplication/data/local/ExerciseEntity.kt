@@ -100,7 +100,12 @@ data class CompletedWorkoutEntity(
     val reps: Int,
     val rpe: Int,
     val weight: Int
-)
+) {
+    val totalReps: Int
+        get() = reps
+    val totalVolume: Int
+        get() = reps * weight
+}
 
 data class CompletedWorkoutWithExercise(
     @Embedded

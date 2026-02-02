@@ -178,12 +178,13 @@ fun AIStatusCard() {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "AI Optimization",
+                    "Hybrid Optimization Active", // Updated Title
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    "Your data is being used to tune your hypertrophy plan.",
+                    // Updated Description
+                    "AI designs your macro-cycle. Local algorithms auto-regulate your weights weekly based on RPE.",
                     style = MaterialTheme.typography.bodySmall
                 )
             }

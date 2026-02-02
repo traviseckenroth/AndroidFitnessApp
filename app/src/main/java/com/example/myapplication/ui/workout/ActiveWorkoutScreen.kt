@@ -11,6 +11,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Help
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -40,9 +41,21 @@ fun ActiveWorkoutScreen(
 ) {
     val exerciseStates by viewModel.exerciseStates.collectAsState()
     val coachBriefing by viewModel.coachBriefing.collectAsState()
+    val workoutSummary by viewModel.workoutSummary.collectAsState()
 
     LaunchedEffect(workoutId) {
         viewModel.loadWorkout(workoutId)
+    }
+
+    // --- NEW: SUMMARY DIALOG ---
+    if (workoutSummary != null) {
+        WorkoutSummaryDialog(
+            report = workoutSummary!!,
+            onDismiss = {
+                viewModel.clearSummary()
+                onBack() // Navigate back only after dismissing dialog
+            }
+        )
     }
 
     Scaffold(
@@ -88,13 +101,46 @@ fun ActiveWorkoutScreen(
                     Spacer(modifier = Modifier.height(24.dp))
                 }
                 item {
-                    Button(onClick = onBack) {
+                    Button(onClick = { viewModel.finishWorkout(workoutId) }) {
                         Text("Finish Workout")
                     }
                 }
             }
         }
     }
+}
+
+// --- NEW COMPONENT: SUMMARY DIALOG ---
+@Composable
+fun WorkoutSummaryDialog(report: List<String>, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = { }, // Force user to click button
+        icon = { Icon(Icons.Default.Check, contentDescription = "Success") },
+        title = { Text("Workout Complete!") },
+        text = {
+            Column {
+                Text("Great job finishing today's session.")
+                Spacer(modifier = Modifier.height(16.dp))
+
+                if (report.isNotEmpty()) {
+                    Text("Auto-Regulation Updates:", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    report.forEach { log ->
+                        Text("• $log", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Future weeks have been updated based on your RPE performance today.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                } else {
+                    Text("No weight adjustments needed. You are right on track!", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) {
+                Text("Return Home")
+            }
+        }
+    )
 }
 
 @Composable
@@ -178,7 +224,6 @@ fun SetRow(set: WorkoutSetEntity, viewModel: ActiveSessionViewModel) {
     val borderColor = if (set.isCompleted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface
     val focusManager = LocalFocusManager.current
 
-    // Local state for UI responsiveness
     var weightText by remember(set.actualLbs, set.suggestedLbs) {
         mutableStateOf(
             if (set.actualLbs != null && set.actualLbs > 0f) set.actualLbs.toInt().toString()
@@ -208,7 +253,6 @@ fun SetRow(set: WorkoutSetEntity, viewModel: ActiveSessionViewModel) {
     ) {
         Text(text = set.setNumber.toString(), color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
 
-        // --- WEIGHT INPUT (OPTIMIZED) ---
         TextField(
             value = weightText,
             onValueChange = { weightText = it.filter { char -> char.isDigit() } },
@@ -216,7 +260,6 @@ fun SetRow(set: WorkoutSetEntity, viewModel: ActiveSessionViewModel) {
                 .weight(1f)
                 .width(50.dp)
                 .onFocusChanged { focusState ->
-                    // ONLY SAVE WHEN FOCUS IS LOST
                     if (!focusState.isFocused && weightText.isNotEmpty()) {
                         viewModel.updateSetWeight(set, weightText)
                     }
@@ -231,7 +274,6 @@ fun SetRow(set: WorkoutSetEntity, viewModel: ActiveSessionViewModel) {
             )
         )
 
-        // --- REPS INPUT (OPTIMIZED) ---
         TextField(
             value = repsText,
             onValueChange = { repsText = it.filter { char -> char.isDigit() } },
@@ -253,7 +295,6 @@ fun SetRow(set: WorkoutSetEntity, viewModel: ActiveSessionViewModel) {
             )
         )
 
-        // --- RPE INPUT (OPTIMIZED) ---
         TextField(
             value = rpeText,
             onValueChange = { rpeText = it.filter { char -> char.isDigit() } },

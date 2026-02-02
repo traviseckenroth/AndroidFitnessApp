@@ -16,6 +16,7 @@ import java.util.Calendar
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.roundToInt
 
 @Singleton
 class WorkoutRepository @Inject constructor(
@@ -23,7 +24,7 @@ class WorkoutRepository @Inject constructor(
     private val userPrefs: UserPreferencesRepository,
     private val bedrockClient: BedrockClient
 ) {
-    // --- READS ---
+    // --- READS (No Changes) ---
     fun getWorkoutForDate(date: Long): Flow<DailyWorkoutEntity?> {
         val cal = Calendar.getInstance().apply {
             timeInMillis = date
@@ -50,8 +51,7 @@ class WorkoutRepository @Inject constructor(
     fun getUserAge(): Flow<Int> = userPrefs.userAge
     suspend fun saveBiometrics(height: Int, weight: Double, age: Int) = userPrefs.saveBiometrics(height, weight, age)
 
-    // --- PLAN GENERATION ---
-
+    // --- PLAN GENERATION (No Changes) ---
     suspend fun generateAndSavePlan(
         goal: String,
         duration: Int,
@@ -197,7 +197,6 @@ class WorkoutRepository @Inject constructor(
     private fun calculateSmartDate(startDate: Long, weekNum: Int, dayName: String): Long {
         val cal = Calendar.getInstance()
         cal.timeInMillis = startDate
-
         val lowerName = dayName.lowercase(Locale.getDefault())
         val targetDay = when {
             lowerName.startsWith("sun") -> Calendar.SUNDAY
@@ -209,35 +208,27 @@ class WorkoutRepository @Inject constructor(
             lowerName.startsWith("sat") -> Calendar.SATURDAY
             else -> Calendar.MONDAY
         }
-
         val currentDay = cal.get(Calendar.DAY_OF_WEEK)
         var dayOffset = targetDay - currentDay
-
-        if (dayOffset < 0) {
-            dayOffset += 7
-        }
-
+        if (dayOffset < 0) dayOffset += 7
         val totalDaysToAdd = dayOffset + ((weekNum - 1) * 7)
-
         cal.add(Calendar.DAY_OF_YEAR, totalDaysToAdd)
         cal.set(Calendar.HOUR_OF_DAY, 12)
         cal.set(Calendar.MINUTE, 0)
         cal.set(Calendar.SECOND, 0)
-
         return cal.timeInMillis
     }
 
-    // --- UPDATED LOGIC HERE ---
-    suspend fun completeWorkout(workoutId: Long) {
-        val workout = workoutDao.getWorkoutById(workoutId) ?: return
+    // --- UPDATED COMPLETE FUNCTION ---
+    suspend fun completeWorkout(workoutId: Long): List<String> {
+        val workout = workoutDao.getWorkoutById(workoutId) ?: return emptyList()
         val sets = workoutDao.getSetsForWorkoutList(workoutId)
 
-        // Filter for completed sets and map to history entity
+        // 1. Archive to History
         val historyEntries = sets.filter { it.isCompleted }.map { set ->
             CompletedWorkoutEntity(
                 exerciseId = set.exerciseId,
                 date = workout.scheduledDate,
-                // Fallback to suggested values if actuals weren't entered
                 reps = set.actualReps ?: set.suggestedReps,
                 weight = (set.actualLbs ?: set.suggestedLbs).toInt(),
                 rpe = (set.actualRpe ?: set.suggestedRpe).toInt()
@@ -248,6 +239,81 @@ class WorkoutRepository @Inject constructor(
             workoutDao.insertCompletedWorkouts(historyEntries)
         }
 
+        // 2. Mark as Complete
         workoutDao.markWorkoutAsComplete(workoutId)
+
+        // 3. Run Optimization and return the Report
+        return autoRegulateFutureWorkouts(workout.planId, sets, workout.scheduledDate)
+    }
+
+    private suspend fun autoRegulateFutureWorkouts(
+        planId: Long,
+        completedSets: List<WorkoutSetEntity>,
+        currentDate: Long
+    ): List<String> {
+        val adjustmentLogs = mutableListOf<String>()
+
+        val exercisePerformance = completedSets
+            .filter { it.isCompleted && it.actualRpe != null }
+            .groupBy { it.exerciseId }
+
+        if (exercisePerformance.isEmpty()) return emptyList()
+
+        val futureWorkouts = workoutDao.getWorkoutsForPlan(planId)
+            .filter { it.scheduledDate > currentDate && !it.isCompleted }
+
+        if (futureWorkouts.isEmpty()) return emptyList()
+
+        // Cache Exercise Names for the report
+        val exercisesMap = workoutDao.getAllExercisesOneShot().associateBy { it.exerciseId }
+
+        // Track which exercises we already adjusted to avoid duplicate logs
+        val adjustedExerciseIds = mutableSetOf<Long>()
+
+        futureWorkouts.forEach { futureWorkout ->
+            val futureSets = workoutDao.getSetsForWorkoutList(futureWorkout.workoutId)
+            var hasUpdates = false
+
+            val updatedSets = futureSets.map { targetSet ->
+                val pastPerformance = exercisePerformance[targetSet.exerciseId]
+
+                if (pastPerformance != null) {
+                    val avgActualRpe = pastPerformance.mapNotNull { it.actualRpe }.average()
+                    val avgTargetRpe = pastPerformance.map { it.suggestedRpe }.average()
+                    val rpeDiff = avgActualRpe - avgTargetRpe
+
+                    val newWeight = when {
+                        rpeDiff >= 1.0 -> (targetSet.suggestedLbs * 0.95).toInt()
+                        rpeDiff <= -1.5 -> (targetSet.suggestedLbs * 1.05).toInt()
+                        else -> targetSet.suggestedLbs
+                    }
+
+                    if (newWeight != targetSet.suggestedLbs) {
+                        hasUpdates = true
+
+                        // Log only once per exercise
+                        if (!adjustedExerciseIds.contains(targetSet.exerciseId)) {
+                            val exName = exercisesMap[targetSet.exerciseId]?.name ?: "Exercise"
+                            val direction = if (newWeight > targetSet.suggestedLbs) "Increased" else "Decreased"
+                            val reason = if (newWeight > targetSet.suggestedLbs) "Easy RPE" else "High Fatigue"
+                            adjustmentLogs.add("$exName: $direction load ($reason)")
+                            adjustedExerciseIds.add(targetSet.exerciseId)
+                        }
+
+                        targetSet.copy(suggestedLbs = newWeight)
+                    } else {
+                        targetSet
+                    }
+                } else {
+                    targetSet
+                }
+            }
+
+            if (hasUpdates) {
+                workoutDao.insertSets(updatedSets)
+            }
+        }
+
+        return adjustmentLogs
     }
 }

@@ -34,22 +34,22 @@ class ActiveSessionViewModel @Inject constructor(
     private val repository: WorkoutRepository
 ) : ViewModel() {
 
-    // Internal ID to drive the data loading
     private val _workoutId = MutableStateFlow<Long>(-1)
-
     private val _sets = MutableStateFlow<List<WorkoutSetEntity>>(emptyList())
     private val _exercises = MutableStateFlow<List<ExerciseEntity>>(emptyList())
-
     private val _exerciseStates = MutableStateFlow<List<ExerciseState>>(emptyList())
     val exerciseStates: StateFlow<List<ExerciseState>> = _exerciseStates
 
     private val _coachBriefing = MutableStateFlow("Loading briefing...")
     val coachBriefing: StateFlow<String> = _coachBriefing
 
+    // --- NEW: SUMMARY STATE ---
+    private val _workoutSummary = MutableStateFlow<List<String>?>(null)
+    val workoutSummary: StateFlow<List<String>?> = _workoutSummary
+
     private val timerJobs = mutableMapOf<Long, Job>()
 
     init {
-        // 1. Observe Workout ID -> Load Sets
         viewModelScope.launch {
             _workoutId.collectLatest { id ->
                 if (id != -1L) {
@@ -67,12 +67,10 @@ class ActiveSessionViewModel @Inject constructor(
             }
         }
 
-        // 2. Observe Sets -> Load Exercises (Avoid nested collect)
         viewModelScope.launch {
             _sets.collectLatest { sets ->
                 if (sets.isNotEmpty()) {
                     val exerciseIds = sets.map { it.exerciseId }.distinct()
-                    // This flow will update _exercises whenever the DB changes
                     repository.getExercisesByIds(exerciseIds).collect {
                         _exercises.value = it
                     }
@@ -82,7 +80,6 @@ class ActiveSessionViewModel @Inject constructor(
             }
         }
 
-        // 3. Combine Sets + Exercises -> Build UI State
         viewModelScope.launch {
             combine(_exercises, _sets) { allExercises, sessionSets ->
                 val sessionExerciseIds = sessionSets.map { it.exerciseId }.toSet()
@@ -121,32 +118,28 @@ class ActiveSessionViewModel @Inject constructor(
 
     fun updateSetCompletion(set: WorkoutSetEntity, isCompleted: Boolean) {
         viewModelScope.launch {
-            val updatedSet = set.copy(isCompleted = isCompleted)
-            repository.updateSet(updatedSet)
+            repository.updateSet(set.copy(isCompleted = isCompleted))
         }
     }
 
     fun updateSetReps(set: WorkoutSetEntity, newReps: String) {
         val repsInt = newReps.toIntOrNull() ?: return
         viewModelScope.launch {
-            val updatedSet = set.copy(actualReps = repsInt)
-            repository.updateSet(updatedSet)
+            repository.updateSet(set.copy(actualReps = repsInt))
         }
     }
 
     fun updateSetWeight(set: WorkoutSetEntity, newLbs: String) {
         val lbsFloat = newLbs.toFloatOrNull() ?: return
         viewModelScope.launch {
-            val updatedSet = set.copy(actualLbs = lbsFloat)
-            repository.updateSet(updatedSet)
+            repository.updateSet(set.copy(actualLbs = lbsFloat))
         }
     }
 
     fun updateSetRpe(set: WorkoutSetEntity, newRpe: String) {
         val rpeFloat = newRpe.toFloatOrNull() ?: return
         viewModelScope.launch {
-            val updatedSet = set.copy(actualRpe = rpeFloat)
-            repository.updateSet(updatedSet)
+            repository.updateSet(set.copy(actualRpe = rpeFloat))
         }
     }
 
@@ -166,7 +159,6 @@ class ActiveSessionViewModel @Inject constructor(
             val exerciseState = _exerciseStates.value.find { it.exercise.exerciseId == exerciseId } ?: return@launch
             val restTime = (exerciseState.exercise.estimatedTimePerSet * 60).toLong()
             val totalSets = exerciseState.sets.size
-
             var setsCompleted = 1
 
             while (isActive && setsCompleted <= totalSets) {
@@ -217,11 +209,16 @@ class ActiveSessionViewModel @Inject constructor(
         }
     }
 
-    // --- UPDATED: Call the new repository method ---
+    // --- UPDATED: Wait for result and update State ---
     fun finishWorkout(workoutId: Long) {
         viewModelScope.launch {
-            repository.completeWorkout(workoutId)
+            val report = repository.completeWorkout(workoutId)
+            _workoutSummary.value = report // This triggers the Dialog in UI
         }
+    }
+
+    fun clearSummary() {
+        _workoutSummary.value = null
     }
 }
 

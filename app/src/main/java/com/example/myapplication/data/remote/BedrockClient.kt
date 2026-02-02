@@ -194,6 +194,10 @@ class BedrockClient @Inject constructor() {
                 8. CONSIDER USER HISTORY FOR PROGRESSIVE OVERLOAD.
 
                 Do not include preamble or markdown formatting.
+                
+                USER HISTORY SUMMARY (Last Block):
+                ${'$'}historySummary
+                    
             """.trimIndent()
 
             val userPrompt = "Goal: ${goal}. Schedule: ${days.joinToString()}. Session Duration: ${duration} hours."
@@ -212,6 +216,17 @@ class BedrockClient @Inject constructor() {
                 accept = "application/json"
                 body = jsonString.toByteArray()
             }
+// OPTIMIZATION: Summarize history instead of dumping raw logs
+// This saves tokens and gives the AI better "reasoning" data
+            val historySummary = workoutHistory
+                .groupBy { it.exercise.name }
+                .map { (name, sessions) ->
+                    val sorted = sessions.sortedBy { it.completedWorkout.date }
+                    val first = sorted.first().completedWorkout
+                    val last = sorted.last().completedWorkout
+                    val progress = last.weight - first.weight
+                    "- $name: Started at ${first.weight}lbs, currently at ${last.weight}lbs (Avg RPE: ${sessions.map { it.completedWorkout.rpe }.average().toInt()})"
+                }.joinToString("\n")
 
             // Reuse the class-level client
             val response = client.invokeModel(request)
