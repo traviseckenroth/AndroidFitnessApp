@@ -1,7 +1,9 @@
 package com.example.myapplication.ui.navigation
 
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -19,8 +21,8 @@ import com.example.myapplication.ui.workout.ActiveWorkoutScreen
 @Composable
 fun NavGraph(
     navController: NavHostController,
-    planViewModel: PlanViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    planViewModel: PlanViewModel = hiltViewModel()
 ) {
     NavHost(
         navController = navController,
@@ -29,8 +31,6 @@ fun NavGraph(
     ) {
         composable("home") {
             HomeScreen(
-                planViewModel = planViewModel,
-                // MATCHES THE ROUTE DEFINED BELOW
                 onNavigateToWorkout = { workoutId: Long ->
                     navController.navigate("active_workout/$workoutId")
                 },
@@ -45,12 +45,14 @@ fun NavGraph(
             GeneratePlanScreen(
                 viewModel = planViewModel,
                 onManualCreateClick = { navController.navigate("manual_creator") },
-                // FIX: Just pop back. The ViewModel holds the data,
-                // so Home will update automatically when revealed.
                 onPlanGenerated = {
                     navController.popBackStack()
                 }
             )
+        }
+
+        composable("insights") {
+            Text("Insights Screen Placeholder")
         }
 
         composable("profile") {
@@ -59,21 +61,28 @@ fun NavGraph(
 
         composable("manual_creator") {
             ManualPlanScreen(
+                planViewModel = planViewModel,
                 onSavePlan = { navController.popBackStack() }
             )
         }
 
         composable(
-            route = "active_workout/{workoutId}", // UPDATED ROUTE NAME
+            route = "active_workout/{workoutId}",
             arguments = listOf(navArgument("workoutId") { type = NavType.LongType })
         ) { backStackEntry ->
-            val workoutId = backStackEntry.arguments?.getLong("workoutId") ?: 0L
-
-            // Pass the shared PlanViewModel instance
+            val workoutId = backStackEntry.arguments?.getLong("workoutId") ?: return@composable
             ActiveWorkoutScreen(
                 workoutId = workoutId,
-                planViewModel = planViewModel,
-                onNavigateBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable("exercise_list") {
+            ExerciseListScreen(
+                onBack = { navController.popBackStack() },
+                onNavigateToExerciseHistory = { exerciseId ->
+                    navController.navigate("exercise_history/$exerciseId")
+                }
             )
         }
 
@@ -83,15 +92,6 @@ fun NavGraph(
         ) { backStackEntry ->
             ExerciseHistoryScreen(
                 navController = navController
-            )
-        }
-
-        composable("exercise_list") {
-            ExerciseListScreen(
-                navController = navController,
-                onNavigateToExerciseHistory = { exerciseId ->
-                    navController.navigate("exercise_history/$exerciseId")
-                }
             )
         }
     }

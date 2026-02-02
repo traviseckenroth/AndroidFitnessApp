@@ -39,7 +39,7 @@ fun ExerciseHistoryScreen(
     viewModel: ExerciseHistoryViewModel = hiltViewModel()
 ) {
     val exerciseHistory by viewModel.exerciseHistory.collectAsState()
-    val exerciseName = exerciseHistory.firstOrNull()?.exerciseName ?: "Exercise History"
+    val exerciseName = exerciseHistory.firstOrNull()?.exercise?.name ?: "Exercise History"
 
     Scaffold(
         topBar = {

@@ -2,101 +2,59 @@ package com.example.myapplication.ui.workout
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.myapplication.ui.plan.PlanUiState
-import com.example.myapplication.ui.plan.PlanViewModel
+import com.example.myapplication.data.local.WorkoutSetEntity
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActiveWorkoutScreen(
     workoutId: Long,
-    planViewModel: PlanViewModel,
-    workoutViewModel: WorkoutViewModel = hiltViewModel(),
-    onNavigateBack: () -> Unit
+    viewModel: ActiveSessionViewModel = hiltViewModel(),
+    onBack: () -> Unit
 ) {
-    val planState by planViewModel.uiState.collectAsState()
-    val workoutState by workoutViewModel.uiState.collectAsState()
+    val exerciseStates by viewModel.exerciseStates.collectAsState()
+    val coachBriefing by viewModel.coachBriefing.collectAsState()
 
-    // Load data when screen opens
-    LaunchedEffect(planState, workoutId) {
-        if (planState is PlanUiState.Success) {
-            val plan = (planState as PlanUiState.Success).plan
 
-            // Search all weeks to find the workout that matches the ID
-            val foundWorkout = plan.weeks.flatMap { week ->
-                week.days.map { day ->
-                    // REGENERATE THE ID exactly how HomeScreen generated it
-                    val id = "${week.week}-${day.day}".hashCode().toLong()
-                    id to day
-                }
-            }.find { it.first == workoutId }?.second
-
-            foundWorkout?.let {
-                workoutViewModel.loadWorkout(it)
-            }
-        }
+    LaunchedEffect(workoutId) {
+        viewModel.loadWorkout(workoutId)
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(workoutState.workoutTitle) },
+                title = { Text("Active Workout") },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
         }
     ) { padding ->
-        if (workoutState.exercises.isEmpty()) {
+        if (exerciseStates.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
-        } else if (workoutState.workoutFinished) {
-            WorkoutFinishedScreen(onNavigateBack)
         } else {
             LazyColumn(
                 modifier = Modifier
@@ -105,69 +63,74 @@ fun ActiveWorkoutScreen(
                     .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // Add the CoachBriefingCard here
                 item {
-                    workoutState.exercises.getOrNull(workoutState.currentExerciseIndex)?.let { exercise ->
-                        ExerciseHeader(workoutState, exercise)
+                    CoachBriefingCard(briefing = coachBriefing)
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+                items(exerciseStates) { exerciseState ->
+                    ExerciseHeader(
+                        exerciseState = exerciseState,
+                        onToggleVisibility = { viewModel.toggleExerciseVisibility(exerciseState.exercise.exerciseId) }
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    if (exerciseState.areSetsVisible) {
+                        SetsTable(sets = exerciseState.sets, viewModel = viewModel)
                         Spacer(modifier = Modifier.height(16.dp))
-                        ExerciseTimer(workoutState, workoutViewModel)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        SetsTable(exercise, workoutState.currentExerciseIndex, workoutViewModel)
-                        Spacer(modifier = Modifier.height(24.dp))
-                        NextExercises(workoutState.exercises, workoutState.currentExerciseIndex)
-                        Spacer(modifier = Modifier.height(24.dp))
-                        NavigationButtons(workoutViewModel, onNavigateBack)
+                        SetTimer(exerciseState = exerciseState, viewModel = viewModel)
+                    }
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
+                item {
+                    Button(onClick = onBack) {
+                        Text("Finish Workout")
                     }
                 }
             }
         }
     }
 }
-
-
+// --- NEW COMPONENT: Coach Briefing Card ---
 @Composable
-fun ExerciseHeader(uiState: WorkoutUiState, exercise: Exercise) {
-    Column(horizontalAlignment = Alignment.Start, modifier = Modifier.fillMaxWidth()) {
-        Text("EXERCISE ${uiState.currentExerciseIndex + 1} OF ${uiState.exercises.size}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-        Text(exercise.name, color = MaterialTheme.colorScheme.onSurface, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        if (exercise.tier > 0) {
-            Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(4.dp)) {
+fun CoachBriefingCard(briefing: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Icon(
+                imageVector = Icons.Default.Notifications,
+                contentDescription = "Coach Briefing",
+                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column {
                 Text(
-                    text = "Tier ${exercise.tier}",
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    text = "COACH'S BRIEFING",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f),
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = briefing,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
                 )
             }
         }
     }
 }
-
 @Composable
-fun ExerciseTimer(uiState: WorkoutUiState, viewModel: WorkoutViewModel) {
-    val minutes = uiState.timerValue / 60
-    val seconds = uiState.timerValue % 60
-    val currentExercise = uiState.exercises[uiState.currentExerciseIndex]
-
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = "Set ${uiState.currentSet} of ${currentExercise.sets.size}", fontSize = 20.sp)
-        Text(text = String.format("%02d:%02d", minutes, seconds), fontSize = 48.sp, fontWeight = FontWeight.Bold)
-
-        if (uiState.isExerciseComplete) {
-            Text("Exercise Complete", fontSize = 20.sp)
-        } else if (uiState.isTimerRunning) {
-            OutlinedButton(onClick = { viewModel.skipTimer() }) {
-                Text("Skip Rest")
-            }
-        } else {
-            Button(onClick = { viewModel.startTimer() }) {
-                Text("Start Timer")
-            }
-        }
-    }
-}
-
-@Composable
-fun SetsTable(exercise: Exercise, exerciseIndex: Int, viewModel: WorkoutViewModel) {
+fun SetsTable(sets: List<WorkoutSetEntity>, viewModel: ActiveSessionViewModel) {
     var showRpeInfo by remember { mutableStateOf(false) }
 
     if (showRpeInfo) {
@@ -175,6 +138,7 @@ fun SetsTable(exercise: Exercise, exerciseIndex: Int, viewModel: WorkoutViewMode
     }
 
     Column {
+        // Table Header
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -196,16 +160,22 @@ fun SetsTable(exercise: Exercise, exerciseIndex: Int, viewModel: WorkoutViewMode
             Text("DONE", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
         }
         Spacer(modifier = Modifier.height(8.dp))
-        exercise.sets.forEachIndexed { index, set ->
-            SetRow(set = set, isCurrent = index == 0, exerciseIndex, index, viewModel)
+
+        // Render Rows
+        sets.forEach { set ->
+            SetRow(set = set, viewModel = viewModel)
         }
     }
 }
 
+// ------------------------------------------------------------------------
+// 👇 UPDATED SETROW: Mapped to ActiveSessionViewModel
+// ------------------------------------------------------------------------
 @Composable
-fun SetRow(set: WorkoutSet, isCurrent: Boolean, exerciseIndex: Int, setIndex: Int, viewModel: WorkoutViewModel) {
-    val backgroundColor = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
-    val borderColor = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface
+fun SetRow(set: WorkoutSetEntity, viewModel: ActiveSessionViewModel) {
+    // Styling based on completion status
+    val backgroundColor = if (set.isCompleted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+    val borderColor = if (set.isCompleted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface
 
     Row(
         modifier = Modifier
@@ -216,75 +186,133 @@ fun SetRow(set: WorkoutSet, isCurrent: Boolean, exerciseIndex: Int, setIndex: In
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(set.setNumber.toString(), color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
-        TextField(value = set.lbs, onValueChange = { viewModel.onSetFieldChange(exerciseIndex, setIndex, "lbs", it) }, modifier = Modifier.weight(1f).width(50.dp), colors = TextFieldDefaults.colors(unfocusedTextColor = MaterialTheme.colorScheme.onSurface, focusedTextColor = MaterialTheme.colorScheme.onSurface, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant))
-        TextField(value = set.reps, onValueChange = { viewModel.onSetFieldChange(exerciseIndex, setIndex, "reps", it) }, modifier = Modifier.weight(1f).width(50.dp),  colors = TextFieldDefaults.colors(unfocusedTextColor = MaterialTheme.colorScheme.onSurface, focusedTextColor = MaterialTheme.colorScheme.onSurface, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant))
-        TextField(value = set.rpe, onValueChange = { viewModel.onSetFieldChange(exerciseIndex, setIndex, "rpe", it) }, modifier = Modifier.weight(1f).width(50.dp),  colors = TextFieldDefaults.colors(unfocusedTextColor = MaterialTheme.colorScheme.onSurface, focusedTextColor = MaterialTheme.colorScheme.onSurface, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant))
-        Checkbox(checked = set.isDone, onCheckedChange = { viewModel.onSetDone(exerciseIndex, setIndex, it) }, modifier = Modifier.weight(1f))
-    }
-}
+        // 1. Set Number
+        Text(
+            text = set.setNumber.toString(),
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
+        )
 
-@Composable
-fun NextExercises(exercises: List<Exercise>, currentIndex: Int) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        exercises.drop(currentIndex + 1).forEachIndexed { index, exercise ->
-            ExerciseItem(number = currentIndex + index + 2, name = exercise.name)
+        // 2. Weight Input -> FIXED
+        // Logic changed: If actualLbs is missing (null/0), use suggestedLbs immediately.
+        val weightText = if (set.actualLbs != null && set.actualLbs > 0) {
+            set.actualLbs.toString()
+        } else {
+            set.suggestedLbs.toString()
         }
+
+        TextField(
+            value = weightText,
+            onValueChange = { viewModel.updateSetWeight(set, it) },
+            modifier = Modifier.weight(1f).width(50.dp),
+            // Placeholder is technically redundant now but kept for fallback
+            placeholder = { Text(set.suggestedLbs.toString(), color = Color.Gray) },
+            colors = TextFieldDefaults.colors(
+                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                unfocusedContainerColor = Color.Transparent,
+                focusedContainerColor = Color.Transparent
+            )
+        )
+
+        // 3. Reps Input -> Calls updateSetReps
+        val repsText = if (set.actualReps != null && set.actualReps > 0) set.actualReps.toString() else ""
+        TextField(
+            value = repsText,
+            onValueChange = { viewModel.updateSetReps(set, it) },
+            modifier = Modifier.weight(1f).width(50.dp),
+            placeholder = { Text(set.suggestedReps.toString(), color = Color.Gray) },
+            colors = TextFieldDefaults.colors(
+                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                unfocusedContainerColor = Color.Transparent,
+                focusedContainerColor = Color.Transparent
+            )
+        )
+
+        // 4. RPE Input -> Calls updateSetRpe
+        val rpeText = if (set.actualRpe != null && set.actualRpe > 0) set.actualRpe.toString() else ""
+        TextField(
+            value = rpeText,
+            onValueChange = { viewModel.updateSetRpe(set, it) },
+            modifier = Modifier.weight(1f).width(50.dp),
+            placeholder = { Text(set.suggestedRpe.toString(), color = Color.Gray) },
+            colors = TextFieldDefaults.colors(
+                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                unfocusedContainerColor = Color.Transparent,
+                focusedContainerColor = Color.Transparent
+            )
+        )
+
+        // 5. Checkbox -> Calls updateSetCompletion
+        Checkbox(
+            checked = set.isCompleted,
+            onCheckedChange = { viewModel.updateSetCompletion(set, it) },
+            modifier = Modifier.weight(1f)
+        )
     }
 }
+// ------------------------------------------------------------------------
 
 @Composable
-fun ExerciseItem(number: Int, name: String) {
-    Surface(
+fun ExerciseHeader(exerciseState: ExerciseState, onToggleVisibility: () -> Unit) {
+    val exercise = exerciseState.exercise
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant
+            .clickable { onToggleVisibility() }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("$number.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.width(16.dp))
-            Text(name, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(exercise.name, color = MaterialTheme.colorScheme.onSurface, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            if (exercise.tier > 0) {
+                Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(4.dp)) {
+                    Text(
+                        text = "Tier ${exercise.tier}",
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
         }
+        Icon(
+            imageVector = if (exerciseState.areSetsVisible) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+            contentDescription = "Toggle Exercise Visibility"
+        )
     }
 }
 
 @Composable
-fun NavigationButtons(viewModel: WorkoutViewModel, onNavigateBack: () -> Unit) {
-    val uiState by viewModel.uiState.collectAsState()
-    val isLastExercise = uiState.currentExerciseIndex == uiState.exercises.size - 1
+fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
+    val timerState = exerciseState.timerState
+    val minutes = timerState.remainingTime / 60
+    val seconds = timerState.remainingTime % 60
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
     ) {
-        Button(onClick = { viewModel.previousExercise() }) {
-            Text("Previous")
-        }
-        if (isLastExercise) {
-            Button(onClick = {
-                viewModel.finishWorkout()
-                onNavigateBack()
-            }) {
-                Text("Finish Workout")
-            }
-        } else {
-            Button(onClick = { viewModel.nextExercise() }) {
-                Text("Next")
-            }
-        }
-    }
-}
+        Text("Set Timer", style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = String.format("%02d:%02d", minutes, seconds),
+            fontSize = 48.sp,
+            fontWeight = FontWeight.Bold
+        )
 
-@Composable
-fun WorkoutFinishedScreen(onNavigateBack: () -> Unit) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Workout Finished!", style = MaterialTheme.typography.headlineMedium)
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(onClick = onNavigateBack) {
-                Text("Back to Home")
+        Row(horizontalArrangement = Arrangement.Center) {
+            if (timerState.isRunning) {
+                OutlinedButton(onClick = { viewModel.skipSetTimer(exerciseState.exercise.exerciseId) }) {
+                    Text("Skip Timer")
+                }
+            } else {
+                Button(onClick = { viewModel.startSetTimer(exerciseState.exercise.exerciseId) }) {
+                    Text("Start Timer")
+                }
             }
         }
     }

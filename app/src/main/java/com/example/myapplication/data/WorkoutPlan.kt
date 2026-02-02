@@ -31,5 +31,6 @@ data class Exercise(
     val tier: Int,
     val explanation: String,
     val estimatedTimePerSet: Double,
-    val rpe: Int
+    val rpe: Int,
+    val suggestedLbs: Float = 0f
 )

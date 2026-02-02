@@ -12,7 +12,7 @@ import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutDao
 import com.example.myapplication.data.local.WorkoutPlanEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
-import com.example.myapplication.data.remote.invokeBedrock
+import com.example.myapplication.data.remote.BedrockClient
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,7 +34,8 @@ sealed interface PlanUiState {
 
 @HiltViewModel
 class PlanViewModel @Inject constructor(
-    private val workoutDao: WorkoutDao
+    private val workoutDao: WorkoutDao,
+    private val bedrockClient: BedrockClient
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<PlanUiState>(PlanUiState.Empty)
@@ -52,9 +53,9 @@ class PlanViewModel @Inject constructor(
                 val generatedPlanResponse = withContext(Dispatchers.IO) {
                     // UPDATED: Fetch all exercises first to pass to Bedrock
                     val allExercises = workoutDao.getAllExercises().first()
-                    val workoutHistory = workoutDao.getAllCompletedWorkouts().first()
+                    val workoutHistory = workoutDao.getCompletedWorkoutsWithExercise().first()
                     // UPDATED: Passed 'allExercises' so AI knows DB content
-                    invokeBedrock(goal, program, days, duration, workoutHistory, allExercises)
+                    bedrockClient.generateWorkoutPlan(goal, program, days, duration, workoutHistory, allExercises)
                 }
 
                 val generatedDays = generatedPlanResponse.schedule
@@ -137,7 +138,9 @@ class PlanViewModel @Inject constructor(
                                         tier = ex.tier,
                                         explanation = ex.notes,
                                         estimatedTimePerSet = secondsPerSet.toDouble(), // UPDATED: Pass calculated time
-                                        rpe = ex.suggestedRpe
+                                        rpe = ex.suggestedRpe,
+                                        suggestedLbs = ex.suggestedLbs // Pass this through
+
                                     )
                                 }
                             )
@@ -198,19 +201,15 @@ class PlanViewModel @Inject constructor(
 
                 // Calculate exact date for this workout relative to this week
                 val workoutCal = Calendar.getInstance()
-                workoutCal.set(Calendar.DAY_OF_WEEK, targetDayInt)
-                workoutCal.add(Calendar.WEEK_OF_YEAR, week.week - 1)
+                workoutCal.time = today.time // Start with today's date
+                workoutCal.add(Calendar.WEEK_OF_YEAR, week.week - 1) // Move to the correct week
+                workoutCal.set(Calendar.DAY_OF_WEEK, targetDayInt) // Set the correct day of the week
 
                 // Normalize
                 workoutCal.set(Calendar.HOUR_OF_DAY, 0)
                 workoutCal.set(Calendar.MINUTE, 0)
                 workoutCal.set(Calendar.SECOND, 0)
                 workoutCal.set(Calendar.MILLISECOND, 0)
-
-                // Skip past days (e.g., don't schedule a "Monday" workout if today is Friday)
-                if (workoutCal.before(today)) {
-                    return@forEach
-                }
 
                 val workoutId = workoutDao.insertDailyWorkout(
                     DailyWorkoutEntity(
@@ -231,7 +230,8 @@ class PlanViewModel @Inject constructor(
                                     exerciseId = exercise.exerciseId,
                                     setNumber = index + 1,
                                     suggestedReps = exercise.reps.toIntOrNull() ?: 0,
-                                    suggestedRpe = exercise.rpe, // This line is correct
+                                    suggestedRpe = exercise.rpe.toFloat().toInt(),
+                                    suggestedLbs = exercise.suggestedLbs.toInt(),
                                     isCompleted = false
                                 )
                             )

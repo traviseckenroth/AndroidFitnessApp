@@ -2,55 +2,53 @@ package com.example.myapplication.ui.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.myapplication.data.local.CompletedWorkoutEntity
-import com.example.myapplication.data.local.ExerciseEntity
-import com.example.myapplication.data.local.WorkoutDao
+import com.example.myapplication.data.repository.WorkoutRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-data class CompletedWorkoutItem(
-    val completedWorkout: CompletedWorkoutEntity,
-    val exercise: ExerciseEntity
-)
-
-sealed interface ProfileUiState {
-    object Loading : ProfileUiState
-    data class Success(val completedWorkouts: List<CompletedWorkoutItem>) : ProfileUiState
-    object Empty : ProfileUiState
-}
-
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
-    private val workoutDao: WorkoutDao
+    private val repository: WorkoutRepository
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow<ProfileUiState>(ProfileUiState.Loading)
-    val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
+    private val _userHeight = repository.getUserHeight().stateIn(viewModelScope, SharingStarted.Lazily, 180)
+    private val _userWeight = repository.getUserWeight().stateIn(viewModelScope, SharingStarted.Lazily, 75.0)
 
-    init {
+    val uiState: StateFlow<ProfileUiState> = combine(
+        repository.getAllCompletedWorkouts(),
+        _userHeight,
+        _userWeight
+    ) { completed, height, weight ->
+        val items = completed.map {
+            CompletedWorkoutItem(
+                completedWorkout = it.completedWorkout,
+                exercise = it.exercise
+            )
+        }.sortedByDescending { it.completedWorkout.date }
+
+        if (items.isEmpty() && height == 0 && weight == 0.0) {
+            ProfileUiState.Empty
+        } else {
+            ProfileUiState.Success(
+                completedWorkouts = items,
+                height = height,
+                weight = weight
+            )
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = ProfileUiState.Loading
+    )
+
+    fun saveBiometrics(height: Int, weight: Double) {
         viewModelScope.launch {
-            val completedWorkoutsFlow = workoutDao.getAllCompletedWorkouts()
-            val exercisesFlow = workoutDao.getAllExercises()
-
-            completedWorkoutsFlow.combine(exercisesFlow) { completedWorkouts, exercises ->
-                val items = completedWorkouts.mapNotNull { completedWorkout ->
-                    val exercise = exercises.find { it.exerciseId == completedWorkout.exerciseId }
-                    exercise?.let { CompletedWorkoutItem(completedWorkout, it) }
-                }.sortedByDescending { it.completedWorkout.date }
-
-                if (items.isEmpty()) {
-                    ProfileUiState.Empty
-                } else {
-                    ProfileUiState.Success(items)
-                }
-            }.collect { state ->
-                _uiState.value = state
-            }
+            repository.saveBiometrics(height, weight)
         }
     }
 }

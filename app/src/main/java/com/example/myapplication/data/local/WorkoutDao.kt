@@ -9,26 +9,27 @@ interface WorkoutDao {
     @Query("SELECT * FROM exercises")
     fun getAllExercises(): Flow<List<ExerciseEntity>>
 
-    @Query("SELECT * FROM daily_workouts WHERE scheduledDate = :date LIMIT 1")
-    fun getWorkoutByDate(date: Long): Flow<DailyWorkoutEntity?>
+    @Query("SELECT * FROM daily_workouts WHERE scheduledDate >= :startOfDay AND scheduledDate < :endOfDay LIMIT 1")
+    fun getWorkoutByDate(startOfDay: Long, endOfDay: Long): Flow<DailyWorkoutEntity?>
+
+    @Query("SELECT DISTINCT scheduledDate FROM daily_workouts")
+    fun getAllWorkoutDates(): Flow<List<Long>>
 
     @Query("SELECT * FROM workout_sets WHERE workoutId = :workoutId ORDER BY exerciseId, setNumber")
     fun getSetsForWorkout(workoutId: Long): Flow<List<WorkoutSetEntity>>
 
+    @Query("SELECT * FROM exercises")
+    suspend fun getAllExercisesOneShot(): List<ExerciseEntity>
     @Query("SELECT * FROM daily_workouts WHERE isCompleted = 1 ORDER BY scheduledDate DESC")
     fun getCompletedWorkouts(): Flow<List<DailyWorkoutEntity>>
 
-    @Query("""
-        SELECT cw.*, e.name
-        FROM completed_workouts cw
-        JOIN exercises e ON cw.exerciseId = e.exerciseId
-        WHERE cw.exerciseId = :exerciseId 
-        ORDER BY cw.date DESC
-    """)
-    fun getCompletedWorkoutsForExercise(exerciseId: Long): Flow<List<CompletedWorkoutWithExercise>>
-
+    @Transaction
     @Query("SELECT * FROM completed_workouts")
-    fun getAllCompletedWorkouts(): Flow<List<CompletedWorkoutEntity>>
+    fun getCompletedWorkoutsWithExercise(): Flow<List<CompletedWorkoutWithExercise>>
+
+    @Transaction
+    @Query("SELECT * FROM completed_workouts WHERE exerciseId = :exerciseId")
+    fun getCompletedWorkoutsForExercise(exerciseId: Long): Flow<List<CompletedWorkoutWithExercise>>
 
     @Query("SELECT * FROM exercises WHERE name = :name LIMIT 1")
     suspend fun getExerciseByName(name: String): ExerciseEntity?
@@ -54,4 +55,18 @@ interface WorkoutDao {
 
     @Query("DELETE FROM exercises")
     suspend fun deleteAllExercises(): Int
+
+    @Transaction
+    suspend fun saveFullWorkoutPlan(
+        plan: WorkoutPlanEntity,
+        workoutsWithSets: Map<DailyWorkoutEntity, List<WorkoutSetEntity>>
+    ): Long {
+        val planId = insertPlan(plan)
+        workoutsWithSets.forEach { (workout, sets) ->
+            val workoutId = insertDailyWorkout(workout.copy(planId = planId))
+            val setsWithWorkoutId = sets.map { it.copy(workoutId = workoutId) }
+            insertSets(setsWithWorkoutId)
+        }
+        return planId
+    }
 }

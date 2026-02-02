@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -45,6 +45,7 @@ import java.util.Locale
 fun InfiniteScrollingCalendar(
     initialDate: LocalDate,
     selectedDate: LocalDate,
+    workoutDates: List<LocalDate>,
     onDateSelected: (LocalDate) -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -52,6 +53,14 @@ fun InfiniteScrollingCalendar(
 
     var currentMonth by remember { mutableStateOf(YearMonth.from(initialDate)) }
     var dateList by remember { mutableStateOf(generateDateList(currentMonth)) }
+
+    // Scroll to the initial date when the composable is first launched
+    LaunchedEffect(Unit) {
+        val initialIndex = dateList.indexOf(initialDate)
+        if (initialIndex != -1) {
+            listState.scrollToItem(initialIndex)
+        }
+    }
 
     LaunchedEffect(currentMonth) {
         dateList = generateDateList(currentMonth)
@@ -94,11 +103,17 @@ fun InfiniteScrollingCalendar(
         LazyRow(
             state = listState,
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.Center
         ) {
-            items(dateList) { date ->
+            itemsIndexed(dateList) { index, date ->
                 val isSelected = date == selectedDate
-                CalendarDay(date = date, isSelected = isSelected, onDateSelected = onDateSelected)
+                val isWorkoutDay = remember(workoutDates) { date in workoutDates }
+                CalendarDay(
+                    date = date,
+                    isSelected = isSelected,
+                    isWorkoutDay = isWorkoutDay,
+                    onDateSelected = onDateSelected
+                )
             }
         }
     }
@@ -108,6 +123,7 @@ fun InfiniteScrollingCalendar(
 private fun CalendarDay(
     date: LocalDate,
     isSelected: Boolean,
+    isWorkoutDay: Boolean,
     onDateSelected: (LocalDate) -> Unit
 ) {
     val isToday = date == LocalDate.now()
@@ -146,6 +162,17 @@ private fun CalendarDay(
                 },
                 fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Normal
             )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+
+        if (isWorkoutDay && !isSelected) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .background(MaterialTheme.colorScheme.primary, shape = CircleShape)
+            )
+        } else {
+            Spacer(modifier = Modifier.size(6.dp))
         }
     }
 }

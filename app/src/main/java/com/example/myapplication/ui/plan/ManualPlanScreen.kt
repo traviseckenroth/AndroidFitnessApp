@@ -35,7 +35,7 @@ val exerciseDatabase = listOf(
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun ManualPlanScreen(onSavePlan: () -> Unit) {
+fun ManualPlanScreen(planViewModel: PlanViewModel, onSavePlan: () -> Unit) {
     // State for selected exercises
     val selectedIds = remember { mutableStateListOf<String>() }
 

@@ -1,21 +1,21 @@
 package com.example.myapplication.data.local
 
-import androidx.room.ColumnInfo
 import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.room.Relation
 
 @Entity(tableName = "exercises")
 data class ExerciseEntity(
     @PrimaryKey(autoGenerate = true) val exerciseId: Long = 0,
     val name: String,
-    val muscleGroup: String,
-    val equipment: String,
+    val muscleGroup: String?,
+    val equipment: String?,
     val tier: Int,
-    val loadability: String,
-    val fatigue: String,
+    val loadability: String?,
+    val fatigue: String?,
     val notes: String,
     val estimatedTimePerSet: Double,
     val videoUrl: String? = null
@@ -74,8 +74,10 @@ data class WorkoutSetEntity(
     val setNumber: Int,
     val suggestedReps: Int,
     val suggestedRpe: Int,
+    val suggestedLbs: Int,
     val actualReps: Int? = null,
-    val actualRpe: Int? = null,
+    val actualRpe: Float? = null,
+    val actualLbs: Float? = null,
     val isCompleted: Boolean = false
 )
 
@@ -102,6 +104,9 @@ data class CompletedWorkoutEntity(
 data class CompletedWorkoutWithExercise(
     @Embedded
     val completedWorkout: CompletedWorkoutEntity,
-    @ColumnInfo(name = "name")
-    val exerciseName: String
+    @Relation(
+        parentColumn = "exerciseId",
+        entityColumn = "exerciseId"
+    )
+    val exercise: ExerciseEntity
 )

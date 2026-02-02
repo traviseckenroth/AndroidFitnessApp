@@ -5,11 +5,11 @@ plugins {
     // 2. Kotlin (Fixes the "already requested" error)
     alias(libs.plugins.kotlin.android) apply false
 
-    // 3. Hilt (Dependency Injection)
-    alias(libs.plugins.hilt.android) apply false
-
-    // 4. KSP (Annotation Processing)
+    // 3. KSP (Annotation Processing)
     alias(libs.plugins.ksp) apply false
+
+    // 4. Hilt (Dependency Injection)
+    alias(libs.plugins.hilt.android) apply false
 
     // 5. Compose Compiler
     alias(libs.plugins.compose.compiler) apply false
