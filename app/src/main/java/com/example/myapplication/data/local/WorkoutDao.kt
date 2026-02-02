@@ -9,6 +9,14 @@ interface WorkoutDao {
     @Query("SELECT * FROM exercises")
     fun getAllExercises(): Flow<List<ExerciseEntity>>
 
+    @Query("SELECT * FROM exercises WHERE exerciseId IN (:exerciseIds)")
+    fun getExercisesByIds(exerciseIds: List<Long>): Flow<List<ExerciseEntity>>
+
+    // --- ADD THIS MISSING FUNCTION ---
+    @Query("SELECT * FROM exercises")
+    suspend fun getAllExercisesOneShot(): List<ExerciseEntity>
+    // --------------------------------
+
     @Query("SELECT * FROM daily_workouts WHERE scheduledDate >= :startOfDay AND scheduledDate < :endOfDay LIMIT 1")
     fun getWorkoutByDate(startOfDay: Long, endOfDay: Long): Flow<DailyWorkoutEntity?>
 
@@ -18,8 +26,6 @@ interface WorkoutDao {
     @Query("SELECT * FROM workout_sets WHERE workoutId = :workoutId ORDER BY exerciseId, setNumber")
     fun getSetsForWorkout(workoutId: Long): Flow<List<WorkoutSetEntity>>
 
-    @Query("SELECT * FROM exercises")
-    suspend fun getAllExercisesOneShot(): List<ExerciseEntity>
     @Query("SELECT * FROM daily_workouts WHERE isCompleted = 1 ORDER BY scheduledDate DESC")
     fun getCompletedWorkouts(): Flow<List<DailyWorkoutEntity>>
 
@@ -33,6 +39,13 @@ interface WorkoutDao {
 
     @Query("SELECT * FROM exercises WHERE name = :name LIMIT 1")
     suspend fun getExerciseByName(name: String): ExerciseEntity?
+
+    // --- NEW QUERIES FOR UI DISPLAY ---
+    @Query("SELECT * FROM daily_workouts WHERE planId = :planId ORDER BY scheduledDate ASC")
+    suspend fun getWorkoutsForPlan(planId: Long): List<DailyWorkoutEntity>
+
+    @Query("SELECT * FROM workout_sets WHERE workoutId = :workoutId ORDER BY setNumber ASC")
+    suspend fun getSetsForWorkoutList(workoutId: Long): List<WorkoutSetEntity>
 
     // --- WRITES ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -69,4 +82,7 @@ interface WorkoutDao {
         }
         return planId
     }
+
+    @Query("UPDATE daily_workouts SET isCompleted = 1 WHERE workoutId = :workoutId")
+    suspend fun markWorkoutAsComplete(workoutId: Long): Int
 }

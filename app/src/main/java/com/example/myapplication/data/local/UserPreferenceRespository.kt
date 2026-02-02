@@ -22,6 +22,7 @@ class UserPreferencesRepository @Inject constructor(
     // Keys for storing data
     private val HEIGHT_KEY = intPreferencesKey("user_height")
     private val WEIGHT_KEY = doublePreferencesKey("user_weight")
+    private val AGE_KEY = intPreferencesKey("user_age")
 
     // Flows to read data (defaulting to 180cm and 7.6kg if empty)
     val userHeight: Flow<Int> = context.dataStore.data.map { preferences ->
@@ -32,11 +33,16 @@ class UserPreferencesRepository @Inject constructor(
         preferences[WEIGHT_KEY] ?: 7.6
     }
 
+    val userAge: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences[AGE_KEY] ?: 25
+    }
+
     // Function to write data
-    suspend fun saveBiometrics(height: Int, weight: Double) {
+    suspend fun saveBiometrics(height: Int, weight: Double, age: Int) {
         context.dataStore.edit { prefs: MutablePreferences ->
             prefs[HEIGHT_KEY] = height
             prefs[WEIGHT_KEY] = weight
+            prefs[AGE_KEY] = age
         }
     }
 }

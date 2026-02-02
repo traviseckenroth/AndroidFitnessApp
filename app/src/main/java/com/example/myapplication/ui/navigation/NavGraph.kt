@@ -16,6 +16,7 @@ import com.example.myapplication.ui.plan.GeneratePlanScreen
 import com.example.myapplication.ui.plan.ManualPlanScreen
 import com.example.myapplication.ui.plan.PlanViewModel
 import com.example.myapplication.ui.profile.ProfileScreen
+import com.example.myapplication.ui.workout.ActiveSessionViewModel
 import com.example.myapplication.ui.workout.ActiveWorkoutScreen
 
 @Composable
@@ -71,9 +72,14 @@ fun NavGraph(
             arguments = listOf(navArgument("workoutId") { type = NavType.LongType })
         ) { backStackEntry ->
             val workoutId = backStackEntry.arguments?.getLong("workoutId") ?: return@composable
+            val viewModel: ActiveSessionViewModel = hiltViewModel()
             ActiveWorkoutScreen(
                 workoutId = workoutId,
-                onBack = { navController.popBackStack() }
+                viewModel = viewModel,
+                onBack = {
+                    viewModel.finishWorkout(workoutId)
+                    navController.popBackStack()
+                }
             )
         }
 

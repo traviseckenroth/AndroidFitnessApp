@@ -18,12 +18,14 @@ class ProfileViewModel @Inject constructor(
 
     private val _userHeight = repository.getUserHeight().stateIn(viewModelScope, SharingStarted.Lazily, 180)
     private val _userWeight = repository.getUserWeight().stateIn(viewModelScope, SharingStarted.Lazily, 75.0)
+    private val _userAge = repository.getUserAge().stateIn(viewModelScope, SharingStarted.Lazily, 25)
 
     val uiState: StateFlow<ProfileUiState> = combine(
         repository.getAllCompletedWorkouts(),
         _userHeight,
-        _userWeight
-    ) { completed, height, weight ->
+        _userWeight,
+        _userAge
+    ) { completed, height, weight, age ->
         val items = completed.map {
             CompletedWorkoutItem(
                 completedWorkout = it.completedWorkout,
@@ -37,7 +39,8 @@ class ProfileViewModel @Inject constructor(
             ProfileUiState.Success(
                 completedWorkouts = items,
                 height = height,
-                weight = weight
+                weight = weight,
+                age = age
             )
         }
     }.stateIn(
@@ -46,9 +49,9 @@ class ProfileViewModel @Inject constructor(
         initialValue = ProfileUiState.Loading
     )
 
-    fun saveBiometrics(height: Int, weight: Double) {
+    fun saveBiometrics(height: Int, weight: Double, age: Int) {
         viewModelScope.launch {
-            repository.saveBiometrics(height, weight)
+            repository.saveBiometrics(height, weight, age)
         }
     }
 }

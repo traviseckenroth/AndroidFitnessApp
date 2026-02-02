@@ -33,7 +33,7 @@ object AppModule {
             AppDatabase::class.java,
             "workout_db_v18"
         )
-            .fallbackToDestructiveMigration()
+            .fallbackToDestructiveMigration(false)
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     super.onCreate(db)

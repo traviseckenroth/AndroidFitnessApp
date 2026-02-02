@@ -80,7 +80,13 @@ private val jsonConfig = Json {
 
 @Singleton
 class BedrockClient @Inject constructor() {
-
+    // OPTIMIZATION: Initialize client once and reuse it
+    private val client = BedrockRuntimeClient {
+        region = BuildConfig.AWS_REGION
+        credentialsProvider = StaticCredentialsProvider {
+            accessKeyId = BuildConfig.AWS_ACCESS_KEY
+            secretAccessKey = BuildConfig.AWS_SECRET_KEY
+        }
     suspend fun generateWorkoutPlan(
         goal: String,
         programType: String,
@@ -133,7 +139,7 @@ class BedrockClient @Inject constructor() {
 
             // KEEPING YOUR PROMPT AS REQUESTED (With minor typo fixes like /n -> \n)
             val systemPrompt = """
-                You are an expert strength coach. Generate a workout plan for 4 full weeks.
+                You are an expert strength coach. Generate a **1-week workout template** that will be repeated for a 4-week block.
                 USER CONTEXT:
                 - Goal: ${goal}
                 - Schedule: ${days.joinToString()}
@@ -146,7 +152,7 @@ class BedrockClient @Inject constructor() {
                 STRICT OUTPUT FORMAT: 
                 Return a valid JSON object with two root keys: "explanation" and "schedule".
                 - "explanation": A string explaining the reasoning for the chosen exercises, progressions, and overall structure of the plan in less than 500 characters.
-                - "schedule": A list of daily sessions for all the weeks.
+                - "schedule": A list of daily sessions for **WEEK 1 ONLY**.
 
                 JSON EXAMPLE:
                 {
@@ -172,7 +178,7 @@ class BedrockClient @Inject constructor() {
                 }
 
                 RULES:
-                1. Generate a plan for all 4 weeks.
+                1. **Generate ONLY Week 1.** Do not generate Weeks 2, 3, or 4.
                 2. "sets", "suggestedRpe", and "suggestedReps" must be Integers. "suggestedLbs" and "estimatedTimeMinutes" must be Floats.
                 3. ${tierDefinitions}
                 4. The user has selected the following days: ${days.joinToString()}. Generate a workout for *each* of these selected days for all weeks.

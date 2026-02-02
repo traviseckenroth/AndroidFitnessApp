@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Help
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -17,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -168,14 +170,31 @@ fun SetsTable(sets: List<WorkoutSetEntity>, viewModel: ActiveSessionViewModel) {
     }
 }
 
-// ------------------------------------------------------------------------
-// 👇 UPDATED SETROW: Mapped to ActiveSessionViewModel
-// ------------------------------------------------------------------------
 @Composable
 fun SetRow(set: WorkoutSetEntity, viewModel: ActiveSessionViewModel) {
-    // Styling based on completion status
     val backgroundColor = if (set.isCompleted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
     val borderColor = if (set.isCompleted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface
+
+    var weightText by remember(set) {
+        mutableStateOf(
+            if (set.actualLbs != null && set.actualLbs > 0f) set.actualLbs.toInt().toString()
+            else set.suggestedLbs.toInt().toString()
+        )
+    }
+    var repsText by remember(set) { mutableStateOf(if (set.actualReps != null && set.actualReps > 0) set.actualReps.toString() else "") }
+
+    var rpeText by remember(set) {
+        mutableStateOf(
+            if (set.actualRpe != null && set.actualRpe > 0f) set.actualRpe.toInt().toString()
+            else ""
+        )
+    }
+
+    var isWeightFocused by remember { mutableStateOf(false) }
+    var isRepsFocused by remember { mutableStateOf(false) }
+    var isRpeFocused by remember { mutableStateOf(false) }
+
+    val weightColor = if (set.actualLbs == null || set.actualLbs == 0f) Color.Gray else MaterialTheme.colorScheme.onSurface
 
     Row(
         modifier = Modifier
@@ -186,41 +205,33 @@ fun SetRow(set: WorkoutSetEntity, viewModel: ActiveSessionViewModel) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        // 1. Set Number
-        Text(
-            text = set.setNumber.toString(),
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f)
-        )
-
-        // 2. Weight Input -> FIXED
-        // Logic changed: If actualLbs is missing (null/0), use suggestedLbs immediately.
-        val weightText = if (set.actualLbs != null && set.actualLbs > 0) {
-            set.actualLbs.toString()
-        } else {
-            set.suggestedLbs.toString()
-        }
+        Text(text = set.setNumber.toString(), color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
 
         TextField(
             value = weightText,
-            onValueChange = { viewModel.updateSetWeight(set, it) },
-            modifier = Modifier.weight(1f).width(50.dp),
-            // Placeholder is technically redundant now but kept for fallback
-            placeholder = { Text(set.suggestedLbs.toString(), color = Color.Gray) },
+            onValueChange = {
+                val cleanInput = it.filter { char -> char.isDigit() }
+                weightText = cleanInput
+                viewModel.updateSetWeight(set, cleanInput)
+            },
+            modifier = Modifier.weight(1f).width(50.dp).onFocusChanged { isWeightFocused = it.isFocused; if (it.isFocused) weightText = "" },
+            placeholder = { Text(set.suggestedLbs.toInt().toString(), color = Color.Gray) },
             colors = TextFieldDefaults.colors(
-                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                unfocusedTextColor = weightColor,
                 focusedTextColor = MaterialTheme.colorScheme.onSurface,
                 unfocusedContainerColor = Color.Transparent,
                 focusedContainerColor = Color.Transparent
             )
         )
 
-        // 3. Reps Input -> Calls updateSetReps
-        val repsText = if (set.actualReps != null && set.actualReps > 0) set.actualReps.toString() else ""
         TextField(
             value = repsText,
-            onValueChange = { viewModel.updateSetReps(set, it) },
-            modifier = Modifier.weight(1f).width(50.dp),
+            onValueChange = {
+                val cleanInput = it.filter { char -> char.isDigit() }
+                repsText = cleanInput
+                viewModel.updateSetReps(set, cleanInput)
+            },
+            modifier = Modifier.weight(1f).width(50.dp).onFocusChanged { isRepsFocused = it.isFocused; if (it.isFocused) repsText = "" },
             placeholder = { Text(set.suggestedReps.toString(), color = Color.Gray) },
             colors = TextFieldDefaults.colors(
                 unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -230,12 +241,14 @@ fun SetRow(set: WorkoutSetEntity, viewModel: ActiveSessionViewModel) {
             )
         )
 
-        // 4. RPE Input -> Calls updateSetRpe
-        val rpeText = if (set.actualRpe != null && set.actualRpe > 0) set.actualRpe.toString() else ""
         TextField(
             value = rpeText,
-            onValueChange = { viewModel.updateSetRpe(set, it) },
-            modifier = Modifier.weight(1f).width(50.dp),
+            onValueChange = {
+                val cleanInput = it.filter { char -> char.isDigit() }
+                rpeText = cleanInput
+                viewModel.updateSetRpe(set, cleanInput)
+            },
+            modifier = Modifier.weight(1f).width(50.dp).onFocusChanged { isRpeFocused = it.isFocused; if (it.isFocused) rpeText = "" },
             placeholder = { Text(set.suggestedRpe.toString(), color = Color.Gray) },
             colors = TextFieldDefaults.colors(
                 unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -245,7 +258,6 @@ fun SetRow(set: WorkoutSetEntity, viewModel: ActiveSessionViewModel) {
             )
         )
 
-        // 5. Checkbox -> Calls updateSetCompletion
         Checkbox(
             checked = set.isCompleted,
             onCheckedChange = { viewModel.updateSetCompletion(set, it) },
@@ -253,11 +265,36 @@ fun SetRow(set: WorkoutSetEntity, viewModel: ActiveSessionViewModel) {
         )
     }
 }
-// ------------------------------------------------------------------------
 
 @Composable
 fun ExerciseHeader(exerciseState: ExerciseState, onToggleVisibility: () -> Unit) {
     val exercise = exerciseState.exercise
+    var showDescriptionDialog by remember { mutableStateOf(false) }
+
+    // --- POPUP DIALOG ---
+    if (showDescriptionDialog) {
+        AlertDialog(
+            onDismissRequest = { showDescriptionDialog = false },
+            title = { Text(text = exercise.name) },
+            text = {
+                Column {
+                    Text(
+                        text = "Instructions:",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = exercise.description)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDescriptionDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -266,15 +303,62 @@ fun ExerciseHeader(exerciseState: ExerciseState, onToggleVisibility: () -> Unit)
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(exercise.name, color = MaterialTheme.colorScheme.onSurface, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            if (exercise.tier > 0) {
-                Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(4.dp)) {
-                    Text(
-                        text = "Tier ${exercise.tier}",
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            // UPDATED: Name + Help Icon Row
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = exercise.name,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f, fill = false) // Allow text to wrap if needed but don't force width
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // ? Icon Button
+                IconButton(
+                    onClick = { showDescriptionDialog = true },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Help,
+                        contentDescription = "How to perform",
+                        tint = MaterialTheme.colorScheme.primary
                     )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Row for Chips (Tier and Equipment Side-by-Side)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Tier Display
+                if (exercise.tier > 0) {
+                    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(4.dp)) {
+                        Text(
+                            text = "Tier ${exercise.tier}",
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+
+                // Equipment Display
+                if (!exercise.equipment.isNullOrBlank()) {
+                    if (exercise.tier > 0) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = exercise.equipment,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
                 }
             }
         }
@@ -298,20 +382,34 @@ fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
             .padding(vertical = 8.dp)
     ) {
         Text("Set Timer", style = MaterialTheme.typography.titleMedium)
-        Text(
-            text = String.format("%02d:%02d", minutes, seconds),
-            fontSize = 48.sp,
-            fontWeight = FontWeight.Bold
-        )
+
+        if (timerState.isFinished) {
+            Text(
+                text = "Finished",
+                fontSize = 48.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        } else {
+            Text(
+                text = String.format("%02d:%02d", minutes, seconds),
+                fontSize = 48.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
 
         Row(horizontalArrangement = Arrangement.Center) {
             if (timerState.isRunning) {
                 OutlinedButton(onClick = { viewModel.skipSetTimer(exerciseState.exercise.exerciseId) }) {
                     Text("Skip Timer")
                 }
-            } else {
+            } else if (!timerState.isFinished) {
                 Button(onClick = { viewModel.startSetTimer(exerciseState.exercise.exerciseId) }) {
                     Text("Start Timer")
+                }
+            } else {
+                OutlinedButton(onClick = { viewModel.startSetTimer(exerciseState.exercise.exerciseId) }) {
+                    Text("Restart Exercise")
                 }
             }
         }

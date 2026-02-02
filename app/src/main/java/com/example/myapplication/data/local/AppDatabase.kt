@@ -2,6 +2,11 @@ package com.example.myapplication.data.local
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import com.example.myapplication.data.local.CompletedWorkoutEntity
+import com.example.myapplication.data.local.DailyWorkoutEntity
+import com.example.myapplication.data.local.ExerciseEntity
+import com.example.myapplication.data.local.WorkoutPlanEntity
+import com.example.myapplication.data.local.WorkoutSetEntity
 
 @Database(
     entities = [
@@ -11,7 +16,7 @@ import androidx.room.RoomDatabase
         WorkoutSetEntity::class,
         CompletedWorkoutEntity::class
     ],
-    version = 9,
+    version = 11,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

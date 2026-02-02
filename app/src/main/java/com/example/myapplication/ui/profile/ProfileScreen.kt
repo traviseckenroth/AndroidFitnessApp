@@ -52,6 +52,7 @@ fun ProfileScreen(viewModel: ProfileViewModel = hiltViewModel()) {
 
     var height by remember { mutableStateOf("") }
     var weight by remember { mutableStateOf("") }
+    var age by remember { mutableStateOf("") }
     var showCheckmark by remember { mutableStateOf(false) }
 
     when (val state = uiState) {
@@ -64,6 +65,7 @@ fun ProfileScreen(viewModel: ProfileViewModel = hiltViewModel()) {
         is ProfileUiState.Success -> {
             height = state.height.toString()
             weight = state.weight.toString()
+            age = state.age.toString()
 
             LazyColumn(
                 modifier = Modifier
@@ -100,6 +102,13 @@ fun ProfileScreen(viewModel: ProfileViewModel = hiltViewModel()) {
                             modifier = Modifier.weight(1f),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                         )
+                        OutlinedTextField(
+                            value = age,
+                            onValueChange = { age = it },
+                            label = { Text("Age") },
+                            modifier = Modifier.weight(1f),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
                     }
                 }
 
@@ -109,7 +118,8 @@ fun ProfileScreen(viewModel: ProfileViewModel = hiltViewModel()) {
                             onClick = {
                                 val heightInt = height.toIntOrNull() ?: 0
                                 val weightDouble = weight.toDoubleOrNull() ?: 0.0
-                                viewModel.saveBiometrics(heightInt, weightDouble)
+                                val ageInt = age.toIntOrNull() ?: 0
+                                viewModel.saveBiometrics(heightInt, weightDouble, ageInt)
                                 showCheckmark = true
                             },
                             modifier = Modifier.weight(1f)

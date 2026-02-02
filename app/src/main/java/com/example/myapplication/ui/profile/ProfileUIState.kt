@@ -16,7 +16,8 @@ sealed interface ProfileUiState {
         // 2. Change this from List<CompletedWorkoutWithExercise> to List<CompletedWorkoutItem>
         val completedWorkouts: List<CompletedWorkoutItem>,
         val height: Int,
-        val weight: Double
+        val weight: Double,
+        val age: Int
     ) : ProfileUiState
 
     data object Empty : ProfileUiState
