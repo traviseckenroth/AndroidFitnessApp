@@ -12,10 +12,13 @@ interface WorkoutDao {
     @Query("SELECT * FROM exercises WHERE exerciseId IN (:exerciseIds)")
     fun getExercisesByIds(exerciseIds: List<Long>): Flow<List<ExerciseEntity>>
 
-    // --- ADD THIS MISSING FUNCTION ---
     @Query("SELECT * FROM exercises")
     suspend fun getAllExercisesOneShot(): List<ExerciseEntity>
-    // --------------------------------
+
+    // --- ADDED THIS QUERY ---
+    @Query("SELECT * FROM daily_workouts WHERE workoutId = :workoutId")
+    suspend fun getWorkoutById(workoutId: Long): DailyWorkoutEntity?
+    // ------------------------
 
     @Query("SELECT * FROM daily_workouts WHERE scheduledDate >= :startOfDay AND scheduledDate < :endOfDay LIMIT 1")
     fun getWorkoutByDate(startOfDay: Long, endOfDay: Long): Flow<DailyWorkoutEntity?>
@@ -46,6 +49,19 @@ interface WorkoutDao {
 
     @Query("SELECT * FROM workout_sets WHERE workoutId = :workoutId ORDER BY setNumber ASC")
     suspend fun getSetsForWorkoutList(workoutId: Long): List<WorkoutSetEntity>
+
+    // --- OPTIMIZATION: SQL AGGREGATION ---
+    @MapInfo(keyColumn = "muscleGroup", valueColumn = "volume")
+    @Query("""
+        SELECT 
+            e.muscleGroup as muscleGroup, 
+            SUM(c.weight * c.reps) as volume 
+        FROM completed_workouts c
+        JOIN exercises e ON c.exerciseId = e.exerciseId
+        WHERE e.muscleGroup IS NOT NULL
+        GROUP BY e.muscleGroup
+    """)
+    fun getVolumeByMuscleGroup(): Flow<Map<String, Double>>
 
     // --- WRITES ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)

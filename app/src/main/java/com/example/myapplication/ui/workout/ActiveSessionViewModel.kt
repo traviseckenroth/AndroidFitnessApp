@@ -108,7 +108,6 @@ class ActiveSessionViewModel @Inject constructor(
                     }
                 }
             }.collect { newStates ->
-                // Only update if we have new data OR if we need to clear (sets became empty)
                 if (newStates.isNotEmpty() || _sets.value.isEmpty()) {
                     _exerciseStates.value = newStates
                 }
@@ -161,7 +160,6 @@ class ActiveSessionViewModel @Inject constructor(
         }
     }
 
-    // --- UPDATED TIMER LOGIC ---
     fun startSetTimer(exerciseId: Long) {
         timerJobs[exerciseId]?.cancel()
         timerJobs[exerciseId] = viewModelScope.launch {
@@ -169,30 +167,22 @@ class ActiveSessionViewModel @Inject constructor(
             val restTime = (exerciseState.exercise.estimatedTimePerSet * 60).toLong()
             val totalSets = exerciseState.sets.size
 
-            // Assume user starts timer after 1st set, so we have 1 done.
             var setsCompleted = 1
 
-            // Loop until we account for all sets
             while (isActive && setsCompleted <= totalSets) {
-
-                // 1. Reset timer for this interval
                 var remainingTime = restTime
                 updateTimerState(exerciseId, remainingTime, isRunning = true, isFinished = false)
 
-                // 2. Count Down
                 while (remainingTime > 0 && isActive) {
                     delay(1000)
                     remainingTime--
                     updateTimerState(exerciseId, remainingTime, isRunning = true, isFinished = false)
                 }
 
-                // 3. Interval Complete - Check if it was the last one
                 if (setsCompleted == totalSets) {
-                    // Last set done -> Show Finished
                     updateTimerState(exerciseId, 0, isRunning = false, isFinished = true)
                     break
                 } else {
-                    // More sets remaining -> Automatically restart loop
                     setsCompleted++
                 }
             }
@@ -227,9 +217,10 @@ class ActiveSessionViewModel @Inject constructor(
         }
     }
 
+    // --- UPDATED: Call the new repository method ---
     fun finishWorkout(workoutId: Long) {
         viewModelScope.launch {
-            repository.markWorkoutAsComplete(workoutId)
+            repository.completeWorkout(workoutId)
         }
     }
 }

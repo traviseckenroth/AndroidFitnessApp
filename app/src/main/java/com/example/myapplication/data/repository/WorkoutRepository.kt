@@ -1,6 +1,7 @@
 package com.example.myapplication.data.repository
 
 import android.util.Log
+import com.example.myapplication.data.local.CompletedWorkoutEntity
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
 import com.example.myapplication.data.local.DailyWorkoutEntity
 import com.example.myapplication.data.local.ExerciseEntity
@@ -22,7 +23,7 @@ class WorkoutRepository @Inject constructor(
     private val userPrefs: UserPreferencesRepository,
     private val bedrockClient: BedrockClient
 ) {
-    // --- READS (Keep existing) ---
+    // --- READS ---
     fun getWorkoutForDate(date: Long): Flow<DailyWorkoutEntity?> {
         val cal = Calendar.getInstance().apply {
             timeInMillis = date
@@ -49,7 +50,7 @@ class WorkoutRepository @Inject constructor(
     fun getUserAge(): Flow<Int> = userPrefs.userAge
     suspend fun saveBiometrics(height: Int, weight: Double, age: Int) = userPrefs.saveBiometrics(height, weight, age)
 
-    // --- PLAN GENERATION (FIXED) ---
+    // --- PLAN GENERATION ---
 
     suspend fun generateAndSavePlan(
         goal: String,
@@ -59,11 +60,9 @@ class WorkoutRepository @Inject constructor(
     ): Long {
         Log.d("WorkoutRepo", "Generating Plan for: $goal")
 
-        // 1. Get Context
         val workoutHistory = workoutDao.getCompletedWorkoutsWithExercise().first()
         val availableExercises = workoutDao.getAllExercises().first()
 
-        // 2. Get Week 1 Template from AI
         val aiResponse = bedrockClient.generateWorkoutPlan(
             goal = goal,
             duration = duration.toFloat(),
@@ -73,7 +72,6 @@ class WorkoutRepository @Inject constructor(
             availableExercises = availableExercises
         )
 
-        // 3. PREPARE BATCH DATA (Do not save yet)
         val startDate = System.currentTimeMillis()
         val planEntity = WorkoutPlanEntity(
             name = "$programType for $goal",
@@ -85,14 +83,10 @@ class WorkoutRepository @Inject constructor(
         val fullPlanData = mutableMapOf<DailyWorkoutEntity, List<WorkoutSetEntity>>()
         val totalWeeks = 4
 
-        // 4. LOOP 4 TIMES (Generate 4 weeks from 1 template)
         for (weekNum in 1..totalWeeks) {
             aiResponse.schedule.forEach { templateDay ->
-
-                // A. Smart Date Calculation (Fixes the "Past Date" bug)
                 val workoutDate = calculateSmartDate(startDate, weekNum, templateDay.day)
 
-                // B. Create Workout Object (ID is 0, will be set by DAO)
                 val workoutEntity = DailyWorkoutEntity(
                     planId = 0,
                     scheduledDate = workoutDate,
@@ -100,27 +94,24 @@ class WorkoutRepository @Inject constructor(
                     isCompleted = false
                 )
 
-                // C. Generate Sets
                 val setsForThisWorkout = mutableListOf<WorkoutSetEntity>()
 
                 templateDay.exercises.forEach { aiEx ->
                     val realEx = availableExercises.find { it.name.equals(aiEx.name, ignoreCase = true) }
 
                     realEx?.let { validExercise ->
-                        // Periodization Logic
                         val adjustedSets = when (weekNum) {
-                            4 -> (aiEx.sets / 2).coerceAtLeast(2) // Deload
-                            2, 3 -> aiEx.sets + 1                 // Progression
-                            else -> aiEx.sets                     // Baseline
+                            4 -> (aiEx.sets / 2).coerceAtLeast(2)
+                            2, 3 -> aiEx.sets + 1
+                            else -> aiEx.sets
                         }
 
                         val adjustedLbs = if (weekNum == 3) {
-                            (aiEx.suggestedLbs * 1.05f).toInt()   // Intensity Peak
+                            (aiEx.suggestedLbs * 1.05f).toInt()
                         } else {
                             aiEx.suggestedLbs.toInt()
                         }
 
-                        // Safety check for empty weight
                         val safeLbs = if (adjustedLbs == 0) 45 else adjustedLbs
 
                         for (setNum in 1..adjustedSets) {
@@ -142,14 +133,11 @@ class WorkoutRepository @Inject constructor(
             }
         }
 
-        // 5. ATOMIC SAVE (Using the DAO Transaction function)
         val planId = workoutDao.saveFullWorkoutPlan(planEntity, fullPlanData)
         return planId
     }
 
-    // --- NEW: Fetch full plan for UI display ---
     suspend fun getPlanDetails(planId: Long): com.example.myapplication.data.WorkoutPlan {
-        // 1. Fetch raw lists synchronously
         val workouts = workoutDao.getWorkoutsForPlan(planId)
         val allExercises = workoutDao.getAllExercisesOneShot()
 
@@ -157,24 +145,17 @@ class WorkoutRepository @Inject constructor(
 
         if (workouts.isNotEmpty()) {
             val startDate = workouts.first().scheduledDate
-
-            // Group workouts by Week # (1-based index)
-            // Logic: (WorkoutDate - FirstDate) / DaysInMilliseconds + 1
             val workoutsByWeek = workouts.groupBy {
                 val diff = it.scheduledDate - startDate
-                // 1 week = 604800000 ms. We add a buffer or use integer division.
-                // Adding 1 ensures the first workout is Week 1.
                 (diff / (1000L * 60 * 60 * 24 * 7)).toInt() + 1
             }
 
             workoutsByWeek.forEach { (weekNum, dailyEntities) ->
                 val dailyWorkouts = dailyEntities.map { entity ->
                     val sets = workoutDao.getSetsForWorkoutList(entity.workoutId)
-
-                    // Group sets by exerciseId to reconstruct the "Exercise" object
                     val exercisesForDay = sets.groupBy { it.exerciseId }.map { (exId, setList) ->
                         val realEx = allExercises.find { it.exerciseId == exId }
-                        val firstSet = setList.first() // Use first set for shared metadata (RPE, etc)
+                        val firstSet = setList.first()
 
                         com.example.myapplication.data.Exercise(
                             exerciseId = exId,
@@ -213,15 +194,10 @@ class WorkoutRepository @Inject constructor(
         return cal.getDisplayName(Calendar.DAY_OF_WEEK, Calendar.SHORT, Locale.getDefault()) ?: "Day"
     }
 
-    /**
-     * Logic: If today is Wednesday and target is Monday, schedule for NEXT Monday (offset 5 days),
-     * NOT last Monday (offset -2 days).
-     */
     private fun calculateSmartDate(startDate: Long, weekNum: Int, dayName: String): Long {
         val cal = Calendar.getInstance()
         cal.timeInMillis = startDate
 
-        // 1. Parse Target Day (Handle abbreviations like "Mon", "Tue")
         val lowerName = dayName.lowercase(Locale.getDefault())
         val targetDay = when {
             lowerName.startsWith("sun") -> Calendar.SUNDAY
@@ -234,23 +210,16 @@ class WorkoutRepository @Inject constructor(
             else -> Calendar.MONDAY
         }
 
-        // 2. Calculate Offset from Today
         val currentDay = cal.get(Calendar.DAY_OF_WEEK)
         var dayOffset = targetDay - currentDay
 
-        // If the target day is earlier in the week than today, move to next week
         if (dayOffset < 0) {
             dayOffset += 7
         }
 
-        // 3. Add Week Multiplier
-        // weekNum 1 = +0 weeks
-        // weekNum 2 = +1 week (7 days)
         val totalDaysToAdd = dayOffset + ((weekNum - 1) * 7)
 
         cal.add(Calendar.DAY_OF_YEAR, totalDaysToAdd)
-
-        // 4. Normalize Time
         cal.set(Calendar.HOUR_OF_DAY, 12)
         cal.set(Calendar.MINUTE, 0)
         cal.set(Calendar.SECOND, 0)
@@ -258,5 +227,27 @@ class WorkoutRepository @Inject constructor(
         return cal.timeInMillis
     }
 
-    suspend fun markWorkoutAsComplete(workoutId: Long) = workoutDao.markWorkoutAsComplete(workoutId)
+    // --- UPDATED LOGIC HERE ---
+    suspend fun completeWorkout(workoutId: Long) {
+        val workout = workoutDao.getWorkoutById(workoutId) ?: return
+        val sets = workoutDao.getSetsForWorkoutList(workoutId)
+
+        // Filter for completed sets and map to history entity
+        val historyEntries = sets.filter { it.isCompleted }.map { set ->
+            CompletedWorkoutEntity(
+                exerciseId = set.exerciseId,
+                date = workout.scheduledDate,
+                // Fallback to suggested values if actuals weren't entered
+                reps = set.actualReps ?: set.suggestedReps,
+                weight = (set.actualLbs ?: set.suggestedLbs).toInt(),
+                rpe = (set.actualRpe ?: set.suggestedRpe).toInt()
+            )
+        }
+
+        if (historyEntries.isNotEmpty()) {
+            workoutDao.insertCompletedWorkouts(historyEntries)
+        }
+
+        workoutDao.markWorkoutAsComplete(workoutId)
+    }
 }

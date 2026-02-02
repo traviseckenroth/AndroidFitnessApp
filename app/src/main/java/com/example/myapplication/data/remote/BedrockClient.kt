@@ -33,7 +33,6 @@ data class GeneratedDay(
 @Serializable
 data class GeneratedExercise(
     val name: String,
-    // Metadata fields default to NULL so the Repository knows to fill them from the DB
     val muscleGroup: String? = null,
     val equipment: String? = null,
     val fatigue: String? = null,
@@ -41,7 +40,7 @@ data class GeneratedExercise(
     val notes: String = "",
     val suggestedReps: Int = 5,
     val suggestedRpe: Int = 7,
-    val suggestedLbs: Float = 0f, // Changed default to 0f
+    val suggestedLbs: Float = 0f,
     val sets: Int = 3,
     val estimatedTimeMinutes: Float = 0f,
     val loadability: String? = null
@@ -80,13 +79,20 @@ private val jsonConfig = Json {
 
 @Singleton
 class BedrockClient @Inject constructor() {
-    // OPTIMIZATION: Initialize client once and reuse it
+
+    // OPTIMIZATION: Initialize client once and reuse it across calls
     private val client = BedrockRuntimeClient {
         region = BuildConfig.AWS_REGION
         credentialsProvider = StaticCredentialsProvider {
             accessKeyId = BuildConfig.AWS_ACCESS_KEY
             secretAccessKey = BuildConfig.AWS_SECRET_KEY
         }
+        httpClient = OkHttpEngine {
+            connectTimeout = 60.seconds
+            socketReadTimeout = 120.seconds
+        }
+    }
+
     suspend fun generateWorkoutPlan(
         goal: String,
         programType: String,
@@ -97,18 +103,6 @@ class BedrockClient @Inject constructor() {
     ): GeneratedPlanResponse {
 
         try {
-            val client = BedrockRuntimeClient {
-                region = BuildConfig.AWS_REGION
-                credentialsProvider = StaticCredentialsProvider {
-                    accessKeyId = BuildConfig.AWS_ACCESS_KEY
-                    secretAccessKey = BuildConfig.AWS_SECRET_KEY
-                }
-                httpClient = OkHttpEngine {
-                    connectTimeout = 60.seconds
-                    socketReadTimeout = 120.seconds
-                }
-            }
-
             val tierDefinitions = when (programType) {
                 "Strength" -> """
                     - Tier 1: 1-5 Reps (Squat/Deadlift).
@@ -130,14 +124,12 @@ class BedrockClient @Inject constructor() {
                 "- ${item.completedWorkout.date}: ${item.completedWorkout.reps} reps at ${item.completedWorkout.weight} lbs (RPE ${item.completedWorkout.rpe})"
             }
 
-            // Format inventory for the prompt
             val exerciseListString = availableExercises.joinToString("\n") { ex ->
                 "- ${ex.name} (Tier ${ex.tier}, ${ex.estimatedTimePerSet} mins/set)"
             }
 
             val totalMinutes = (duration * 60).toInt()
 
-            // KEEPING YOUR PROMPT AS REQUESTED (With minor typo fixes like /n -> \n)
             val systemPrompt = """
                 You are an expert strength coach. Generate a **1-week workout template** that will be repeated for a 4-week block.
                 USER CONTEXT:
@@ -221,6 +213,7 @@ class BedrockClient @Inject constructor() {
                 body = jsonString.toByteArray()
             }
 
+            // Reuse the class-level client
             val response = client.invokeModel(request)
             val responseBody = response.body?.decodeToString() ?: ""
 
@@ -231,11 +224,7 @@ class BedrockClient @Inject constructor() {
 
             Log.d("BedrockService", "Clean JSON: ${cleanJson}")
 
-            val planResponse = jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
-
-            client.close()
-
-            return planResponse
+            return jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
 
         } catch (e: Exception) {
             Log.e("BedrockError", "Error invoking model", e)

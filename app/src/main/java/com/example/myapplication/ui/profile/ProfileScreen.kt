@@ -222,7 +222,7 @@ fun CompletedWorkoutCard(item: CompletedWorkoutItem) {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 VerticalStat(label = "REPS", value = "${item.completedWorkout.reps}")
-                VerticalStat(label = "KG", value = "${item.completedWorkout.weight}")
+                VerticalStat(label = "LBS", value = "${item.completedWorkout.weight}")
                 VerticalStat(label = "RPE", value = "${item.completedWorkout.rpe}")
             }
         }

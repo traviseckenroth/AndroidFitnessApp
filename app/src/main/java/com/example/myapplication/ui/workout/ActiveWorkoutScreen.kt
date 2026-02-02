@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Help
@@ -20,7 +22,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -35,7 +40,6 @@ fun ActiveWorkoutScreen(
 ) {
     val exerciseStates by viewModel.exerciseStates.collectAsState()
     val coachBriefing by viewModel.coachBriefing.collectAsState()
-
 
     LaunchedEffect(workoutId) {
         viewModel.loadWorkout(workoutId)
@@ -65,7 +69,6 @@ fun ActiveWorkoutScreen(
                     .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Add the CoachBriefingCard here
                 item {
                     CoachBriefingCard(briefing = coachBriefing)
                     Spacer(modifier = Modifier.height(16.dp))
@@ -93,7 +96,7 @@ fun ActiveWorkoutScreen(
         }
     }
 }
-// --- NEW COMPONENT: Coach Briefing Card ---
+
 @Composable
 fun CoachBriefingCard(briefing: String) {
     Card(
@@ -131,6 +134,7 @@ fun CoachBriefingCard(briefing: String) {
         }
     }
 }
+
 @Composable
 fun SetsTable(sets: List<WorkoutSetEntity>, viewModel: ActiveSessionViewModel) {
     var showRpeInfo by remember { mutableStateOf(false) }
@@ -140,7 +144,6 @@ fun SetsTable(sets: List<WorkoutSetEntity>, viewModel: ActiveSessionViewModel) {
     }
 
     Column {
-        // Table Header
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -163,7 +166,6 @@ fun SetsTable(sets: List<WorkoutSetEntity>, viewModel: ActiveSessionViewModel) {
         }
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Render Rows
         sets.forEach { set ->
             SetRow(set = set, viewModel = viewModel)
         }
@@ -174,25 +176,24 @@ fun SetsTable(sets: List<WorkoutSetEntity>, viewModel: ActiveSessionViewModel) {
 fun SetRow(set: WorkoutSetEntity, viewModel: ActiveSessionViewModel) {
     val backgroundColor = if (set.isCompleted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
     val borderColor = if (set.isCompleted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface
+    val focusManager = LocalFocusManager.current
 
-    var weightText by remember(set) {
+    // Local state for UI responsiveness
+    var weightText by remember(set.actualLbs, set.suggestedLbs) {
         mutableStateOf(
             if (set.actualLbs != null && set.actualLbs > 0f) set.actualLbs.toInt().toString()
             else set.suggestedLbs.toInt().toString()
         )
     }
-    var repsText by remember(set) { mutableStateOf(if (set.actualReps != null && set.actualReps > 0) set.actualReps.toString() else "") }
-
-    var rpeText by remember(set) {
+    var repsText by remember(set.actualReps) {
+        mutableStateOf(if (set.actualReps != null && set.actualReps > 0) set.actualReps.toString() else "")
+    }
+    var rpeText by remember(set.actualRpe) {
         mutableStateOf(
             if (set.actualRpe != null && set.actualRpe > 0f) set.actualRpe.toInt().toString()
             else ""
         )
     }
-
-    var isWeightFocused by remember { mutableStateOf(false) }
-    var isRepsFocused by remember { mutableStateOf(false) }
-    var isRpeFocused by remember { mutableStateOf(false) }
 
     val weightColor = if (set.actualLbs == null || set.actualLbs == 0f) Color.Gray else MaterialTheme.colorScheme.onSurface
 
@@ -207,15 +208,21 @@ fun SetRow(set: WorkoutSetEntity, viewModel: ActiveSessionViewModel) {
     ) {
         Text(text = set.setNumber.toString(), color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
 
+        // --- WEIGHT INPUT (OPTIMIZED) ---
         TextField(
             value = weightText,
-            onValueChange = {
-                val cleanInput = it.filter { char -> char.isDigit() }
-                weightText = cleanInput
-                viewModel.updateSetWeight(set, cleanInput)
-            },
-            modifier = Modifier.weight(1f).width(50.dp).onFocusChanged { isWeightFocused = it.isFocused; if (it.isFocused) weightText = "" },
+            onValueChange = { weightText = it.filter { char -> char.isDigit() } },
+            modifier = Modifier
+                .weight(1f)
+                .width(50.dp)
+                .onFocusChanged { focusState ->
+                    // ONLY SAVE WHEN FOCUS IS LOST
+                    if (!focusState.isFocused && weightText.isNotEmpty()) {
+                        viewModel.updateSetWeight(set, weightText)
+                    }
+                },
             placeholder = { Text(set.suggestedLbs.toInt().toString(), color = Color.Gray) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
             colors = TextFieldDefaults.colors(
                 unfocusedTextColor = weightColor,
                 focusedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -224,15 +231,20 @@ fun SetRow(set: WorkoutSetEntity, viewModel: ActiveSessionViewModel) {
             )
         )
 
+        // --- REPS INPUT (OPTIMIZED) ---
         TextField(
             value = repsText,
-            onValueChange = {
-                val cleanInput = it.filter { char -> char.isDigit() }
-                repsText = cleanInput
-                viewModel.updateSetReps(set, cleanInput)
-            },
-            modifier = Modifier.weight(1f).width(50.dp).onFocusChanged { isRepsFocused = it.isFocused; if (it.isFocused) repsText = "" },
+            onValueChange = { repsText = it.filter { char -> char.isDigit() } },
+            modifier = Modifier
+                .weight(1f)
+                .width(50.dp)
+                .onFocusChanged { focusState ->
+                    if (!focusState.isFocused && repsText.isNotEmpty()) {
+                        viewModel.updateSetReps(set, repsText)
+                    }
+                },
             placeholder = { Text(set.suggestedReps.toString(), color = Color.Gray) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
             colors = TextFieldDefaults.colors(
                 unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
                 focusedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -241,15 +253,24 @@ fun SetRow(set: WorkoutSetEntity, viewModel: ActiveSessionViewModel) {
             )
         )
 
+        // --- RPE INPUT (OPTIMIZED) ---
         TextField(
             value = rpeText,
-            onValueChange = {
-                val cleanInput = it.filter { char -> char.isDigit() }
-                rpeText = cleanInput
-                viewModel.updateSetRpe(set, cleanInput)
-            },
-            modifier = Modifier.weight(1f).width(50.dp).onFocusChanged { isRpeFocused = it.isFocused; if (it.isFocused) rpeText = "" },
+            onValueChange = { rpeText = it.filter { char -> char.isDigit() } },
+            modifier = Modifier
+                .weight(1f)
+                .width(50.dp)
+                .onFocusChanged { focusState ->
+                    if (!focusState.isFocused && rpeText.isNotEmpty()) {
+                        viewModel.updateSetRpe(set, rpeText)
+                    }
+                },
             placeholder = { Text(set.suggestedRpe.toString(), color = Color.Gray) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = {
+                viewModel.updateSetRpe(set, rpeText)
+                focusManager.clearFocus()
+            }),
             colors = TextFieldDefaults.colors(
                 unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
                 focusedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -271,7 +292,6 @@ fun ExerciseHeader(exerciseState: ExerciseState, onToggleVisibility: () -> Unit)
     val exercise = exerciseState.exercise
     var showDescriptionDialog by remember { mutableStateOf(false) }
 
-    // --- POPUP DIALOG ---
     if (showDescriptionDialog) {
         AlertDialog(
             onDismissRequest = { showDescriptionDialog = false },
@@ -303,18 +323,15 @@ fun ExerciseHeader(exerciseState: ExerciseState, onToggleVisibility: () -> Unit)
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            // UPDATED: Name + Help Icon Row
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = exercise.name,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f, fill = false) // Allow text to wrap if needed but don't force width
+                    modifier = Modifier.weight(1f, fill = false)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-
-                // ? Icon Button
                 IconButton(
                     onClick = { showDescriptionDialog = true },
                     modifier = Modifier.size(24.dp)
@@ -326,12 +343,8 @@ fun ExerciseHeader(exerciseState: ExerciseState, onToggleVisibility: () -> Unit)
                     )
                 }
             }
-
             Spacer(modifier = Modifier.height(4.dp))
-
-            // Row for Chips (Tier and Equipment Side-by-Side)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Tier Display
                 if (exercise.tier > 0) {
                     Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(4.dp)) {
                         Text(
@@ -342,8 +355,6 @@ fun ExerciseHeader(exerciseState: ExerciseState, onToggleVisibility: () -> Unit)
                         )
                     }
                 }
-
-                // Equipment Display
                 if (!exercise.equipment.isNullOrBlank()) {
                     if (exercise.tier > 0) {
                         Spacer(modifier = Modifier.width(8.dp))
