@@ -7,7 +7,6 @@ import androidx.compose.ui.graphics.Color
 // Accents: High energy, sporty
 val ElectricBlue = Color(0xFF2979FF)
 val NeonVolt = Color(0xFFC6FF00) // Alternative accent if you prefer green
-val AlertRed = Color(0xFFFF5252)
 
 // Backgrounds: Deep, technical greys
 val MidnightBlack = Color(0xFF121212)

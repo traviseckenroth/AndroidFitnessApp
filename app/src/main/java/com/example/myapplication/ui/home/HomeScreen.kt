@@ -38,7 +38,6 @@ import java.time.LocalDate
 fun HomeScreen(
     homeViewModel: HomeViewModel = hiltViewModel(),
     onNavigateToWorkout: (Long) -> Unit,
-    onNavigateToExerciseHistory: (Long) -> Unit, // Keep this for future use
     onNavigateToExerciseList: () -> Unit,
 ) {
     val selectedDate by homeViewModel.selectedDate.collectAsState()

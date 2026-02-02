@@ -16,7 +16,6 @@ import java.util.Calendar
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.math.roundToInt
 
 @Singleton
 class WorkoutRepository @Inject constructor(

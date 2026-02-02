@@ -12,6 +12,7 @@ import androidx.navigation.navArgument
 import com.example.myapplication.ui.exercise.ExerciseListScreen
 import com.example.myapplication.ui.exercise_history.ExerciseHistoryScreen
 import com.example.myapplication.ui.home.HomeScreen
+import com.example.myapplication.ui.insights.InsightsScreen
 import com.example.myapplication.ui.plan.GeneratePlanScreen
 import com.example.myapplication.ui.plan.ManualPlanScreen
 import com.example.myapplication.ui.plan.PlanViewModel
@@ -35,9 +36,6 @@ fun NavGraph(
                 onNavigateToWorkout = { workoutId: Long ->
                     navController.navigate("active_workout/$workoutId")
                 },
-                onNavigateToExerciseHistory = { exerciseId: Long ->
-                    navController.navigate("exercise_history/$exerciseId")
-                },
                 onNavigateToExerciseList = { navController.navigate("exercise_list") }
             )
         }
@@ -53,7 +51,7 @@ fun NavGraph(
         }
 
         composable("insights") {
-            Text("Insights Screen Placeholder")
+            InsightsScreen()
         }
 
         composable("profile") {

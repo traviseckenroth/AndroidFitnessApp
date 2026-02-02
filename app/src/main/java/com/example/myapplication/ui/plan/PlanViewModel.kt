@@ -14,7 +14,6 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 sealed interface PlanUiState {
-    object Idle : PlanUiState
     object Loading : PlanUiState
     // Success now holds the FULL DATA object
     data class Success(val plan: WorkoutPlan) : PlanUiState
