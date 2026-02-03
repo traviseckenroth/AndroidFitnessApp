@@ -55,9 +55,9 @@ class ActiveSessionViewModel @Inject constructor(
                     repository.getSetsForSession(id).collect { loadedSets ->
                         val filledSets = loadedSets.map { set ->
                             set.copy(
-                                actualReps = if (set.actualReps == 0) set.suggestedReps else set.actualReps,
-                                actualLbs = if (set.actualLbs == 0f) set.suggestedLbs.toFloat() else set.actualLbs,
-                                actualRpe = if (set.actualRpe == 0.0f) set.suggestedRpe.toFloat() else set.actualRpe
+                                actualReps = if (set.actualReps == null || set.actualReps == 0) set.suggestedReps else set.actualReps,
+                                actualLbs = if (set.actualLbs == null || set.actualLbs == 0f) set.suggestedLbs.toFloat() else set.actualLbs,
+                                actualRpe = if (set.actualRpe == null || set.actualRpe == 0.0f) set.suggestedRpe.toFloat() else set.actualRpe
                             )
                         }
                         _sets.value = filledSets

@@ -23,7 +23,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         // Run the populator in background to ensure exercises exist
-        lifecycleScope.launch(Dispatchers.IO) {
+        lifecycleScope.launch {
             populateDatabase(workoutDao)
         }
 

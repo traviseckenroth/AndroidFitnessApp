@@ -81,15 +81,17 @@ private val jsonConfig = Json {
 class BedrockClient @Inject constructor() {
 
     // OPTIMIZATION: Initialize client once and reuse it across calls
-    private val client = BedrockRuntimeClient {
-        region = BuildConfig.AWS_REGION
-        credentialsProvider = StaticCredentialsProvider {
-            accessKeyId = BuildConfig.AWS_ACCESS_KEY
-            secretAccessKey = BuildConfig.AWS_SECRET_KEY
-        }
-        httpClient = OkHttpEngine {
-            connectTimeout = 60.seconds
-            socketReadTimeout = 120.seconds
+    private val client by lazy {
+        BedrockRuntimeClient {
+            region = BuildConfig.AWS_REGION
+            credentialsProvider = StaticCredentialsProvider {
+                accessKeyId = BuildConfig.AWS_ACCESS_KEY
+                secretAccessKey = BuildConfig.AWS_SECRET_KEY
+            }
+            httpClient = OkHttpEngine {
+                connectTimeout = 60.seconds
+                socketReadTimeout = 120.seconds
+            }
         }
     }
 

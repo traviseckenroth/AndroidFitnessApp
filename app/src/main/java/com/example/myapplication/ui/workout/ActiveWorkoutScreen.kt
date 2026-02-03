@@ -19,6 +19,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -217,12 +218,36 @@ fun ExerciseHeader(
 
 @Composable
 fun SetsTable(sets: List<WorkoutSetEntity>, viewModel: ActiveSessionViewModel) {
+    // 1. Add this state to track if the dialog is open
+    var showRpeInfo by remember { mutableStateOf(false) }
+
+    // 2. Add the dialog trigger
+    if (showRpeInfo) {
+        RpeInfoDialog(onDismiss = { showRpeInfo = false })
+    }
+
     Column {
-        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("SET", modifier = Modifier.weight(0.5f), color = Color.Gray, fontSize = 12.sp)
             Text("LBS", modifier = Modifier.weight(1f), color = Color.Gray, fontSize = 12.sp)
             Text("REPS", modifier = Modifier.weight(1f), color = Color.Gray, fontSize = 12.sp)
-            Text("RPE", modifier = Modifier.weight(1f), color = Color.Gray, fontSize = 12.sp)
+
+            // 3. Replace the plain "RPE" text with this Row containing the Icon
+            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                Text("RPE", color = Color.Gray, fontSize = 12.sp)
+                Spacer(modifier = Modifier.width(4.dp))
+                IconButton(
+                    onClick = { showRpeInfo = true },
+                    modifier = Modifier.size(16.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Help, // The small ? icon
+                        contentDescription = "RPE Guide",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
             Text("DONE", modifier = Modifier.weight(0.5f), color = Color.Gray, fontSize = 12.sp)
         }
         sets.forEachIndexed { index, set ->
@@ -239,17 +264,30 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, viewModel: ActiveSessionViewMo
     var rpeText by remember(set.actualRpe) { mutableStateOf(set.actualRpe?.toInt()?.toString() ?: "") }
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text("$setNumber", modifier = Modifier.weight(0.5f), color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            text = "$setNumber",
+            modifier = Modifier.weight(0.5f),
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
 
         TextField(
             value = weightText,
             onValueChange = { weightText = it },
             modifier = Modifier.weight(1f).onFocusChanged { if(!it.isFocused) viewModel.updateSetWeight(set, weightText) },
             // Brighter placeholder for better visibility
-            placeholder = { Text(set.suggestedLbs.toString(), color = Color.LightGray) },
+            placeholder = {
+                Text(
+                    text = set.suggestedLbs.toString(),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                )
+            },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
             // Explicitly set text color to white
             colors = TextFieldDefaults.colors(
@@ -281,18 +319,11 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, viewModel: ActiveSessionViewMo
         TextField(
             value = rpeText,
             onValueChange = { rpeText = it },
-            modifier = Modifier.weight(1f).onFocusChanged { if(!it.isFocused) viewModel.updateSetRpe(set, rpeText) },
-            placeholder = { Text("0", color = Color.LightGray) },
+            modifier = Modifier.weight(1f).onFocusChanged { if (!it.isFocused) viewModel.updateSetRpe(set, rpeText) },
+            placeholder = { Text(set.suggestedRpe.toString(), color = Color.Gray) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-            colors = TextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                unfocusedContainerColor = Color.Transparent,
-                focusedContainerColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Gray,
-                focusedIndicatorColor = MaterialTheme.colorScheme.primary
-            )
+            colors = TextFieldDefaults.colors(unfocusedContainerColor = Color.Transparent, focusedContainerColor = Color.Transparent)
         )
 
         Checkbox(
