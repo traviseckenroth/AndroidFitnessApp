@@ -113,6 +113,18 @@ suspend fun populateDatabase(dao: WorkoutDao) {
         "Hold plates. Raise laterally all the way overhead until plates touch. Control the descent. Improves shoulder mobility.")
 
 // ==================== BACK ====================
+    ex("Seated Row (V-Grip)", "Back", "Lats", "Lower Traps", "Cable", "T2", "Med", "Low", "Close neutral grip keeps elbows tucked to bias lats and mid-back thickness.",
+        "Attach V-handle. Sit upright. Pull handle to low stomach. Keep elbows glued to your sides to minimize upper back involvement. Squeeze lats.")
+
+    ex("Seated Row (Wide Grip)", "Back", "Rhomboids", "Rear Delts", "Cable", "T2", "Med", "Low", "Wide pronated grip forces elbows out. Biases upper back details and rear delts.",
+        "Attach wide lat bar. Grip wider than shoulders. Pull bar to upper chest/sternum. Flare elbows out to 45 degrees. Squeeze shoulder blades together.")
+
+    ex("Seated Row (Single Arm)", "Back", "Lats", "Obliques", "Cable", "T3", "Low", "Low", "Unilateral variation allows for greater range of motion and thoracic rotation.",
+        "Attach D-handle. Sit with feet wide. Pull handle to hip while rotating torso slightly towards the pulling arm. Stretch deep forward on release.")
+
+    ex("Seated Row (Rope)", "Back", "Rear Delts", "Rhomboids", "Cable", "T3", "Low", "Low", "Focuses on rear delts and external rotation. Improves posture.",
+        "Attach rope. Pull towards upper chest. At the peak of contraction, pull hands apart (spread the rope) to fully shorten rear delts.")
+
     ex("Pull-Up", "Back", "Lats", "Biceps", "Bodyweight", "T1", "High", "High", "Primary vertical pull. Builds lat width and upper back density.",
         "Hang from bar with overhand grip slightly wider than shoulders. Drive elbows down to ribs to pull chin over bar. Lower to full dead hang.")
 
@@ -159,6 +171,15 @@ suspend fun populateDatabase(dao: WorkoutDao) {
         "Set pins just below knees. Setup like a deadlift. Drag bar up thighs. Lock out hips and upper back forcefully. Lower under control.")
 
 // ==================== LEGS ====================
+    ex("Leg Press (High Stance)", "Legs", "Glutes", "Hamstrings", "Machine", "T2", "High", "Med", "Placing feet high on platform increases hip flexion, biasing glutes.",
+        "Place feet high on the platform, shoulder width. Lower weight deep. Drive through heels. You should feel less tension on knees, more on hips.")
+
+    ex("Leg Press (Low Stance)", "Legs", "Quads", null, "Machine", "T2", "High", "Med", "Placing feet low increases knee flexion, biasing quadriceps.",
+        "Place feet low on platform. Keep heels down (do not let them lift). Drive up. Note: Requires good ankle mobility.")
+
+    ex("Leg Press (Wide Stance)", "Legs", "Adductors", "Glutes", "Machine", "T2", "High", "Med", "Sumo stance recruits adductors (inner thigh) and glutes.",
+        "Place feet wide and turn toes out 30 degrees. Knees must track over toes during descent. Drive through outer heel.")
+
     ex("Deadlift", "Legs", "Hamstrings", "Erectors", "Barbell", "T1", "High", "High", "Full posterior chain driver. High systemic fatigue; limits recovery resources.",
         "Mid-foot under bar. Hinge hips back. Grip bar. Pull slack out until you hear a 'click'. Drive feet into floor to stand up. Lock hips, do not hyperextend.")
 
@@ -217,6 +238,12 @@ suspend fun populateDatabase(dao: WorkoutDao) {
     ex("Hammer Curl", "Arms", "Brachialis", "Forearms", "Dumbbell", "T3", "High", "Low", "Targets brachialis and brachioradialis. Adds width to the arm.",
         "Hold dumbbells with neutral grip (palms facing body). Curl weight up without rotating wrist. Lower slowly.")
 
+    ex("Rope Hammer Curl", "Arms", "Brachialis", "Forearms", "Cable", "T3", "Med", "Low", "Cable provides constant tension unlike dumbbells. Builds arm thickness.",
+        "Attach rope to low pulley. Hold neutral grip. Curl up, keeping elbows at sides. Spread rope slightly at top for contraction.")
+
+    ex("Behind-the-Back Cable Curl", "Arms", "Biceps", null, "Cable", "T3", "Low", "Low", "Shoulder extension stretches the long head of the bicep maximally.",
+        "Face away from machine. Handle in one hand, arm behind you. Curl forward while keeping elbow pinned back. Huge stretch focus.")
+
     ex("Preacher Curl", "Arms", "Biceps", null, "Machine", "T3", "Med", "Low", "Targets the short head. Focus on the stretch, avoid full lockout.",
         "Armpits over pad. Arms extended. Curl weight up without lifting elbows off pad. Lower slowly to full stretch.")
 
@@ -240,6 +267,15 @@ suspend fun populateDatabase(dao: WorkoutDao) {
 
     ex("JM Press", "Arms", "Triceps", "Chest", "Barbell", "T2", "High", "Med", "Hybrid between close grip press and skullcrusher. Heavy loading for tricep thickness.",
         "Lower bar towards neck, allowing elbows to drift forward slightly. Press back up using triceps. Keep elbows tucked.")
+
+    ex("Cable Pushdown (Straight Bar)", "Arms", "Triceps", null, "Cable", "T2", "High", "Low", "Allows for heavier loading than rope. Biases the lateral (outer) head.",
+        "Attach straight bar or V-bar. Overhand grip. Lean forward slightly. Push bar down until elbows lock out. Keep wrists neutral.")
+
+    ex("Cable Pushdown (Reverse Grip)", "Arms", "Triceps", "Forearms", "Cable", "T3", "Low", "Low", "Underhand grip biases the medial (inner) head. Lighter weight, stricter form.",
+        "Attach straight bar. Supinated (palms up) grip. Keep elbows pinned to sides. Extend downwards. Great for elbow health.")
+
+    ex("Single Arm Pushdown", "Arms", "Triceps", null, "Cable", "T3", "Low", "Low", "Isolates one arm to fix strength imbalances. Usage of D-handle or no attachment.",
+        "Grip cable directly or use D-handle. Palm facing body. Extend arm fully. Focus on squeezing the tricep without shoulder movement.")
 
     ex("Bayesian Curl", "Arms", "Biceps", null, "Cable", "T3", "Low", "Low", "Constant tension throughout full ROM. Matches strength curve of biceps perfectly.",
         "Face away from cable stack. Hand behind body. Curl handle forward. Allow arm to be pulled back behind body on eccentric.")

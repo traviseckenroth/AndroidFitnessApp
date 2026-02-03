@@ -103,27 +103,24 @@ fun ActiveWorkoutScreen(
                     CoachBriefingCard(briefing = coachBriefing)
                 }
 
-                items(exerciseStates) { exerciseState ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        shape = RoundedCornerShape(24.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            ExerciseHeader(
-                                exerciseState = exerciseState,
-                                viewModel = viewModel,
-                                onToggleVisibility = { viewModel.toggleExerciseVisibility(exerciseState.exercise.exerciseId) },
-                                onLaunchCamera = { activeCameraExerciseState = exerciseState }
-                            )
+                items(
+                    items = exerciseStates,
+                    key = { it.exercise.exerciseId } // Unique ID keeps state alive during timer updates
+                ) { exerciseState ->
+                    ExerciseHeader(
+                        exerciseState = exerciseState,
+                        viewModel = viewModel,
+                        onToggleVisibility = { viewModel.toggleExerciseVisibility(exerciseState.exercise.exerciseId) },
+                        onLaunchCamera = { activeCameraExerciseState = exerciseState }
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                            if (exerciseState.areSetsVisible) {
-                                Divider(modifier = Modifier.padding(vertical = 8.dp), color = Color.DarkGray)
-                                SetsTable(sets = exerciseState.sets, viewModel = viewModel)
-                                SetTimer(exerciseState = exerciseState, viewModel = viewModel)
-                            }
-                        }
+                    if (exerciseState.areSetsVisible) {
+                        SetsTable(sets = exerciseState.sets, viewModel = viewModel)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        SetTimer(exerciseState = exerciseState, viewModel = viewModel)
                     }
+                    Spacer(modifier = Modifier.height(24.dp))
                 }
 
                 item {
@@ -169,6 +166,18 @@ fun ExerciseHeader(
             confirmButton = { TextButton(onClick = { showDescriptionDialog = false }) { Text("Close") } }
         )
     }
+
+    if (showSwapDialog) {
+        SwapExerciseDialog(
+            alternatives = alternatives,
+            onDismiss = { showSwapDialog = false },
+            onSwap = { newExerciseId ->
+                viewModel.swapExercise(exercise.exerciseId, newExerciseId)
+                showSwapDialog = false
+            }
+        )
+    }
+
 
     Row(
         modifier = Modifier.fillMaxWidth().clickable { onToggleVisibility() },
@@ -373,5 +382,41 @@ fun RpeInfoDialog(onDismiss: () -> Unit) {
             }
         },
         confirmButton = { Button(onClick = onDismiss) { Text("Close") } }
+    )
+}
+
+@Composable
+fun SwapExerciseDialog(
+    alternatives: List<ExerciseEntity>,
+    onDismiss: () -> Unit,
+    onSwap: (newExerciseId: Long) -> Unit
+) {
+    if (alternatives.isEmpty()) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("No Alternatives Found") },
+            text = { Text("Sorry, we couldn't find any suitable alternative exercises at the moment.") },
+            confirmButton = { Button(onClick = onDismiss) { Text("OK") } }
+        )
+        return
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Swap Exercise") },
+        text = {
+            Column {
+                alternatives.forEach { exercise ->
+                    TextButton(onClick = { onSwap(exercise.exerciseId) }) {
+                        Text(exercise.name)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
     )
 }
