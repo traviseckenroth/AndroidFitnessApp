@@ -16,3 +16,8 @@ val Charcoal = Color(0xFF2C2F36) // Lighter surface / borders
 // Text
 val WhitePrimary = Color(0xFFEEEEEE)
 val GreySecondary = Color(0xFFB0B3B8)
+
+val DeepBlack = Color(0xFF000000)
+val SurfaceGrey = Color(0xFF121212)
+val NeonLime = Color(0xFFD7FF42) // That signature "Lets go!" button color
+val MutedGrey = Color(0xFF8E8E93)

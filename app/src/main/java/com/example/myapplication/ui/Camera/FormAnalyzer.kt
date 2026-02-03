@@ -13,85 +13,119 @@ import kotlin.math.atan2
 
 class FormAnalyzer(
     private val exerciseName: String,
-    private val onFeedback: (String) -> Unit
+    private val coach: VoiceCoach,
+    private val onVisualFeedback: (String) -> Unit
 ) {
-    private val options = AccuratePoseDetectorOptions.Builder()
-        .setDetectorMode(AccuratePoseDetectorOptions.STREAM_MODE)
-        .build()
-    private val detector = PoseDetection.getClient(options)
+    // State for Rep Counting
+    private var repCount = 0
+    private var isInRep = false
+    private var hasHitDepth = false
+
+    // Config for the current exercise
+    private val profile = getProfileForExercise(exerciseName)
+
+    private val detector = PoseDetection.getClient(
+        AccuratePoseDetectorOptions.Builder()
+            .setDetectorMode(AccuratePoseDetectorOptions.STREAM_MODE)
+            .build()
+    )
 
     @OptIn(ExperimentalGetImage::class)
     fun analyze(imageProxy: ImageProxy) {
         val mediaImage = imageProxy.image
         if (mediaImage != null) {
-            val inputImage = InputImage.fromMediaImage(
-                mediaImage,
-                imageProxy.imageInfo.rotationDegrees
-            )
-
+            val inputImage = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
             detector.process(inputImage)
-                .addOnSuccessListener { pose ->
-                    // ROUTER: Switch logic based on exercise name
-                    when {
-                        exerciseName.contains("Squat", ignoreCase = true) -> analyzeSquat(pose)
-                        exerciseName.contains("Push-Up", ignoreCase = true) -> analyzePushUp(pose)
-                        exerciseName.contains("Press", ignoreCase = true) -> analyzeOverheadPress(pose)
-                        else -> onFeedback("Exercise not yet trained.")
-                    }
-                }
-                .addOnFailureListener { /* Handle error */ }
+                .addOnSuccessListener { pose -> processPose(pose) }
                 .addOnCompleteListener { imageProxy.close() }
         } else {
             imageProxy.close()
         }
     }
 
-    // --- LOGIC 1: SQUATS (Hip/Knee/Ankle Angle) ---
-    private fun analyzeSquat(pose: Pose) {
-        val hip = pose.getPoseLandmark(PoseLandmark.RIGHT_HIP)
-        val knee = pose.getPoseLandmark(PoseLandmark.RIGHT_KNEE)
-        val ankle = pose.getPoseLandmark(PoseLandmark.RIGHT_ANKLE)
+    private fun processPose(pose: Pose) {
+        // 1. Get the 3 distinct landmarks defined by the profile (e.g., Hip, Knee, Ankle)
+        val landMarks = profile.landmarks.map { pose.getPoseLandmark(it) }
 
-        if (hip != null && knee != null && ankle != null) {
-            val angle = calculateAngle(hip, knee, ankle)
-            if (angle < 75) onFeedback("Excellent depth! ($angle°)")
-            else if (angle > 100) onFeedback("Go Lower! Break parallel. ($angle°)")
-            else onFeedback("Good depth.")
-        } else {
-            onFeedback("Align full body in frame (Side View)")
+        // Ensure all points are visible
+        if (landMarks.any { it == null }) {
+            onVisualFeedback("Align full body in frame")
+            return
+        }
+
+        // 2. Calculate the generic angle
+        val angle = calculateAngle(landMarks[0]!!, landMarks[1]!!, landMarks[2]!!)
+
+        // 3. Run the State Machine logic
+        trackRepProgress(angle)
+
+        onVisualFeedback("Reps: $repCount | Angle: ${angle}°")
+    }
+
+    private fun trackRepProgress(angle: Int) {
+        // PHASE 1: START OF REP (Extended)
+        // e.g. Standing up in a squat (Angle ~170+)
+        if (angle >= profile.extensionThreshold) {
+            if (isInRep && hasHitDepth) {
+                // REP COMPLETE!
+                repCount++
+                coach.onGoodRep(repCount)
+                isInRep = false
+                hasHitDepth = false
+            } else if (isInRep && !hasHitDepth) {
+                // They went down a bit but not enough, then stood up
+                coach.onFormIssue(FormFeedback.TOO_HIGH)
+                isInRep = false // Reset
+            }
+        }
+
+        // PHASE 2: BOTTOM OF REP (Flexed)
+        // e.g. Bottom of squat (Angle < 80)
+        else if (angle <= profile.flexionThreshold) {
+            if (!isInRep) isInRep = true // Started descending
+
+            if (!hasHitDepth) {
+                hasHitDepth = true
+                coach.onFormIssue(FormFeedback.GOOD_DEPTH) // "Perfect depth"
+            }
+        }
+
+        // PHASE 3: MOVEMENT (In Between)
+        else {
+            if (!isInRep && angle < profile.extensionThreshold - 10) {
+                // Just started moving down
+                isInRep = true
+            }
         }
     }
 
-    // --- LOGIC 2: PUSH-UPS (Shoulder/Elbow/Wrist Angle) ---
-    private fun analyzePushUp(pose: Pose) {
-        val shoulder = pose.getPoseLandmark(PoseLandmark.RIGHT_SHOULDER)
-        val elbow = pose.getPoseLandmark(PoseLandmark.RIGHT_ELBOW)
-        val wrist = pose.getPoseLandmark(PoseLandmark.RIGHT_WRIST)
-
-        if (shoulder != null && elbow != null && wrist != null) {
-            val angle = calculateAngle(shoulder, elbow, wrist)
-            if (angle < 90) onFeedback("Good depth! Push up.")
-            else if (angle > 160) onFeedback("Lockout at top.")
-            else onFeedback("Lower your chest.")
-        } else {
-            onFeedback("Align arm in frame (Side View)")
-        }
-    }
-
-    // --- LOGIC 3: OVERHEAD PRESS (Elbow Extension + Bar Path) ---
-    private fun analyzeOverheadPress(pose: Pose) {
-        val shoulder = pose.getPoseLandmark(PoseLandmark.RIGHT_SHOULDER)
-        val elbow = pose.getPoseLandmark(PoseLandmark.RIGHT_ELBOW)
-        val wrist = pose.getPoseLandmark(PoseLandmark.RIGHT_WRIST)
-
-        if (shoulder != null && elbow != null && wrist != null) {
-            val angle = calculateAngle(shoulder, elbow, wrist)
-            // Ideally 170-180 is full lockout
-            if (angle > 165) onFeedback("Good Lockout!")
-            else if (angle < 90) onFeedback("Drive up!")
-            else onFeedback("Keep pressing.")
-        } else {
-            onFeedback("Align upper body in frame (Front/Side)")
+    // --- CONFIGURATION LOADER ---
+    private fun getProfileForExercise(name: String): MotionProfile {
+        return when {
+            // SQUAT VARIATIONS
+            name.contains("Squat", true) -> MotionProfile(
+                landmarks = listOf(PoseLandmark.RIGHT_HIP, PoseLandmark.RIGHT_KNEE, PoseLandmark.RIGHT_ANKLE),
+                flexionThreshold = 85,   // Depth (Go lower than this)
+                extensionThreshold = 160 // Lockout (Go higher than this)
+            )
+            // PUSH-UP / BENCH
+            name.contains("Push-Up", true) || name.contains("Bench", true) -> MotionProfile(
+                landmarks = listOf(PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_ELBOW, PoseLandmark.RIGHT_WRIST),
+                flexionThreshold = 90,   // Chest to floor/bar
+                extensionThreshold = 160 // Lockout
+            )
+            // OVERHEAD PRESS
+            name.contains("Press", true) -> MotionProfile(
+                landmarks = listOf(PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_ELBOW, PoseLandmark.RIGHT_WRIST),
+                flexionThreshold = 80,   // Bar at shoulders
+                extensionThreshold = 165 // Bar overhead
+            )
+            // DEFAULT (Fallback)
+            else -> MotionProfile(
+                landmarks = listOf(PoseLandmark.RIGHT_HIP, PoseLandmark.RIGHT_KNEE, PoseLandmark.RIGHT_ANKLE),
+                flexionThreshold = 90,
+                extensionThreshold = 170
+            )
         }
     }
 
@@ -105,12 +139,20 @@ class FormAnalyzer(
         return angle.toInt()
     }
 
-    // Helper to check if an exercise is supported before showing UI button
+    // Helper check for UI button visibility
     companion object {
         fun isSupported(name: String): Boolean {
             return name.contains("Squat", true) ||
                     name.contains("Push-Up", true) ||
-                    name.contains("Press", true)
+                    name.contains("Press", true) ||
+                    name.contains("Bench", true)
         }
     }
 }
+
+// Simple configuration data class
+data class MotionProfile(
+    val landmarks: List<Int>, // Which 3 joints?
+    val flexionThreshold: Int, // The "Bottom" angle
+    val extensionThreshold: Int // The "Top" angle
+)

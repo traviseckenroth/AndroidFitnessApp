@@ -34,16 +34,24 @@ import java.util.concurrent.Executors
 @Composable
 fun CameraFormCheckScreen(
     exerciseName: String,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    targetWeight: Int,
+    targetReps: Int
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // State for the AI Feedback Overlay
-    var feedbackText by remember { mutableStateOf("Align your full body in frame...") }
-    var isGoodRep by remember { mutableStateOf(false) }
+    // 1. Initialize Voice Coach
+    val coach = remember { VoiceCoach(context) }
 
-    // Camera Permission State
+    DisposableEffect(Unit) {
+        onDispose {
+            coach.shutdown()
+        }
+    }
+
+    var feedbackText by remember { mutableStateOf("Align your full body in frame...") }
+
     var hasCameraPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -65,21 +73,22 @@ fun CameraFormCheckScreen(
     }
 
     if (hasCameraPermission) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
             AndroidView(
                 factory = { ctx ->
                     val previewView = PreviewView(ctx).apply {
                         scaleType = PreviewView.ScaleType.FILL_CENTER
                     }
 
-                    // 1. Create Analyzer ONCE (not every frame)
-                    val analyzer = FormAnalyzer(exerciseName) { feedback ->
-                        feedbackText = feedback
-                        isGoodRep = feedback.contains("Excellent", true) || feedback.contains("Good", true)
-                    }
+                    val analyzer = FormAnalyzer(
+                        exerciseName = exerciseName,
+                        coach = coach, // Pass the coach instance
+                        onVisualFeedback = { feedback ->
+                            feedbackText = feedback
+                        }
+                    )
 
                     val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
-
                     cameraProviderFuture.addListener({
                         val cameraProvider = cameraProviderFuture.get()
                         val preview = Preview.Builder().build().also {
@@ -91,21 +100,19 @@ fun CameraFormCheckScreen(
                             .build()
                             .also { analysis ->
                                 analysis.setAnalyzer(
-                                    Executors.newSingleThreadExecutor(),
-                                    { imageProxy ->
-                                        // 2. Pass Proxy to Analyzer
-                                        // The analyzer handles closing it asynchronously
-                                        analyzer.analyze(imageProxy)
-                                    }
-                                )
+                                    Executors.newSingleThreadExecutor()
+                                ) { imageProxy ->
+                                    analyzer.analyze(imageProxy)
+                                }
                             }
 
+                        // Use Front Camera for "Mirror" effect during workout
                         val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
 
                         try {
                             cameraProvider.unbindAll()
                             cameraProvider.bindToLifecycle(
-                                lifecycleOwner,
+                                lifecycleOwner, // Captured from LocalLifecycleOwner
                                 cameraSelector,
                                 preview,
                                 imageAnalysis
@@ -120,30 +127,9 @@ fun CameraFormCheckScreen(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // 2. Feedback Overlay
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(32.dp)
-                    .fillMaxWidth()
-                    .background(
-                        color = if (isGoodRep) Color(0xFF4CAF50).copy(alpha = 0.9f)
-                        else Color(0xFFB00020).copy(alpha = 0.9f),
-                        shape = RoundedCornerShape(16.dp)
-                    )
-                    .padding(24.dp)
-            ) {
-                Text(
-                    text = feedbackText,
-                    color = Color.White,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.align(Alignment.Center)
-                )
-            }
+            // UI Overlays
+            FeedbackOverlay(text = feedbackText)
 
-            // 3. Close Button
             IconButton(
                 onClick = onClose,
                 modifier = Modifier
@@ -155,15 +141,45 @@ fun CameraFormCheckScreen(
             }
         }
     } else {
-        // Permission Denied View
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Camera permission required for AI Coaching")
-                Button(onClick = { launcher.launch(Manifest.permission.CAMERA) }) {
-                    Text("Grant Permission")
-                }
+        PermissionDeniedView { launcher.launch(Manifest.permission.CAMERA) }
+    }
+}
+
+@Composable
+fun FeedbackOverlay(text: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = 48.dp),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Surface(
+            color = Color.Black.copy(alpha = 0.7f),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.padding(horizontal = 24.dp)
+        ) {
+            Text(
+                text = text,
+                color = Color.White,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(20.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun PermissionDeniedView(onGrantClick: () -> Unit) {
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Default.Warning, contentDescription = null, tint = Color.Yellow, modifier = Modifier.size(48.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("Camera permission required for AI Coaching", color = Color.White)
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(onClick = onGrantClick) {
+                Text("Grant Permission")
             }
         }
     }

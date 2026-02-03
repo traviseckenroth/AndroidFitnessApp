@@ -99,7 +99,10 @@ class BedrockClient @Inject constructor() {
         days: List<String>,
         duration: Float,
         workoutHistory: List<CompletedWorkoutWithExercise>,
-        availableExercises: List<ExerciseEntity>
+        availableExercises: List<ExerciseEntity>,
+        userAge: Int,
+        userHeight: Int,
+        userWeight: Int
     ): GeneratedPlanResponse {
 
         try {
@@ -129,15 +132,33 @@ class BedrockClient @Inject constructor() {
             }
 
             val totalMinutes = (duration * 60).toInt()
+            
+// OPTIMIZATION: Summarize history instead of dumping raw logs
+// This saves tokens and gives the AI better "reasoning" data
+            val historySummary = workoutHistory
+                .groupBy { it.exercise.name }
+                .map { (name, sessions) ->
+                    val sorted = sessions.sortedBy { it.completedWorkout.date }
+                    val first = sorted.first().completedWorkout
+                    val last = sorted.last().completedWorkout
+                    val progress = last.weight - first.weight
+                    "- $name: Started at ${first.weight}lbs, currently at ${last.weight}lbs (Avg RPE: ${sessions.map { it.completedWorkout.rpe }.average().toInt()})"
+                }.joinToString("\n")
 
             val systemPrompt = """
                 You are an expert strength coach. Generate a **1-week workout template** that will be repeated for a 4-week block.
                 USER CONTEXT:
+                - Age: ${'$'}{userAge} years old (Adjust volume/intensity for recovery capacity).
+                - Height: ${'$'}{userHeight} cm.
+                - Weight: ${'$'}{userWeight} kg.
                 - Goal: ${goal}
                 - Schedule: ${days.joinToString()}
                 - Duration: ${totalMinutes} minutes per session.
                 - History: ${historyString}
       
+                TRAINING HISTORY:
+                ${'$'}{if (historySummary.isBlank()) "No previous history available." else historySummary}
+                
                 AVAILABLE EXERCISES (Use these when possible):
                 ${exerciseListString}
                 
@@ -148,8 +169,8 @@ class BedrockClient @Inject constructor() {
 
                 JSON EXAMPLE:
                 {
-                  "explanation": "This plan is designed to increase your strength on the main lifts...",
-                  "schedule": [
+                    "explanation": "Given your age of 45 and goal of hypertrophy, we are prioritizing joint-friendly movements...",                  
+                    "schedule": [
                     {
                       "week": 1,
                       "day": "Monday",
@@ -170,28 +191,14 @@ class BedrockClient @Inject constructor() {
                 }
 
                 RULES:
-                1. **Generate ONLY Week 1.** Do not generate Weeks 2, 3, or 4.
-                2. "sets", "suggestedRpe", and "suggestedReps" must be Integers. "suggestedLbs" and "estimatedTimeMinutes" must be Floats.
-                3. ${tierDefinitions}
-                4. The user has selected the following days: ${days.joinToString()}. Generate a workout for *each* of these selected days for all weeks.
+                1. **Generate ONLY Week 1.**
+                2. "sets", "suggestedRpe", and "suggestedReps" must be Integers. "suggestedLbs" must be Float.
+                3. ${'$'}{tierDefinitions}
+                4. Generate a workout for *each* selected day: ${'$'}{days.joinToString()}.
                 5. A week is from Monday to Sunday.
-                
-                6. *** CRITICAL TIME CALCULATION FORMULA ***:
-                   'estimatedTimeMinutes' is the total time for all sets of an exercise, including rest.
-                   Use this exact math:
-                   - TIER 1 (Heavy Compound): 3 minutes per set.
-                   - TIER 2 (Accessory): 2.5 minutes per set.
-                   - TIER 3 (Isolation): 2 minutes per set.
-                   
-                   EXAMPLE: 
-                   - Arnold Press is Tier 2 and has 4 sets.
-                   - Time = 4 * 2.5 = 10 minutes.
-
-                7. TOTAL DURATION:
-                   The sum of all 'estimatedTimeMinutes' for a single day's workout must equal the user's requested duration of ${totalMinutes} minutes.
-                   - Add or remove exercises or sets to meet the duration.
-
-                8. CONSIDER USER HISTORY FOR PROGRESSIVE OVERLOAD.
+                6. Time Calculation: Tier 1 (3m/set), Tier 2 (2.5m/set), Tier 3 (2m/set).
+                7. Total duration per day must equal ${'$'}{totalMinutes} minutes.
+                8. If the user is older (>40), prefer lower fatigue exercises and higher rep ranges for joint health unless specified otherwise.
 
                 Do not include preamble or markdown formatting.
                 
@@ -200,7 +207,7 @@ class BedrockClient @Inject constructor() {
                     
             """.trimIndent()
 
-            val userPrompt = "Goal: ${goal}. Schedule: ${days.joinToString()}. Session Duration: ${duration} hours."
+            val userPrompt = "Generate plan for ${userAge}yo male, ${userWeight}kg, Goal: ${goal}."
 
             val requestBody = ClaudeRequest(
                 max_tokens = 12000,
@@ -216,17 +223,6 @@ class BedrockClient @Inject constructor() {
                 accept = "application/json"
                 body = jsonString.toByteArray()
             }
-// OPTIMIZATION: Summarize history instead of dumping raw logs
-// This saves tokens and gives the AI better "reasoning" data
-            val historySummary = workoutHistory
-                .groupBy { it.exercise.name }
-                .map { (name, sessions) ->
-                    val sorted = sessions.sortedBy { it.completedWorkout.date }
-                    val first = sorted.first().completedWorkout
-                    val last = sorted.last().completedWorkout
-                    val progress = last.weight - first.weight
-                    "- $name: Started at ${first.weight}lbs, currently at ${last.weight}lbs (Avg RPE: ${sessions.map { it.completedWorkout.rpe }.average().toInt()})"
-                }.joinToString("\n")
 
             // Reuse the class-level client
             val response = client.invokeModel(request)

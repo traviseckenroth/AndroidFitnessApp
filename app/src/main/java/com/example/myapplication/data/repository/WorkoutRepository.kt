@@ -5,10 +5,10 @@ import com.example.myapplication.data.local.CompletedWorkoutEntity
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
 import com.example.myapplication.data.local.DailyWorkoutEntity
 import com.example.myapplication.data.local.ExerciseEntity
+import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.local.WorkoutDao
 import com.example.myapplication.data.local.WorkoutPlanEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
-import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.remote.BedrockClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -61,6 +61,10 @@ class WorkoutRepository @Inject constructor(
 
         val workoutHistory = workoutDao.getCompletedWorkoutsWithExercise().first()
         val availableExercises = workoutDao.getAllExercises().first()
+        // --- FETCH BIOMETRICS ---
+        val height = userPrefs.userHeight.first()
+        val weight = userPrefs.userWeight.first()
+        val age = userPrefs.userAge.first()
 
         val aiResponse = bedrockClient.generateWorkoutPlan(
             goal = goal,
@@ -68,7 +72,10 @@ class WorkoutRepository @Inject constructor(
             days = days,
             programType = programType,
             workoutHistory = workoutHistory,
-            availableExercises = availableExercises
+            availableExercises = availableExercises,
+            userHeight = height,
+            userWeight = weight.toInt(),
+            userAge = age
         )
 
         val startDate = System.currentTimeMillis()

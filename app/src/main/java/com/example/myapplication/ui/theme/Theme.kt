@@ -4,6 +4,7 @@ import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
@@ -19,43 +20,40 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 
-// Defined purely for the Pro/Compact feel
+// Defined for the Pro/Compact feel (Matching the fluid cards in your screenshots)
 private val CompactShapes = Shapes(
-    small = RoundedCornerShape(4.dp),  // Buttons, TextFields
-    medium = RoundedCornerShape(8.dp), // Cards, Dialogs
-    large = RoundedCornerShape(12.dp)  // Bottom Sheets
+    small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(24.dp)
 )
 
-private val DarkColorScheme = darkColorScheme(
-    primary = ElectricBlue,
-    onPrimary = Color.White,
-    primaryContainer = ElectricBlue.copy(alpha = 0.2f),
-    onPrimaryContainer = ElectricBlue,
-
-    secondary = NeonVolt,
+// Optimized Dark Scheme for High-Performance Fitness Look
+private val CustomDarkColorScheme = darkColorScheme(
+    primary = NeonLime,        // The bright #D7FF42 from your image
+    onPrimary = Color.Black,
+    secondary = NeonVolt,      // A secondary accent if needed
     onSecondary = Color.Black,
-
-    background = MidnightBlack,
-    surface = MidnightBlack, // Keep surface dark for contrast
-    surfaceVariant = Gunmetal, // Use Gunmetal for Cards
+    background = DeepBlack,    // Pure #000000
+    surface = SurfaceGrey,     // Slightly elevated grey for cards
+    surfaceVariant = Gunmetal,
     onSurface = WhitePrimary,
     onSurfaceVariant = GreySecondary,
-
     outline = Charcoal
 )
 
-private val LightColorScheme = lightColorScheme(
-    primary = ElectricBlue,
-    onPrimary = Color.White,
-    background = Color(0xFFF5F5F7),
-    surface = Color.White,
+// Defining LightColorScheme to resolve the unresolved reference
+private val CustomLightColorScheme = lightColorScheme(
+    primary = NeonLime,
+    onPrimary = Color.Black,
+    background = Color.White,
+    surface = Color(0xFFF2F2F7),
     onSurface = Color.Black
 )
 
 @Composable
 fun MyApplicationTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false, // Disabled to enforce the Pro Sport look
+    dynamicColor: Boolean = false, // Enforce brand colors
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
@@ -63,18 +61,20 @@ fun MyApplicationTheme(
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+        darkTheme -> CustomDarkColorScheme
+        else -> CustomLightColorScheme
     }
 
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = Color.Transparent.toArgb()
-            window.navigationBarColor = Color.Transparent.toArgb()
+            // Using toArgb() for system bars
+            window.statusBarColor = Color.Black.toArgb()
+            window.navigationBarColor = Color.Black.toArgb()
 
             val controller = WindowCompat.getInsetsController(window, view)
+            // For a dark theme, we want light icons on the status bar
             controller.isAppearanceLightStatusBars = !darkTheme
             controller.isAppearanceLightNavigationBars = !darkTheme
         }
@@ -83,7 +83,7 @@ fun MyApplicationTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
-        shapes = CompactShapes, // Applying the new compact shapes
+        shapes = CompactShapes,
         content = content
     )
 }
