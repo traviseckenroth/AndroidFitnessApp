@@ -43,7 +43,6 @@ class ActiveSessionViewModel @Inject constructor(
     private val _coachBriefing = MutableStateFlow("Loading briefing...")
     val coachBriefing: StateFlow<String> = _coachBriefing
 
-    // --- NEW: SUMMARY STATE ---
     private val _workoutSummary = MutableStateFlow<List<String>?>(null)
     val workoutSummary: StateFlow<List<String>?> = _workoutSummary
 
@@ -143,6 +142,16 @@ class ActiveSessionViewModel @Inject constructor(
         }
     }
 
+    fun swapExercise(oldExerciseId: Long, newExerciseId: Long) {
+        viewModelScope.launch {
+            repository.swapExercise(_workoutId.value, oldExerciseId, newExerciseId)
+        }
+    }
+
+    suspend fun getTopAlternatives(exercise: ExerciseEntity): List<ExerciseEntity> {
+        return repository.getBestAlternatives(exercise)
+    }
+
     fun toggleExerciseVisibility(exerciseId: Long) {
         _exerciseStates.value = _exerciseStates.value.map {
             if (it.exercise.exerciseId == exerciseId) {
@@ -209,11 +218,10 @@ class ActiveSessionViewModel @Inject constructor(
         }
     }
 
-    // --- UPDATED: Wait for result and update State ---
     fun finishWorkout(workoutId: Long) {
         viewModelScope.launch {
             val report = repository.completeWorkout(workoutId)
-            _workoutSummary.value = report // This triggers the Dialog in UI
+            _workoutSummary.value = report
         }
     }
 
@@ -224,8 +232,7 @@ class ActiveSessionViewModel @Inject constructor(
 
 private fun generateCoachBriefing(exercises: List<ExerciseEntity>, sets: List<WorkoutSetEntity>): String {
     if (exercises.isEmpty() || sets.isEmpty()) return "Ready to start your workout?"
-    val tiers = exercises.map { it.tier }
-    val tier1Count = tiers.count { it == 1 }
+    val tier1Count = exercises.count { it.tier == 1 }
     val avgReps = if (sets.isNotEmpty()) sets.map { it.suggestedReps }.average() else 0.0
     val totalSets = sets.size
 
@@ -235,16 +242,13 @@ private fun generateCoachBriefing(exercises: List<ExerciseEntity>, sets: List<Wo
 
     return when {
         tier1Count >= 2 && avgReps < 8 -> {
-            "Mission: Heavy $dominantMuscle Day.\n" +
-                    "Prioritize your rest periods on the big lifts. Intensity is key today, not speed."
+            "Mission: Heavy $dominantMuscle Day.\nIntensity is key today, not speed."
         }
         totalSets > 18 -> {
-            "Mission: High Volume $dominantMuscle.\n" +
-                    "This session is a marathon. Focus on surviving the burn and keeping your form strict as you fatigue."
+            "Mission: High Volume $dominantMuscle.\nFocus on surviving the burn and keeping form strict."
         }
         else -> {
-            "Mission: $dominantMuscle Hypertrophy.\n" +
-                    "Focus on the mind-muscle connection. Control the negatives and squeeze at the top."
+            "Mission: $dominantMuscle Hypertrophy.\nFocus on the mind-muscle connection."
         }
     }
 }

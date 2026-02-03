@@ -63,6 +63,15 @@ interface WorkoutDao {
     @Update
     suspend fun updateSet(set: WorkoutSetEntity): Int
 
+    // In WorkoutDao.kt
+    // In WorkoutDao.kt
+    @Query("SELECT * FROM exercises WHERE muscleGroup = :muscleGroup AND exerciseId != :currentId")
+    suspend fun getCandidatesByMuscleGroup(muscleGroup: String, currentId: Long): List<ExerciseEntity>
+
+    // FIX: Change return type from Unit (implied) to Int
+    @Query("UPDATE workout_sets SET exerciseId = :newExerciseId WHERE workoutId = :workoutId AND exerciseId = :oldExerciseId")
+    suspend fun swapExerciseInSets(workoutId: Long, oldExerciseId: Long, newExerciseId: Long): Int
+
     @Query("DELETE FROM exercises")
     suspend fun deleteAllExercises(): Int
 

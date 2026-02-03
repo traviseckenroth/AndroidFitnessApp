@@ -190,7 +190,8 @@ class WorkoutRepository @Inject constructor(
     private fun getDayNameFromDate(date: Long): String {
         val cal = Calendar.getInstance()
         cal.timeInMillis = date
-        return cal.getDisplayName(Calendar.DAY_OF_WEEK, Calendar.SHORT, Locale.getDefault()) ?: "Day"
+        return cal.getDisplayName(Calendar.DAY_OF_WEEK, Calendar.SHORT, Locale.getDefault())
+            ?: "Day"
     }
 
     private fun calculateSmartDate(startDate: Long, weekNum: Int, dayName: String): Long {
@@ -312,7 +313,23 @@ class WorkoutRepository @Inject constructor(
                 workoutDao.insertSets(updatedSets)
             }
         }
-
         return adjustmentLogs
+    }
+
+    suspend fun getBestAlternatives(currentExercise: ExerciseEntity): List<ExerciseEntity> {
+        // Provide a default empty string if muscleGroup is null to satisfy the DAO requirement
+        val muscleGroup = currentExercise.muscleGroup ?: ""
+
+        val candidates = workoutDao.getCandidatesByMuscleGroup(muscleGroup, currentExercise.exerciseId)
+
+        return candidates.sortedWith(compareBy(
+            { it.tier != currentExercise.tier },
+            // Use safe comparison for equipment as well, which is also nullable in ExerciseEntity
+            { it.equipment == currentExercise.equipment }
+        )).take(2)
+    }
+
+    suspend fun swapExercise(workoutId: Long, oldExerciseId: Long, newExerciseId: Long) {
+        workoutDao.swapExerciseInSets(workoutId, oldExerciseId, newExerciseId)
     }
 }
