@@ -16,6 +16,9 @@ import java.util.Calendar
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.example.myapplication.data.remote.GeneratedDay
+import com.example.myapplication.data.remote.GeneratedExercise
+import kotlin.math.roundToInt
 
 @Singleton
 class WorkoutRepository @Inject constructor(
@@ -85,6 +88,9 @@ class WorkoutRepository @Inject constructor(
             goal = goal,
             programType = programType
         )
+// --- NEW: STRICT TIME ENFORCEMENT ---
+        // We trust the AI for exercise selection, but we trust math for the clock.
+        val adjustedSchedule = enforceTimeConstraints(aiResponse.schedule, duration.toFloat())
 
         val fullPlanData = mutableMapOf<DailyWorkoutEntity, List<WorkoutSetEntity>>()
         val totalWeeks = 4
@@ -142,7 +148,71 @@ class WorkoutRepository @Inject constructor(
         val planId = workoutDao.saveFullWorkoutPlan(planEntity, fullPlanData)
         return planId
     }
+    /**
+     * Post-processes the AI schedule to strictly enforce session duration.
+     * Rules: T1=4m, T2=2.5m, T3=1.5m.
+     * Cuts T3 volume first if too long. Adds T1 volume first if too short.
+     */
+    private fun enforceTimeConstraints(schedule: List<GeneratedDay>, targetHours: Float): List<GeneratedDay> {
+        val targetMinutes = (targetHours * 60).toInt()
+        val tolerance = 5 // +/- 5 minutes is acceptable
 
+        return schedule.map { day ->
+            var exercises = day.exercises.toMutableList()
+            var currentMinutes = calculateTotalMinutes(exercises)
+
+            // 1. CUT VOLUME if too long
+            while (currentMinutes > targetMinutes + tolerance) {
+                // Find a candidate to cut. Priority: Tier 3 (lowest importance) -> Tier 2 -> Tier 1
+                // Also require sets > 2 so we don't eliminate exercises entirely unless necessary
+                val cutCandidateIndex = exercises.indexOfFirst {
+                    it == exercises.filter { e -> e.sets > 2 }
+                        .sortedWith(compareByDescending<GeneratedExercise> { ex -> ex.tier }.thenByDescending { ex -> ex.sets })
+                        .firstOrNull()
+                }
+
+                if (cutCandidateIndex != -1) {
+                    val ex = exercises[cutCandidateIndex]
+                    exercises[cutCandidateIndex] = ex.copy(sets = ex.sets - 1)
+                    currentMinutes = calculateTotalMinutes(exercises)
+                } else {
+                    break // Cannot cut any further without removing exercises
+                }
+            }
+
+            // 2. ADD VOLUME if too short
+            while (currentMinutes < targetMinutes - tolerance) {
+                // Add to Tier 1 first (Strength), then Tier 2. Avoid adding to T3 endlessly.
+                // Cap sets at 6 to prevent absurdity.
+                val addCandidateIndex = exercises.indexOfFirst {
+                    it == exercises.filter { e -> e.tier <= 2 && e.sets < 6 }
+                        .sortedBy { ex -> ex.tier } // Prioritize T1
+                        .firstOrNull()
+                }
+
+                if (addCandidateIndex != -1) {
+                    val ex = exercises[addCandidateIndex]
+                    exercises[addCandidateIndex] = ex.copy(sets = ex.sets + 1)
+                    currentMinutes = calculateTotalMinutes(exercises)
+                } else {
+                    break // No suitable exercises to add volume to
+                }
+            }
+
+            day.copy(exercises = exercises)
+        }
+    }
+
+    private fun calculateTotalMinutes(exercises: List<GeneratedExercise>): Double {
+        return exercises.sumOf { ex ->
+            val timePerSet = when (ex.tier) {
+                1 -> 4.0  // Heavy/Rest
+                2 -> 2.5  // Hypertrophy
+                else -> 1.5 // Metabolic
+            }
+            ex.sets * timePerSet
+        }
+    }
     suspend fun getPlanDetails(planId: Long): com.example.myapplication.data.WorkoutPlan {
         val workouts = workoutDao.getWorkoutsForPlan(planId)
         val allExercises = workoutDao.getAllExercisesOneShot()

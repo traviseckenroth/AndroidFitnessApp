@@ -13,6 +13,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 // --- AI RESPONSE DATA MODELS ---
 
@@ -105,20 +107,20 @@ class BedrockClient @Inject constructor() {
         userAge: Int,
         userHeight: Int,
         userWeight: Double
-    ): GeneratedPlanResponse {
+    ): GeneratedPlanResponse = withContext(Dispatchers.Default) {
 
         try {
             val tierDefinitions = when (programType) {
                 "Strength" -> """
-                    - Tier 1: 1-5 Reps (Squat/Deadlift).
-                    - Tier 2: 5-8 Reps.
-                    - Tier 3: 8-12 Reps.
+                    - Tier 1: Reps: Low (1-5). Sets: High (5-8). Load: Very Heavy (85-95% 1RM). RPE: 8-9 (1-2 RIR). PRROGRESSION: Linear Load.
+                    - Tier 2: Reps: Low (3-6). Sets: Moderate (3-5). Load: Heavy (75-85% 1RM). RPE: 8-9 (1-2 RIR). PRROGRESSION: Volume Accumulation.
+                    - Tier 3: Reps: Moderate/High (8-15). Sets: Moderate (3-4). Load: Moderate (muscle failure). RPE: 9-10 (0-1 RIR). PRROGRESSION: Density.
                 """.trimIndent()
 
                 "Hypertrophy" -> """
-                    - Tier 1: 6-10 Reps.
-                    - Tier 2: 10-15 Reps.
-                    - Tier 3: 15-25+ Reps.
+                    - Tier 1: Reps: Low (5–8). Sets: High (3–5). Load: Heavy (75-90% 1RM). RPE: 8 (2 RIR). PROGRESSION: Add Weight.
+                    - Tier 2: Reps: Moderate (8–12). Sets: Moderate (3–4). Load: Moderate (60-75% 1RM). RPE: 9 (1 RIR). PROGRESSION: Add Reps/Form.
+                    - Tier 3: Reps: High (12–20). Sets: Moderate (2–3). Load: Light (40-60% 1RM). RPE: 10 (Failure). PROGRESSION: Add Reps/Form.
                 """.trimIndent()
 
                 "Powerlifting" -> "- Tier 1: SBD Competition Lifts ONLY."
@@ -134,9 +136,7 @@ class BedrockClient @Inject constructor() {
             }
 
             val totalMinutes = (duration * 60).toInt()
-            
-// OPTIMIZATION: Summarize history instead of dumping raw logs
-// This saves tokens and gives the AI better "reasoning" data
+
             val historySummary = workoutHistory
                 .groupBy { it.exercise.name }
                 .map { (name, sessions) ->
@@ -150,16 +150,15 @@ class BedrockClient @Inject constructor() {
             val systemPrompt = """
                 You are an expert strength coach. Generate a **1-week workout template** that will be repeated for a 4-week block.
                 USER CONTEXT:
-                - Age: ${'$'}{userAge} years old (Adjust volume/intensity for recovery capacity).
-                - Height: ${'$'}{userHeight} cm.
-                - Weight: ${'$'}{userWeight} kg.
+                - Age: ${userAge} years old (Adjust volume/intensity for recovery capacity).
+                - Height: ${userHeight} cm.
+                - Weight: ${userWeight} kg.
                 - Goal: ${goal}
                 - Schedule: ${days.joinToString()}
                 - Duration: ${totalMinutes} minutes per session.
-                - History: ${historyString}
       
                 TRAINING HISTORY:
-                ${'$'}{if (historySummary.isBlank()) "No previous history available." else historySummary}
+                ${if (historySummary.isBlank()) "No previous history." else historySummary}
                 
                 AVAILABLE EXERCISES (Use these when possible):
                 ${exerciseListString}
@@ -195,24 +194,28 @@ class BedrockClient @Inject constructor() {
                 RULES:
                 1. **Generate ONLY Week 1.**
                 2. "sets", "suggestedRpe", and "suggestedReps" must be Integers. "suggestedLbs" must be Float.
-                3. ${'$'}{tierDefinitions}
-                4. Generate a workout for *each* selected day: ${'$'}{days.joinToString()}.
+                3. ${tierDefinitions}
+                4. Generate a workout for *each* selected day: ${days.joinToString()}.
                 5. A week is from Monday to Sunday.
-                6. Time Calculation: Tier 1 (3m/set), Tier 2 (2.5m/set), Tier 3 (2m/set).
-                7. Total duration per day must equal ${'$'}{totalMinutes} minutes.
+                6. *** TIME CALCULATION FORMULA ***:
+                   'estimatedTimeMinutes' is the total time for all sets of an exercise, including rest.
+                   Use these estimates based on the user's rest requirements:
+                   - TIER 1: 4.0 minutes per set (Heavy load, long rest).
+                   - TIER 2: 3 minutes per set (Moderate load, medium rest).
+                   - TIER 3: 2 minutes per set (Light load, short rest).
+                   
+                   *Adjust volume (sets) to ensure the total minutes sum up to exactly ${totalMinutes}.*
+                7. Total duration per day must equal ${totalMinutes} minutes.
                 8. If the user is older (>40), prefer lower fatigue exercises and higher rep ranges for joint health unless specified otherwise.
 
                 Do not include preamble or markdown formatting.
-                
-                USER HISTORY SUMMARY (Last Block):
-                ${'$'}historySummary
                     
             """.trimIndent()
 
             val userPrompt = "Generate plan for ${userAge}yo male, ${userWeight}kg, Goal: ${goal}."
 
             val requestBody = ClaudeRequest(
-                max_tokens = 12000,
+                max_tokens = 6000,
                 system = systemPrompt,
                 messages = listOf(Message(role = "user", content = userPrompt))
             )
@@ -226,22 +229,28 @@ class BedrockClient @Inject constructor() {
                 body = jsonString.toByteArray()
             }
 
-            // Reuse the class-level client
             val response = client.invokeModel(request)
             val responseBody = response.body?.decodeToString() ?: ""
 
             val outerResponse = jsonConfig.decodeFromString<ClaudeResponse>(responseBody)
-            val rawJson = outerResponse.content.firstOrNull()?.text ?: "{}"
 
-            val cleanJson = rawJson.replace("```json", "").replace("```", "").trim()
+            val rawText = outerResponse.content.firstOrNull()?.text ?: ""
+            val jsonRegex = Regex("\\{.*\\}", setOf(RegexOption.DOT_MATCHES_ALL))
+            val match = jsonRegex.find(rawText)
 
-            Log.d("BedrockService", "Clean JSON: ${cleanJson}")
-
-            return jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
+            // FIX: Removed 'return' keywords below
+            if (match != null) {
+                val cleanJson = match.value
+                Log.d("BedrockService", "Clean JSON: $cleanJson")
+                jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson) // Implicitly returned
+            } else {
+                Log.e("BedrockError", "AI returned invalid format: $rawText")
+                GeneratedPlanResponse(explanation = "Error: AI response format invalid.") // Implicitly returned
+            }
 
         } catch (e: Exception) {
             Log.e("BedrockError", "Error invoking model", e)
-            return GeneratedPlanResponse(explanation = "Error: ${e.localizedMessage}")
+            GeneratedPlanResponse(explanation = "Error: ${e.localizedMessage}")
         }
     }
 }
