@@ -5,7 +5,6 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface WorkoutDao {
-    // --- READS ---
     @Query("SELECT * FROM exercises")
     fun getAllExercises(): Flow<List<ExerciseEntity>>
 
@@ -15,13 +14,9 @@ interface WorkoutDao {
     @Query("SELECT * FROM exercises")
     suspend fun getAllExercisesOneShot(): List<ExerciseEntity>
 
-    // --- UPDATED SWAP QUERY: Matches Major Muscle instead of Muscle Group ---
+    // --- FIX FOR SWAP LOGIC ---
     @Query("SELECT * FROM exercises WHERE majorMuscle = :majorMuscle AND exerciseId != :currentId")
     suspend fun getAlternativesByMajorMuscle(majorMuscle: String, currentId: Long): List<ExerciseEntity>
-
-    // Keep this for broader queries if needed, but not for swapping
-    @Query("SELECT * FROM exercises WHERE muscleGroup = :muscleGroup")
-    suspend fun getExercisesByGroup(muscleGroup: String): List<ExerciseEntity>
 
     @Query("SELECT * FROM daily_workouts WHERE workoutId = :workoutId")
     suspend fun getWorkoutById(workoutId: Long): DailyWorkoutEntity?
@@ -46,26 +41,11 @@ interface WorkoutDao {
     @Query("SELECT * FROM completed_workouts WHERE exerciseId = :exerciseId")
     fun getCompletedWorkoutsForExercise(exerciseId: Long): Flow<List<CompletedWorkoutWithExercise>>
 
-    @Query("SELECT * FROM exercises WHERE name = :name LIMIT 1")
-    suspend fun getExerciseByName(name: String): ExerciseEntity?
-
     @Query("SELECT * FROM daily_workouts WHERE planId = :planId ORDER BY scheduledDate ASC")
     suspend fun getWorkoutsForPlan(planId: Long): List<DailyWorkoutEntity>
 
     @Query("SELECT * FROM workout_sets WHERE workoutId = :workoutId ORDER BY setNumber ASC")
     suspend fun getSetsForWorkoutList(workoutId: Long): List<WorkoutSetEntity>
-
-    @MapInfo(keyColumn = "muscleGroup", valueColumn = "volume")
-    @Query("""
-        SELECT 
-            e.muscleGroup as muscleGroup, 
-            SUM(c.weight * c.reps) as volume 
-        FROM completed_workouts c
-        JOIN exercises e ON c.exerciseId = e.exerciseId
-        WHERE e.muscleGroup IS NOT NULL
-        GROUP BY e.muscleGroup
-    """)
-    fun getVolumeByMuscleGroup(): Flow<Map<String, Double>>
 
     // --- WRITES ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)

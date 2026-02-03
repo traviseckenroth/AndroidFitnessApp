@@ -27,7 +27,7 @@ object AppModule {
             context.applicationContext,
             AppDatabase::class.java,
             // 1. Bump version to force a clean slate (wipes old duplicate data)
-            "workout_db_v20"
+            "workout_db_v21"
         )
             .fallbackToDestructiveMigration(false)
             // 2. REMOVED the .addCallback block entirely to fix the race condition.

@@ -102,7 +102,7 @@ class BedrockClient @Inject constructor() {
         availableExercises: List<ExerciseEntity>,
         userAge: Int,
         userHeight: Int,
-        userWeight: Int
+        userWeight: Double
     ): GeneratedPlanResponse {
 
         try {

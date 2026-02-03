@@ -5,10 +5,10 @@ import com.example.myapplication.data.local.CompletedWorkoutEntity
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
 import com.example.myapplication.data.local.DailyWorkoutEntity
 import com.example.myapplication.data.local.ExerciseEntity
-import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.local.WorkoutDao
 import com.example.myapplication.data.local.WorkoutPlanEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
+import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.remote.BedrockClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -23,7 +23,7 @@ class WorkoutRepository @Inject constructor(
     private val userPrefs: UserPreferencesRepository,
     private val bedrockClient: BedrockClient
 ) {
-    // --- READS (No Changes) ---
+    // --- READS ---
     fun getWorkoutForDate(date: Long): Flow<DailyWorkoutEntity?> {
         val cal = Calendar.getInstance().apply {
             timeInMillis = date
@@ -50,7 +50,7 @@ class WorkoutRepository @Inject constructor(
     fun getUserAge(): Flow<Int> = userPrefs.userAge
     suspend fun saveBiometrics(height: Int, weight: Double, age: Int) = userPrefs.saveBiometrics(height, weight, age)
 
-    // --- PLAN GENERATION (No Changes) ---
+    // --- PLAN GENERATION ---
     suspend fun generateAndSavePlan(
         goal: String,
         duration: Int,
@@ -61,7 +61,7 @@ class WorkoutRepository @Inject constructor(
 
         val workoutHistory = workoutDao.getCompletedWorkoutsWithExercise().first()
         val availableExercises = workoutDao.getAllExercises().first()
-        // --- FETCH BIOMETRICS ---
+
         val height = userPrefs.userHeight.first()
         val weight = userPrefs.userWeight.first()
         val age = userPrefs.userAge.first()
@@ -74,7 +74,7 @@ class WorkoutRepository @Inject constructor(
             workoutHistory = workoutHistory,
             availableExercises = availableExercises,
             userHeight = height,
-            userWeight = weight.toInt(),
+            userWeight = weight, // Fixed: Pass as Double
             userAge = age
         )
 
@@ -226,7 +226,7 @@ class WorkoutRepository @Inject constructor(
         return cal.timeInMillis
     }
 
-    // --- UPDATED COMPLETE FUNCTION ---
+    // --- WORKOUT COMPLETION & AUTO-REGULATION ---
     suspend fun completeWorkout(workoutId: Long): List<String> {
         val workout = workoutDao.getWorkoutById(workoutId) ?: return emptyList()
         val sets = workoutDao.getSetsForWorkoutList(workoutId)
@@ -249,7 +249,7 @@ class WorkoutRepository @Inject constructor(
         // 2. Mark as Complete
         workoutDao.markWorkoutAsComplete(workoutId)
 
-        // 3. Run Optimization and return the Report
+        // 3. Run Optimization
         return autoRegulateFutureWorkouts(workout.planId, sets, workout.scheduledDate)
     }
 
@@ -271,10 +271,7 @@ class WorkoutRepository @Inject constructor(
 
         if (futureWorkouts.isEmpty()) return emptyList()
 
-        // Cache Exercise Names for the report
         val exercisesMap = workoutDao.getAllExercisesOneShot().associateBy { it.exerciseId }
-
-        // Track which exercises we already adjusted to avoid duplicate logs
         val adjustedExerciseIds = mutableSetOf<Long>()
 
         futureWorkouts.forEach { futureWorkout ->
@@ -297,8 +294,6 @@ class WorkoutRepository @Inject constructor(
 
                     if (newWeight != targetSet.suggestedLbs) {
                         hasUpdates = true
-
-                        // Log only once per exercise
                         if (!adjustedExerciseIds.contains(targetSet.exerciseId)) {
                             val exName = exercisesMap[targetSet.exerciseId]?.name ?: "Exercise"
                             val direction = if (newWeight > targetSet.suggestedLbs) "Increased" else "Decreased"
@@ -306,7 +301,6 @@ class WorkoutRepository @Inject constructor(
                             adjustmentLogs.add("$exName: $direction load ($reason)")
                             adjustedExerciseIds.add(targetSet.exerciseId)
                         }
-
                         targetSet.copy(suggestedLbs = newWeight)
                     } else {
                         targetSet
@@ -323,21 +317,18 @@ class WorkoutRepository @Inject constructor(
         return adjustmentLogs
     }
 
+    // --- SWAP LOGIC (Using Major Muscle) ---
     suspend fun getBestAlternatives(currentExercise: ExerciseEntity): List<ExerciseEntity> {
-        val majorMuscle = currentExercise.majorMuscle // Guaranteed non-null in new entity
+        val majorMuscle = currentExercise.majorMuscle
 
-        // Query exercises that share the MAJOR muscle (e.g., Hamstrings)
         val candidates = workoutDao.getAlternativesByMajorMuscle(majorMuscle, currentExercise.exerciseId)
 
         return candidates
             .distinctBy { it.name }
             .sortedWith(compareBy(
-                // 1. Prioritize same Tier (Compound vs Isolation)
                 { it.tier != currentExercise.tier },
-                // 2. Prioritize different Equipment (for availability swaps)
                 { it.equipment == currentExercise.equipment }
-            ))
-            .take(2)
+            )).take(2)
     }
 
     suspend fun swapExercise(workoutId: Long, oldExerciseId: Long, newExerciseId: Long) {

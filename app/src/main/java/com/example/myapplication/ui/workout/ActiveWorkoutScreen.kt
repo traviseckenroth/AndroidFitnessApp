@@ -239,28 +239,51 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, viewModel: ActiveSessionViewMo
             value = weightText,
             onValueChange = { weightText = it },
             modifier = Modifier.weight(1f).onFocusChanged { if(!it.isFocused) viewModel.updateSetWeight(set, weightText) },
-            placeholder = { Text(set.suggestedLbs.toString(), color = Color.DarkGray) },
+            // Brighter placeholder for better visibility
+            placeholder = { Text(set.suggestedLbs.toString(), color = Color.LightGray) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
-            colors = TextFieldDefaults.colors(unfocusedContainerColor = Color.Transparent, focusedContainerColor = Color.Transparent)
+            // Explicitly set text color to white
+            colors = TextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                unfocusedContainerColor = Color.Transparent,
+                focusedContainerColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Gray,
+                focusedIndicatorColor = MaterialTheme.colorScheme.primary
+            )
         )
 
         TextField(
             value = repsText,
             onValueChange = { repsText = it },
             modifier = Modifier.weight(1f).onFocusChanged { if(!it.isFocused) viewModel.updateSetReps(set, repsText) },
-            placeholder = { Text(set.suggestedReps.toString(), color = Color.DarkGray) },
+            placeholder = { Text(set.suggestedReps.toString(), color = Color.LightGray) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
-            colors = TextFieldDefaults.colors(unfocusedContainerColor = Color.Transparent, focusedContainerColor = Color.Transparent)
+            colors = TextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                unfocusedContainerColor = Color.Transparent,
+                focusedContainerColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Gray,
+                focusedIndicatorColor = MaterialTheme.colorScheme.primary
+            )
         )
 
         TextField(
             value = rpeText,
             onValueChange = { rpeText = it },
             modifier = Modifier.weight(1f).onFocusChanged { if(!it.isFocused) viewModel.updateSetRpe(set, rpeText) },
-            placeholder = { Text("0", color = Color.DarkGray) },
+            placeholder = { Text("0", color = Color.LightGray) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-            colors = TextFieldDefaults.colors(unfocusedContainerColor = Color.Transparent, focusedContainerColor = Color.Transparent)
+            colors = TextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                unfocusedContainerColor = Color.Transparent,
+                focusedContainerColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Gray,
+                focusedIndicatorColor = MaterialTheme.colorScheme.primary
+            )
         )
 
         Checkbox(
@@ -277,11 +300,28 @@ fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
     val minutes = timerState.remainingTime / 60
     val seconds = timerState.remainingTime % 60
 
-    if (timerState.remainingTime > 0 || timerState.isRunning) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
-            Text(text = String.format("%02d:%02d", minutes, seconds), fontSize = 32.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            TextButton(onClick = { viewModel.skipSetTimer(exerciseState.exercise.exerciseId) }) {
-                Text("Skip Rest")
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+    ) {
+        // Display formatted time
+        Text(
+            text = String.format("%02d:%02d", minutes, seconds),
+            fontSize = 48.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (timerState.isRunning) MaterialTheme.colorScheme.primary else Color.Gray
+        )
+
+        Row {
+            // FIX: Ensure the button triggers the correct ViewModel logic
+            Button(onClick = {
+                if (timerState.isRunning) {
+                    viewModel.skipSetTimer(exerciseState.exercise.exerciseId)
+                } else {
+                    viewModel.startSetTimer(exerciseState.exercise.exerciseId)
+                }
+            }) {
+                Text(if (timerState.isRunning) "Skip Rest" else "Start Timer")
             }
         }
     }
@@ -322,8 +362,16 @@ fun WorkoutSummaryDialog(report: List<String>, onDismiss: () -> Unit) {
 fun RpeInfoDialog(onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("RPE Guide") },
-        text = { Text("10: Failure\n9: 1 rep left\n8: 2 reps left\n7: 3 reps left") },
-        confirmButton = { Button(onClick = onDismiss) { Text("Got it") } }
+        title = { Text("RPE Scale (1-10)") },
+        text = {
+            Column {
+                Text("10: Max Effort (0 reps left)")
+                Text("9: Heavy (1 rep left)")
+                Text("8: Moderate-Heavy (2 reps left)")
+                Text("7: Moderate (3 reps left)")
+                Text("6: Light (4+ reps left)")
+            }
+        },
+        confirmButton = { Button(onClick = onDismiss) { Text("Close") } }
     )
 }

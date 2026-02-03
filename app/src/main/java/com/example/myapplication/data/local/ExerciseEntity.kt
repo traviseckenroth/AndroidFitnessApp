@@ -11,9 +11,9 @@ import androidx.room.Relation
 data class ExerciseEntity(
     @PrimaryKey(autoGenerate = true) val exerciseId: Long = 0,
     val name: String,
-    val muscleGroup: String?, // Keeps "Legs", "Chest", etc. for broad categorization
-    val majorMuscle: String,  // NEW: "Quads", "Hamstrings", "Lats", etc. for Swapping
-    val minorMuscle: String? = null, // NEW: "Glutes", "Triceps", etc. for display/logic
+    val muscleGroup: String?, // "Legs", "Back"
+    val majorMuscle: String,  // "Quads", "Lats" (NEW - For Swaps)
+    val minorMuscle: String? = null, // "Glutes", "Biceps" (NEW)
     val equipment: String?,
     val tier: Int,
     val loadability: String?,
@@ -24,7 +24,7 @@ data class ExerciseEntity(
     val videoUrl: String? = null
 )
 
-// ... (Rest of the file: WorkoutPlanEntity, DailyWorkoutEntity, etc. remain unchanged) ...
+// ... WorkoutPlanEntity, DailyWorkoutEntity, etc. (No changes needed) ...
 @Entity(tableName = "plans")
 data class WorkoutPlanEntity(
     @PrimaryKey(autoGenerate = true) val planId: Long = 0,

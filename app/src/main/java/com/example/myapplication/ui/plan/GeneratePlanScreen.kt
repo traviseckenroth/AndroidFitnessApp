@@ -110,26 +110,64 @@ fun PlanInputForm(
     onGenerateClick: () -> Unit, onManualCreateClick: () -> Unit,
     isLoading: Boolean
 ) {
-    // ... [Same Inputs as before: TextField, Dropdown, Slider, Chips] ...
-    // (Pasting abbreviated version to save space, logic is identical to your previous file)
-    OutlinedTextField(value = goalInput, onValueChange = onGoalChange, label = { Text("Goal") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(
+        value = goalInput,
+        onValueChange = onGoalChange,
+        label = { Text("Goal (e.g., 'Bigger Chest')") },
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    // PROGRAM SELECTION
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         Box(modifier = Modifier.weight(1f)) {
-            OutlinedButton(onClick = { onDropdownExpand(true) }, modifier = Modifier.fillMaxWidth()) { Text(selectedProgram) }
+            OutlinedButton(onClick = { onDropdownExpand(true) }, modifier = Modifier.fillMaxWidth()) {
+                Text(selectedProgram)
+            }
             DropdownMenu(expanded = isDropdownExpanded, onDismissRequest = { onDropdownExpand(false) }) {
-                programs.forEach { prog -> DropdownMenuItem(text = { Text(prog) }, onClick = { onProgramChange(prog); onDropdownExpand(false) }) }
+                programs.forEach { prog ->
+                    DropdownMenuItem(text = { Text(prog) }, onClick = { onProgramChange(prog); onDropdownExpand(false) })
+                }
             }
         }
     }
-    Text("Days:", style = MaterialTheme.typography.labelMedium)
+
+    // DURATION SLIDER (Re-added)
+    Spacer(modifier = Modifier.height(8.dp))
+    Text("Session Duration: ${durationHours} Hours", style = MaterialTheme.typography.labelMedium)
+    Slider(
+        value = durationHours,
+        onValueChange = onDurationChange,
+        valueRange = 0.5f..2.0f,
+        steps = 2 // Steps: 0.5, 1.0, 1.5, 2.0
+    )
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    // DAYS SELECTION
+    Text("Days Available:", style = MaterialTheme.typography.labelMedium)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         daysOfWeek.forEach { day ->
-            FilterChip(selected = selectedDays.contains(day), onClick = { onDaySelected(day) }, label = { Text(day) })
+            FilterChip(
+                selected = selectedDays.contains(day),
+                onClick = { onDaySelected(day) },
+                label = { Text(day) }
+            )
         }
     }
-    Spacer(modifier = Modifier.height(16.dp))
+
+    Spacer(modifier = Modifier.height(24.dp))
+
     Button(onClick = onGenerateClick, enabled = !isLoading, modifier = Modifier.fillMaxWidth()) {
-        if (isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White) else Text("AI Generate")
+        if (isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+        else Text("Generate Plan with AI")
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    TextButton(onClick = onManualCreateClick, modifier = Modifier.fillMaxWidth()) {
+        Text("Create Manual Plan")
     }
 }
 

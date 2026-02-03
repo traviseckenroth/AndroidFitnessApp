@@ -82,7 +82,9 @@ class ActiveSessionViewModel @Inject constructor(
         viewModelScope.launch {
             combine(_exercises, _sets) { allExercises, sessionSets ->
                 val sessionExerciseIds = sessionSets.map { it.exerciseId }.toSet()
-                val sessionExercises = allExercises.filter { it.exerciseId in sessionExerciseIds }
+                val sessionExercises = allExercises
+                    .filter { it.exerciseId in sessionExerciseIds }
+                    .sortedBy { it.tier }
 
                 if (sessionExercises.isNotEmpty() && sessionSets.isNotEmpty()) {
                     _coachBriefing.value = generateCoachBriefing(sessionExercises, sessionSets)
@@ -163,28 +165,72 @@ class ActiveSessionViewModel @Inject constructor(
     }
 
     fun startSetTimer(exerciseId: Long) {
-        timerJobs[exerciseId]?.cancel()
+        // Avoid multiple overlapping timers for the same exercise
+        if (timerJobs[exerciseId]?.isActive == true) return
+
         timerJobs[exerciseId] = viewModelScope.launch {
             val exerciseState = _exerciseStates.value.find { it.exercise.exerciseId == exerciseId } ?: return@launch
+            val sets = exerciseState.sets
+            // Tier-based rest time: estimatedTimePerSet is used as the baseline
             val restTime = (exerciseState.exercise.estimatedTimePerSet * 60).toLong()
-            val totalSets = exerciseState.sets.size
-            var setsCompleted = 1
 
-            while (isActive && setsCompleted <= totalSets) {
+            for (index in sets.indices) {
+                val currentSet = sets[index]
+
+                // Auto-advance: skip sets that are already finished
+                if (currentSet.isCompleted) continue
+
                 var remainingTime = restTime
                 updateTimerState(exerciseId, remainingTime, isRunning = true, isFinished = false)
 
+                // Standard countdown loop
                 while (remainingTime > 0 && isActive) {
                     delay(1000)
                     remainingTime--
                     updateTimerState(exerciseId, remainingTime, isRunning = true, isFinished = false)
                 }
 
-                if (setsCompleted == totalSets) {
-                    updateTimerState(exerciseId, 0, isRunning = false, isFinished = true)
-                    break
-                } else {
-                    setsCompleted++
+                // Post-countdown logic
+                if (isActive) {
+                    // Automatically record set completion in the DB
+                    updateSetCompletion(currentSet, true)
+
+                    // If it's the final set, stop and mark finished
+                    if (index == sets.lastIndex) {
+                        updateTimerState(exerciseId, 0, isRunning = false, isFinished = true)
+                        break
+                    }
+                    // Loop continues to next set automatically
+                }
+            }
+        }
+    }
+
+    fun skipSetTimer(exerciseId: Long) {
+        // Instead of cancelling the job (which kills the loop),
+        // we start a new job that just forces the state to 0.
+        // The startSetTimer loop is designed to continue when remainingTime reaches 0.
+
+        val currentState = _exerciseStates.value.find { it.exercise.exerciseId == exerciseId }
+        if (currentState != null && currentState.timerState.isRunning) {
+            // We cancel the current countdown job
+            timerJobs[exerciseId]?.cancel()
+
+            // We immediately mark the current set as complete and trigger the NEXT timer
+            viewModelScope.launch {
+                val sets = currentState.sets
+                val currentSetIndex = sets.indexOfFirst { !it.isCompleted }
+
+                if (currentSetIndex != -1) {
+                    val currentSet = sets[currentSetIndex]
+                    updateSetCompletion(currentSet, true)
+
+                    // If not the last set, restart timer for the next set immediately
+                    if (currentSetIndex < sets.lastIndex) {
+                        startSetTimer(exerciseId)
+                    } else {
+                        updateTimerState(exerciseId, 0, isRunning = false, isFinished = true)
+                    }
                 }
             }
         }
@@ -198,26 +244,9 @@ class ActiveSessionViewModel @Inject constructor(
                     isRunning = isRunning,
                     isFinished = isFinished
                 ))
-            } else {
-                it
-            }
+            } else it
         }
     }
-
-    fun skipSetTimer(exerciseId: Long) {
-        timerJobs[exerciseId]?.cancel()
-        timerJobs.remove(exerciseId)
-        viewModelScope.launch {
-            _exerciseStates.value = _exerciseStates.value.map {
-                if (it.exercise.exerciseId == exerciseId) {
-                    it.copy(timerState = it.timerState.copy(isRunning = false, remainingTime = 0, isFinished = false))
-                } else {
-                    it
-                }
-            }
-        }
-    }
-
     fun finishWorkout(workoutId: Long) {
         viewModelScope.launch {
             val report = repository.completeWorkout(workoutId)
