@@ -3,7 +3,6 @@ package com.example.myapplication.ui.camera
 import android.Manifest
 import android.content.pm.PackageManager
 import android.util.Log
-import android.view.ViewGroup
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -34,6 +33,7 @@ import java.util.concurrent.Executors
 
 @Composable
 fun CameraFormCheckScreen(
+    exerciseName: String,
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
@@ -73,10 +73,9 @@ fun CameraFormCheckScreen(
                     }
 
                     // 1. Create Analyzer ONCE (not every frame)
-                    val analyzer = SquatAnalyzer { feedback ->
-                        // Update state on UI thread
+                    val analyzer = FormAnalyzer(exerciseName) { feedback ->
                         feedbackText = feedback
-                        isGoodRep = feedback.contains("Excellent", ignoreCase = true)
+                        isGoodRep = feedback.contains("Excellent", true) || feedback.contains("Good", true)
                     }
 
                     val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)

@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Videocam // <--- NEW IMPORT
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,7 +35,9 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
+import com.example.myapplication.ui.camera.CameraFormCheckScreen // <--- NEW IMPORT
 import kotlinx.coroutines.launch
+import com.example.myapplication.ui.camera.FormAnalyzer
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,8 +50,20 @@ fun ActiveWorkoutScreen(
     val coachBriefing by viewModel.coachBriefing.collectAsState()
     val workoutSummary by viewModel.workoutSummary.collectAsState()
 
+    var activeCameraExercise by remember { mutableStateOf<String?>(null) }
+
     LaunchedEffect(workoutId) {
         viewModel.loadWorkout(workoutId)
+    }
+
+    if (activeCameraExercise != null) {
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+            CameraFormCheckScreen(
+                exerciseName = activeCameraExercise!!,
+                onClose = { activeCameraExercise = null }
+            )
+        }
+        return // Return early to hide underlying UI
     }
 
     if (workoutSummary != null) {
@@ -69,7 +84,8 @@ fun ActiveWorkoutScreen(
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                }
+                },
+
             )
         }
     ) { padding ->
@@ -93,7 +109,11 @@ fun ActiveWorkoutScreen(
                     ExerciseHeader(
                         exerciseState = exerciseState,
                         viewModel = viewModel,
-                        onToggleVisibility = { viewModel.toggleExerciseVisibility(exerciseState.exercise.exerciseId) }
+                        onToggleVisibility = { viewModel.toggleExerciseVisibility(exerciseState.exercise.exerciseId) },
+                        // PASS THE CAMERA TRIGGER:
+                        onLaunchCamera = {
+                            activeCameraExercise = exerciseState.exercise.name
+                        }
                     )
                     Spacer(modifier = Modifier.height(16.dp))
 
@@ -117,11 +137,13 @@ fun ActiveWorkoutScreen(
     }
 }
 
+// ... (Rest of the file remains exactly the same: ExerciseHeader, SetsTable, etc.) ...
 @Composable
 fun ExerciseHeader(
     exerciseState: ExerciseState,
     viewModel: ActiveSessionViewModel,
-    onToggleVisibility: () -> Unit
+    onToggleVisibility: () -> Unit,
+    onLaunchCamera: () -> Unit
 ) {
     val exercise = exerciseState.exercise
     var showDescriptionDialog by remember { mutableStateOf(false) }
@@ -187,15 +209,36 @@ fun ExerciseHeader(
                     modifier = Modifier.weight(1f, fill = false)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                IconButton(onClick = { showDescriptionDialog = true }) {
+// 1. Info Button
+                IconButton(
+                    onClick = { showDescriptionDialog = true },
+                    modifier = Modifier.size(24.dp) // <--- Added for consistency
+                ) {
                     Icon(Icons.Default.Help, contentDescription = "Info", tint = MaterialTheme.colorScheme.primary)
                 }
-                IconButton(onClick = {
-                    scope.launch {
-                        alternatives = viewModel.getTopAlternatives(exercise)
-                        showSwapDialog = true
+
+                // 2. AI CAMERA BUTTON (Conditional)
+                if (FormAnalyzer.isSupported(exercise.name)) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(
+                        onClick = onLaunchCamera,
+                        modifier = Modifier.size(24.dp) // This matches the others now
+                    ) {
+                        Icon(Icons.Default.Videocam, "Form Check", tint = MaterialTheme.colorScheme.error)
                     }
-                }) {
+                }
+
+                // 3. Swap Button
+                Spacer(modifier = Modifier.width(8.dp)) // Add spacing before swap
+                IconButton(
+                    onClick = {
+                        scope.launch {
+                            alternatives = viewModel.getTopAlternatives(exercise)
+                            showSwapDialog = true
+                        }
+                    },
+                    modifier = Modifier.size(24.dp) // <--- Added for consistency
+                ) {
                     Icon(Icons.Default.SwapHoriz, contentDescription = "Swap", tint = MaterialTheme.colorScheme.primary)
                 }
             }
@@ -255,7 +298,6 @@ fun SetRow(set: WorkoutSetEntity, viewModel: ActiveSessionViewModel) {
     val backgroundColor = if (set.isCompleted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
     val focusManager = LocalFocusManager.current
 
-    // Use safe access and Elvis operator to handle null values from the database
     var weightText by remember(set.actualLbs) {
         mutableStateOf(
             if ((set.actualLbs ?: 0f) > 0f) set.actualLbs?.toInt().toString() else ""
@@ -332,6 +374,7 @@ fun SetRow(set: WorkoutSetEntity, viewModel: ActiveSessionViewModel) {
         )
     }
 }
+
 @Composable
 fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
     val timerState = exerciseState.timerState

@@ -15,10 +15,16 @@ interface WorkoutDao {
     @Query("SELECT * FROM exercises")
     suspend fun getAllExercisesOneShot(): List<ExerciseEntity>
 
-    // --- ADDED THIS QUERY ---
+    // --- UPDATED SWAP QUERY: Matches Major Muscle instead of Muscle Group ---
+    @Query("SELECT * FROM exercises WHERE majorMuscle = :majorMuscle AND exerciseId != :currentId")
+    suspend fun getAlternativesByMajorMuscle(majorMuscle: String, currentId: Long): List<ExerciseEntity>
+
+    // Keep this for broader queries if needed, but not for swapping
+    @Query("SELECT * FROM exercises WHERE muscleGroup = :muscleGroup")
+    suspend fun getExercisesByGroup(muscleGroup: String): List<ExerciseEntity>
+
     @Query("SELECT * FROM daily_workouts WHERE workoutId = :workoutId")
     suspend fun getWorkoutById(workoutId: Long): DailyWorkoutEntity?
-    // ------------------------
 
     @Query("SELECT * FROM daily_workouts WHERE scheduledDate >= :startOfDay AND scheduledDate < :endOfDay LIMIT 1")
     fun getWorkoutByDate(startOfDay: Long, endOfDay: Long): Flow<DailyWorkoutEntity?>
@@ -29,6 +35,9 @@ interface WorkoutDao {
     @Query("SELECT * FROM workout_sets WHERE workoutId = :workoutId ORDER BY exerciseId, setNumber")
     fun getSetsForWorkout(workoutId: Long): Flow<List<WorkoutSetEntity>>
 
+    @Query("SELECT * FROM daily_workouts WHERE isCompleted = 1 ORDER BY scheduledDate DESC")
+    fun getCompletedWorkouts(): Flow<List<DailyWorkoutEntity>>
+
     @Transaction
     @Query("SELECT * FROM completed_workouts")
     fun getCompletedWorkoutsWithExercise(): Flow<List<CompletedWorkoutWithExercise>>
@@ -37,12 +46,26 @@ interface WorkoutDao {
     @Query("SELECT * FROM completed_workouts WHERE exerciseId = :exerciseId")
     fun getCompletedWorkoutsForExercise(exerciseId: Long): Flow<List<CompletedWorkoutWithExercise>>
 
-    // --- NEW QUERIES FOR UI DISPLAY ---
+    @Query("SELECT * FROM exercises WHERE name = :name LIMIT 1")
+    suspend fun getExerciseByName(name: String): ExerciseEntity?
+
     @Query("SELECT * FROM daily_workouts WHERE planId = :planId ORDER BY scheduledDate ASC")
     suspend fun getWorkoutsForPlan(planId: Long): List<DailyWorkoutEntity>
 
     @Query("SELECT * FROM workout_sets WHERE workoutId = :workoutId ORDER BY setNumber ASC")
     suspend fun getSetsForWorkoutList(workoutId: Long): List<WorkoutSetEntity>
+
+    @MapInfo(keyColumn = "muscleGroup", valueColumn = "volume")
+    @Query("""
+        SELECT 
+            e.muscleGroup as muscleGroup, 
+            SUM(c.weight * c.reps) as volume 
+        FROM completed_workouts c
+        JOIN exercises e ON c.exerciseId = e.exerciseId
+        WHERE e.muscleGroup IS NOT NULL
+        GROUP BY e.muscleGroup
+    """)
+    fun getVolumeByMuscleGroup(): Flow<Map<String, Double>>
 
     // --- WRITES ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -63,12 +86,6 @@ interface WorkoutDao {
     @Update
     suspend fun updateSet(set: WorkoutSetEntity): Int
 
-    // In WorkoutDao.kt
-    // In WorkoutDao.kt
-    @Query("SELECT * FROM exercises WHERE muscleGroup = :muscleGroup AND exerciseId != :currentId")
-    suspend fun getCandidatesByMuscleGroup(muscleGroup: String, currentId: Long): List<ExerciseEntity>
-
-    // FIX: Change return type from Unit (implied) to Int
     @Query("UPDATE workout_sets SET exerciseId = :newExerciseId WHERE workoutId = :workoutId AND exerciseId = :oldExerciseId")
     suspend fun swapExerciseInSets(workoutId: Long, oldExerciseId: Long, newExerciseId: Long): Int
 

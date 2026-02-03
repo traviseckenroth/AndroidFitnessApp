@@ -317,16 +317,20 @@ class WorkoutRepository @Inject constructor(
     }
 
     suspend fun getBestAlternatives(currentExercise: ExerciseEntity): List<ExerciseEntity> {
-        // Provide a default empty string if muscleGroup is null to satisfy the DAO requirement
-        val muscleGroup = currentExercise.muscleGroup ?: ""
+        val majorMuscle = currentExercise.majorMuscle // Guaranteed non-null in new entity
 
-        val candidates = workoutDao.getCandidatesByMuscleGroup(muscleGroup, currentExercise.exerciseId)
+        // Query exercises that share the MAJOR muscle (e.g., Hamstrings)
+        val candidates = workoutDao.getAlternativesByMajorMuscle(majorMuscle, currentExercise.exerciseId)
 
-        return candidates.sortedWith(compareBy(
-            { it.tier != currentExercise.tier },
-            // Use safe comparison for equipment as well, which is also nullable in ExerciseEntity
-            { it.equipment == currentExercise.equipment }
-        )).take(2)
+        return candidates
+            .distinctBy { it.name }
+            .sortedWith(compareBy(
+                // 1. Prioritize same Tier (Compound vs Isolation)
+                { it.tier != currentExercise.tier },
+                // 2. Prioritize different Equipment (for availability swaps)
+                { it.equipment == currentExercise.equipment }
+            ))
+            .take(2)
     }
 
     suspend fun swapExercise(workoutId: Long, oldExerciseId: Long, newExerciseId: Long) {
