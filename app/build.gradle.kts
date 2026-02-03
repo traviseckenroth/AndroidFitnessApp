@@ -9,7 +9,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.hilt.android)
     alias(libs.plugins.compose.compiler)
-
+    id("com.google.gms.google-services")
 }
 
 // --- Load Secrets from local.properties ---
@@ -108,7 +108,15 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.androidx.datastore.preferences)
+// CameraX for live preview
+    val cameraxVersion = "1.3.1"
+    implementation("androidx.camera:camera-core:$cameraxVersion")
+    implementation("androidx.camera:camera-camera2:$cameraxVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
+    implementation("androidx.camera:camera-view:$cameraxVersion")
 
+    // FIX: Use the Beta version (Stable 18.0.0 does not exist yet)
+    implementation("com.google.mlkit:pose-detection-accurate:18.0.0-beta5")
     // --- Testing ---
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
