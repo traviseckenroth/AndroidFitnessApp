@@ -1,22 +1,23 @@
 package com.example.myapplication.ui.workout
 
 import android.app.Application
-import android.content.Intent // <--- NEW IMPORTS
+import android.content.Intent
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
+import com.example.myapplication.data.repository.HealthConnectManager
 import com.example.myapplication.data.repository.WorkoutRepository
-import com.example.myapplication.service.WorkoutTimerService // <--- IMPORT YOUR SERVICE
+import com.example.myapplication.service.WorkoutTimerService
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Job
-// import kotlinx.coroutines.delay // <--- REMOVED (Service handles ticking)
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.isActive // <--- REMOVED
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
 data class ExerciseTimerState(
@@ -35,7 +36,8 @@ data class ExerciseState(
 @HiltViewModel
 class ActiveSessionViewModel @Inject constructor(
     private val repository: WorkoutRepository,
-    private val application: Application
+    private val application: Application,
+    private val healthConnectManager: HealthConnectManager
 ) : ViewModel() {
 
     private val _workoutId = MutableStateFlow<Long>(-1)
@@ -50,11 +52,13 @@ class ActiveSessionViewModel @Inject constructor(
     private val _workoutSummary = MutableStateFlow<List<String>?>(null)
     val workoutSummary: StateFlow<List<String>?> = _workoutSummary
 
-    // private val timerJobs = mutableMapOf<Long, Job>() // <--- REMOVED (No longer managing jobs manually)
+    // Track workout start time for Health Connect
+    private var workoutStartTime: Instant = Instant.now()
 
     init {
-        // --- NEW: LISTEN TO THE SERVICE ---
-        // This ensures that even if the app restarts, the UI picks up the running timer immediately.
+        workoutStartTime = Instant.now()
+
+        // --- LISTEN TO TIMER SERVICE ---
         viewModelScope.launch {
             WorkoutTimerService.timerState.collect { serviceState ->
                 updateLocalTimerState(
@@ -64,8 +68,8 @@ class ActiveSessionViewModel @Inject constructor(
                 )
             }
         }
-        // ----------------------------------
 
+        // --- LOAD DATA ---
         viewModelScope.launch {
             _workoutId.collectLatest { id ->
                 if (id != -1L) {
@@ -130,14 +134,12 @@ class ActiveSessionViewModel @Inject constructor(
         }
     }
 
-    // ... (Keep loadWorkout, updateSetCompletion, updateSetReps, updateSetWeight, updateSetRpe, swapExercise, getTopAlternatives, toggleExerciseVisibility, addWarmUpSets exactly as they are) ...
+    // --- STANDARD OPERATIONS ---
 
     fun loadWorkout(workoutId: Long) { _workoutId.value = workoutId }
 
     fun updateSetCompletion(set: WorkoutSetEntity, isCompleted: Boolean) {
         viewModelScope.launch { repository.updateSet(set.copy(isCompleted = isCompleted)) }
-        // Optional: Auto-start timer when set is checked
-        // if(isCompleted) startSetTimer(set.parentExerciseId)
     }
 
     fun updateSetReps(set: WorkoutSetEntity, newReps: String) {
@@ -178,14 +180,12 @@ class ActiveSessionViewModel @Inject constructor(
         }
     }
 
-    // --- UPDATED TIMER LOGIC (Using Service) ---
+    // --- TIMER LOGIC (Using Foreground Service) ---
 
     fun startSetTimer(exerciseId: Long) {
-        // Find the duration based on the exercise
         val exerciseState = _exerciseStates.value.find { it.exercise.exerciseId == exerciseId } ?: return
         val durationSeconds = (exerciseState.exercise.estimatedTimePerSet * 60).toInt()
 
-        // Send "Start" command to the Foreground Service
         val intent = Intent(application, WorkoutTimerService::class.java).apply {
             action = WorkoutTimerService.ACTION_START
             putExtra(WorkoutTimerService.EXTRA_SECONDS, durationSeconds)
@@ -195,26 +195,21 @@ class ActiveSessionViewModel @Inject constructor(
     }
 
     fun skipSetTimer(exerciseId: Long) {
-        // Send "Stop" command to the Foreground Service
         val intent = Intent(application, WorkoutTimerService::class.java).apply {
             action = WorkoutTimerService.ACTION_STOP
         }
         application.startService(intent)
     }
 
-    // --- NEW: Helper to update UI based on Service State ---
     private fun updateLocalTimerState(activeExerciseId: Long?, remainingTime: Long, isRunning: Boolean) {
         _exerciseStates.value = _exerciseStates.value.map { state ->
             if (state.exercise.exerciseId == activeExerciseId) {
-                // This is the active timer
                 state.copy(timerState = ExerciseTimerState(
                     remainingTime = remainingTime,
                     isRunning = isRunning,
                     isFinished = !isRunning && remainingTime == 0L
                 ))
             } else {
-                // This is NOT the active timer, ensure it looks idle
-                // We keep the default duration if it's idle
                 val defaultDuration = (state.exercise.estimatedTimePerSet * 60).toLong()
                 state.copy(timerState = ExerciseTimerState(
                     remainingTime = defaultDuration,
@@ -225,13 +220,36 @@ class ActiveSessionViewModel @Inject constructor(
         }
     }
 
+    // --- FINISH WORKOUT (Database + Health Connect) ---
+
     fun finishWorkout(workoutId: Long) {
-        // Stop any running timer service
-        skipSetTimer(-1)
+        skipSetTimer(-1) // Stop Service
 
         viewModelScope.launch {
+            // 1. Save to Local DB & Generate Report
             val report = repository.completeWorkout(workoutId)
             _workoutSummary.value = report
+
+            // 2. Health Connect Sync
+            val endTime = Instant.now()
+            val durationMin = ChronoUnit.MINUTES.between(workoutStartTime, endTime)
+            val estimatedCalories = (durationMin * 4.5).coerceAtLeast(10.0) // ~4.5 kcal/min estimate
+
+            try {
+                if (healthConnectManager.hasPermissions()) {
+                    healthConnectManager.writeWorkout(
+                        workoutId = workoutId,
+                        startTime = workoutStartTime,
+                        endTime = endTime,
+                        calories = estimatedCalories,
+                        title = "Strength Workout"
+                    )
+                } else {
+                    Log.d("Workout", "Health Connect permissions missing. Workout saved locally only.")
+                }
+            } catch (e: Exception) {
+                Log.e("Workout", "Failed to sync with Health Connect", e)
+            }
         }
     }
 
@@ -240,7 +258,6 @@ class ActiveSessionViewModel @Inject constructor(
     }
 }
 
-// ... (Keep generateCoachBriefing) ...
 private fun generateCoachBriefing(exercises: List<ExerciseEntity>, sets: List<WorkoutSetEntity>): String {
     if (exercises.isEmpty() || sets.isEmpty()) return "Ready to start your workout?"
     val tier1Count = exercises.count { it.tier == 1 }

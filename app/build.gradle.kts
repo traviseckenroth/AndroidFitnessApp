@@ -98,7 +98,7 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.androidx.hilt.navigation.compose)
-
+    implementation("androidx.health.connect:connect-client:1.1.0-alpha07") // Check for latest version
     // --- AWS SDK for Kotlin ---
     implementation(platform(libs.aws.sdk.kotlin.bom))
 
@@ -119,7 +119,7 @@ dependencies {
 
     // --- Preferences ---
     implementation(libs.androidx.datastore.preferences)
-
+    implementation("com.google.guava:guava:31.1-android")
     // --- CameraX ---
     val cameraxVersion = "1.3.1"
     implementation("androidx.camera:camera-core:$cameraxVersion")

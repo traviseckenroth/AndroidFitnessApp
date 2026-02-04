@@ -1,39 +1,20 @@
 package com.example.myapplication.ui.home
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DirectionsRun
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.FitnessCenter
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.local.DailyWorkoutEntity
@@ -46,44 +27,151 @@ fun HomeScreen(
     onNavigateToWorkout: (Long) -> Unit,
     onNavigateToExerciseList: () -> Unit,
     onManualLogClick: () -> Unit,
-    onWarmUpClick: () -> Unit
+    onWarmUpClick: () -> Unit,
+    onSettingsClick: () -> Unit
 ) {
     val selectedDate by homeViewModel.selectedDate.collectAsState()
     val dailyWorkout by homeViewModel.dailyWorkout.collectAsState()
     val workoutDates by homeViewModel.workoutDates.collectAsState()
+    val isHealthSynced by homeViewModel.isHealthSynced.collectAsState()
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
+    // Refresh sync status every time the screen is composed/returned to
+    LaunchedEffect(Unit) {
+        homeViewModel.checkHealthSyncStatus()
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("My Fitness", style = MaterialTheme.typography.headlineSmall) },
+                actions = {
+                    IconButton(onClick = onSettingsClick) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(16.dp)
+        ) {
+            // Calendar Component
+            InfiniteScrollingCalendar(
+                initialDate = LocalDate.now(),
+                selectedDate = selectedDate,
+                workoutDates = workoutDates,
+                onDateSelected = { newDate -> homeViewModel.updateSelectedDate(newDate) }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // --- HEALTH SYNC STATUS ---
+            HealthSyncCard(
+                isSynced = isHealthSynced,
+                onNavigateToSettings = onSettingsClick
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text("TODAY'S SCHEDULE", style = MaterialTheme.typography.labelLarge)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            dailyWorkout?.let {
+                TodayWorkoutCard(it, onNavigateToWorkout)
+            } ?: NoWorkoutCard()
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text("QUICK ACTIONS", style = MaterialTheme.typography.labelLarge)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            QuickActionsSection(
+                onNavigateToExerciseList = onNavigateToExerciseList,
+                onManualLogClick = onManualLogClick,
+                onWarmUpClick = onWarmUpClick
+            )
+        }
+    }
+}
+
+@Composable
+fun HealthSyncCard(
+    isSynced: Boolean,
+    onNavigateToSettings: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSynced)
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+            else
+                MaterialTheme.colorScheme.surfaceVariant
+        ),
+        onClick = onNavigateToSettings
     ) {
-        InfiniteScrollingCalendar(
-            initialDate = LocalDate.now(),
-            selectedDate = selectedDate,
-            workoutDates = workoutDates,
-            onDateSelected = { newDate -> homeViewModel.updateSelectedDate(newDate) }
-        )
+        Row(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = CircleShape,
+                    color = if (isSynced) Color(0xFFE91E63) else Color.Gray,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Favorite,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
 
-        Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
-        Text("TODAY'S SCHEDULE", style = MaterialTheme.typography.labelLarge)
-        Spacer(modifier = Modifier.height(8.dp))
+                Column {
+                    Text(
+                        text = "Health Connect",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = if (isSynced) "Activity syncing active" else "Not connected to Google Fit",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
 
-        dailyWorkout?.let {
-            TodayWorkoutCard(it, onNavigateToWorkout)
-        } ?: NoWorkoutCard()
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // --- UPDATED QUICK ACTIONS ---
-        Text("QUICK ACTIONS", style = MaterialTheme.typography.labelLarge)
-        Spacer(modifier = Modifier.height(8.dp))
-
-        QuickActionsSection(
-            onNavigateToExerciseList = onNavigateToExerciseList,
-            onManualLogClick = onManualLogClick,
-            onWarmUpClick = onWarmUpClick
-        )
+            if (isSynced) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = "Synced",
+                    tint = Color(0xFF4CAF50),
+                    modifier = Modifier.size(24.dp)
+                )
+            } else {
+                Text(
+                    text = "FIX",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
     }
 }
 
@@ -97,7 +185,6 @@ fun QuickActionsSection(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 1. View Exercises
         QuickActionItem(
             icon = Icons.Default.FitnessCenter,
             label = "Exercises",
@@ -107,7 +194,6 @@ fun QuickActionsSection(
             modifier = Modifier.weight(1f)
         )
 
-        // 2. Log Workout
         QuickActionItem(
             icon = Icons.Default.Edit,
             label = "Log Work",
@@ -117,7 +203,6 @@ fun QuickActionsSection(
             modifier = Modifier.weight(1f)
         )
 
-        // 3. Warm Up
         QuickActionItem(
             icon = Icons.Default.DirectionsRun,
             label = "Warm Up",
@@ -140,7 +225,7 @@ fun QuickActionItem(
 ) {
     Card(
         onClick = onClick,
-        modifier = modifier.height(90.dp), // Slightly compact height
+        modifier = modifier.height(90.dp),
         colors = CardDefaults.cardColors(containerColor = color),
         shape = RoundedCornerShape(16.dp)
     ) {

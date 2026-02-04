@@ -12,6 +12,7 @@ import com.example.myapplication.ui.exercise.ExerciseListScreen
 import com.example.myapplication.ui.exercise_history.ExerciseHistoryScreen
 import com.example.myapplication.ui.home.HomeScreen
 import com.example.myapplication.ui.insights.InsightsScreen
+import com.example.myapplication.ui.settings.SettingsScreen
 import com.example.myapplication.ui.plan.GeneratePlanScreen
 import com.example.myapplication.ui.plan.ManualPlanScreen
 import com.example.myapplication.ui.plan.PlanViewModel
@@ -60,7 +61,18 @@ fun NavGraph(
                 }
             )
         }
-
+        composable("settings") {
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onLogoutSuccess = {
+                    navController.navigate("login") {
+                        // popUpTo(0) removes EVERY screen from the stack including Home
+                        popUpTo(0) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
+            )
+        }
         composable("signup") {
             SignUpScreen(
                 onSignUpSuccess = {
@@ -81,7 +93,8 @@ fun NavGraph(
                 // Quick Actions Mappings:
                 onNavigateToExerciseList = { navController.navigate("exercise_list") },
                 onManualLogClick = { navController.navigate("manual_creator") },
-                onWarmUpClick = { navController.navigate("warm_up") }
+                onWarmUpClick = { navController.navigate("warm_up") },
+                onSettingsClick = { navController.navigate("settings") }
             )
         }
 

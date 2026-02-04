@@ -172,9 +172,9 @@ class AuthRepository @Inject constructor(
     suspend fun getIdToken(): String? = context.authDataStore.data.map { it[ID_TOKEN_KEY] }.first()
 
     suspend fun logout() {
-        context.authDataStore.edit {
-            it.remove(ID_TOKEN_KEY)
-            it.remove(REFRESH_TOKEN_KEY)
+        context.authDataStore.edit { prefs ->
+            prefs.remove(ID_TOKEN_KEY)
+            prefs.remove(REFRESH_TOKEN_KEY) // Essential for "Keep Signed In" to stop
         }
     }
 
