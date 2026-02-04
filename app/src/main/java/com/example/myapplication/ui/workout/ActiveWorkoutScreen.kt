@@ -18,11 +18,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -30,6 +30,7 @@ import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.ui.camera.CameraFormCheckScreen
 import com.example.myapplication.ui.camera.FormAnalyzer
+import com.example.myapplication.util.PlateCalculator
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -50,10 +51,9 @@ fun ActiveWorkoutScreen(
             currentView.keepScreenOn = false
         }
     }
-    // Fixed variable naming to match usage
+
     var activeCameraExerciseState by remember { mutableStateOf<ExerciseState?>(null) }
 
-    // Camera Overlay Logic
     if (activeCameraExerciseState != null) {
         val nextSet = activeCameraExerciseState!!.sets.firstOrNull { !it.isCompleted }
         Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
@@ -114,7 +114,7 @@ fun ActiveWorkoutScreen(
 
                 items(
                     items = exerciseStates,
-                    key = { it.exercise.exerciseId } // Unique ID keeps state alive during timer updates
+                    key = { it.exercise.exerciseId }
                 ) { exerciseState ->
                     ExerciseHeader(
                         exerciseState = exerciseState,
@@ -125,7 +125,12 @@ fun ActiveWorkoutScreen(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     if (exerciseState.areSetsVisible) {
-                        SetsTable(sets = exerciseState.sets, viewModel = viewModel)
+                        // FIX: Pass the equipment type down to the table
+                        SetsTable(
+                            sets = exerciseState.sets,
+                            equipment = exerciseState.exercise.equipment,
+                            viewModel = viewModel
+                        )
                         Spacer(modifier = Modifier.height(16.dp))
                         SetTimer(exerciseState = exerciseState, viewModel = viewModel)
                     }
@@ -150,7 +155,7 @@ fun ActiveWorkoutScreen(
 fun WorkoutHeader(title: String) {
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
         Text(text = title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Color.White)
-        Text(text = "Tuesday, February 3", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+        Text(text = "Focus: Progressive Overload", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
     }
 }
 
@@ -187,7 +192,6 @@ fun ExerciseHeader(
         )
     }
 
-
     Row(
         modifier = Modifier.fillMaxWidth().clickable { onToggleVisibility() },
         verticalAlignment = Alignment.CenterVertically
@@ -201,6 +205,19 @@ fun ExerciseHeader(
                     Badge(containerColor = Color.DarkGray) { Text(exercise.equipment, color = Color.White) }
                 }
             }
+        }
+
+        val hasWarmups = exerciseState.sets.any { it.suggestedRpe == 0 }
+        if (exerciseState.exercise.tier == 1 && !hasWarmups) {
+            Spacer(modifier = Modifier.width(8.dp))
+            AssistChip(
+                onClick = {
+                    val target = exerciseState.sets.firstOrNull()?.suggestedLbs ?: 135
+                    viewModel.addWarmUpSets(exerciseState.exercise.exerciseId, target)
+                },
+                label = { Text("Warm-up") },
+                leadingIcon = { Icon(Icons.Default.LocalFireDepartment, null, tint = Color(0xFFFF9800)) }
+            )
         }
 
         IconButton(onClick = { showDescriptionDialog = true }) {
@@ -224,12 +241,14 @@ fun ExerciseHeader(
     }
 }
 
+// FIX: Added 'equipment' parameter
 @Composable
-fun SetsTable(sets: List<WorkoutSetEntity>, viewModel: ActiveSessionViewModel) {
-    // 1. Add this state to track if the dialog is open
+fun SetsTable(sets: List<WorkoutSetEntity>, equipment: String?, viewModel: ActiveSessionViewModel) {
     var showRpeInfo by remember { mutableStateOf(false) }
 
-    // 2. Add the dialog trigger
+    // Logic: Only show for Barbell
+    val isBarbell = equipment?.contains("Barbell", ignoreCase = true) == true
+
     if (showRpeInfo) {
         RpeInfoDialog(onDismiss = { showRpeInfo = false })
     }
@@ -240,41 +259,48 @@ fun SetsTable(sets: List<WorkoutSetEntity>, viewModel: ActiveSessionViewModel) {
             Text("LBS", modifier = Modifier.weight(1f), color = Color.Gray, fontSize = 12.sp)
             Text("REPS", modifier = Modifier.weight(1f), color = Color.Gray, fontSize = 12.sp)
 
-            // 3. Replace the plain "RPE" text with this Row containing the Icon
             Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                 Text("RPE", color = Color.Gray, fontSize = 12.sp)
                 Spacer(modifier = Modifier.width(4.dp))
-                IconButton(
-                    onClick = { showRpeInfo = true },
-                    modifier = Modifier.size(16.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Help, // The small ? icon
-                        contentDescription = "RPE Guide",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                IconButton(onClick = { showRpeInfo = true }, modifier = Modifier.size(16.dp)) {
+                    Icon(Icons.Default.Help, "RPE Guide", tint = MaterialTheme.colorScheme.primary)
                 }
             }
 
             Text("DONE", modifier = Modifier.weight(0.5f), color = Color.Gray, fontSize = 12.sp)
         }
         sets.forEachIndexed { index, set ->
-            SetRow(setNumber = index + 1, set = set, viewModel = viewModel)
+            // Pass the boolean down
+            SetRow(setNumber = index + 1, set = set, isBarbell = isBarbell, viewModel = viewModel)
         }
     }
 }
 
+// FIX: Added 'isBarbell' parameter
 @Composable
-fun SetRow(setNumber: Int, set: WorkoutSetEntity, viewModel: ActiveSessionViewModel) {
+fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel: ActiveSessionViewModel) {
     val focusManager = LocalFocusManager.current
     var weightText by remember(set.actualLbs) { mutableStateOf(set.actualLbs?.toInt()?.toString() ?: "") }
     var repsText by remember(set.actualReps) { mutableStateOf(set.actualReps?.toString() ?: "") }
     var rpeText by remember(set.actualRpe) { mutableStateOf(set.actualRpe?.toInt()?.toString() ?: "") }
+    var showPlateDialog by remember { mutableStateOf(false) }
+
+    if (showPlateDialog) {
+        AlertDialog(
+            onDismissRequest = { showPlateDialog = false },
+            title = { Text("Load ${set.suggestedLbs} lbs") },
+            text = {
+                Column {
+                    Text("Per side:", fontWeight = FontWeight.Bold)
+                    Text(PlateCalculator.calculatePlates(set.suggestedLbs.toDouble()), fontSize = 18.sp)
+                }
+            },
+            confirmButton = { TextButton(onClick = { showPlateDialog = false }) { Text("Close") } }
+        )
+    }
 
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -285,33 +311,46 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, viewModel: ActiveSessionViewMo
             textAlign = TextAlign.Center
         )
 
-        TextField(
-            value = weightText,
-            onValueChange = { weightText = it },
-            modifier = Modifier.weight(1f).onFocusChanged { if(!it.isFocused) viewModel.updateSetWeight(set, weightText) },
-            // Brighter placeholder for better visibility
-            placeholder = {
-                Text(
-                    text = set.suggestedLbs.toString(),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+            TextField(
+                value = weightText,
+                onValueChange = { weightText = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { if (!it.isFocused) viewModel.updateSetWeight(set, weightText) },
+                placeholder = {
+                    Text(
+                        text = set.suggestedLbs.toString(),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    )
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                colors = TextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    unfocusedContainerColor = Color.Transparent,
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Gray,
+                    focusedIndicatorColor = MaterialTheme.colorScheme.primary
                 )
-            },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
-            // Explicitly set text color to white
-            colors = TextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                unfocusedContainerColor = Color.Transparent,
-                focusedContainerColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Gray,
-                focusedIndicatorColor = MaterialTheme.colorScheme.primary
             )
-        )
+            // FIX: Only show icon if isBarbell is true
+            if (isBarbell) {
+                IconButton(
+                    onClick = { showPlateDialog = true },
+                    modifier = Modifier.size(24.dp).padding(end = 4.dp)
+                ) {
+                    Icon(Icons.Default.Album, contentDescription = "Plates", tint = Color.Gray)
+                }
+            }
+        }
 
         TextField(
             value = repsText,
             onValueChange = { repsText = it },
-            modifier = Modifier.weight(1f).onFocusChanged { if(!it.isFocused) viewModel.updateSetReps(set, repsText) },
+            modifier = Modifier
+                .weight(1f)
+                .onFocusChanged { if (!it.isFocused) viewModel.updateSetReps(set, repsText) },
             placeholder = { Text(set.suggestedReps.toString(), color = Color.LightGray) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
             colors = TextFieldDefaults.colors(
@@ -327,11 +366,16 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, viewModel: ActiveSessionViewMo
         TextField(
             value = rpeText,
             onValueChange = { rpeText = it },
-            modifier = Modifier.weight(1f).onFocusChanged { if (!it.isFocused) viewModel.updateSetRpe(set, rpeText) },
+            modifier = Modifier
+                .weight(1f)
+                .onFocusChanged { if (!it.isFocused) viewModel.updateSetRpe(set, rpeText) },
             placeholder = { Text(set.suggestedRpe.toString(), color = Color.Gray) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-            colors = TextFieldDefaults.colors(unfocusedContainerColor = Color.Transparent, focusedContainerColor = Color.Transparent)
+            colors = TextFieldDefaults.colors(
+                unfocusedContainerColor = Color.Transparent,
+                focusedContainerColor = Color.Transparent
+            )
         )
 
         Checkbox(
@@ -352,7 +396,6 @@ fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
     ) {
-        // Display formatted time
         Text(
             text = String.format("%02d:%02d", minutes, seconds),
             fontSize = 48.sp,
@@ -360,17 +403,14 @@ fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
             color = if (timerState.isRunning) MaterialTheme.colorScheme.primary else Color.Gray
         )
 
-        Row {
-            // FIX: Ensure the button triggers the correct ViewModel logic
-            Button(onClick = {
-                if (timerState.isRunning) {
-                    viewModel.skipSetTimer(exerciseState.exercise.exerciseId)
-                } else {
-                    viewModel.startSetTimer(exerciseState.exercise.exerciseId)
-                }
-            }) {
-                Text(if (timerState.isRunning) "Skip Rest" else "Start Timer")
+        Button(onClick = {
+            if (timerState.isRunning) {
+                viewModel.skipSetTimer(exerciseState.exercise.exerciseId)
+            } else {
+                viewModel.startSetTimer(exerciseState.exercise.exerciseId)
             }
+        }) {
+            Text(if (timerState.isRunning) "Skip Rest" else "Start Timer")
         }
     }
 }
@@ -452,10 +492,6 @@ fun SwapExerciseDialog(
                 }
             }
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }

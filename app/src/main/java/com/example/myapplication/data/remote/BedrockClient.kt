@@ -1,23 +1,22 @@
 package com.example.myapplication.data.remote
 
 import android.util.Log
-import aws.sdk.kotlin.runtime.auth.credentials.StaticCredentialsProvider
 import aws.sdk.kotlin.services.bedrockruntime.BedrockRuntimeClient
 import aws.sdk.kotlin.services.bedrockruntime.model.InvokeModelRequest
 import aws.smithy.kotlin.runtime.http.engine.okhttp.OkHttpEngine
 import com.example.myapplication.BuildConfig
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
 import com.example.myapplication.data.local.ExerciseEntity
-import kotlin.time.Duration.Companion.seconds
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
+import com.example.myapplication.data.repository.AuthRepository // Ensure this is imported
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 // --- AI RESPONSE DATA MODELS ---
-
 @Serializable
 data class GeneratedPlanResponse(
     val explanation: String = "",
@@ -49,7 +48,6 @@ data class GeneratedExercise(
 )
 
 // --- CLAUDE API REQUEST MODELS ---
-
 @Serializable
 data class ClaudeRequest(
     val anthropic_version: String = "bedrock-2023-05-31",
@@ -68,7 +66,6 @@ data class ClaudeResponse(val content: List<ContentBlock>)
 data class ContentBlock(val text: String)
 
 // --- CONFIGURATION ---
-
 private val jsonConfig = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
@@ -78,18 +75,22 @@ private val jsonConfig = Json {
 }
 
 // --- CLIENT CLASS ---
-
 @Singleton
-class BedrockClient @Inject constructor() {
+class BedrockClient @Inject constructor(
+    private val authRepository: AuthRepository // Correctly injected in constructor
+) {
 
-    // OPTIMIZATION: Initialize client once and reuse it across calls
+    // Initialize client using your Custom Cognito Provider
     private val client by lazy {
+        val cognitoProvider = CognitoCredentialsProvider(
+            authRepository = authRepository,
+            identityPoolId = BuildConfig.COGNITO_IDENTITY_POOL_ID,
+            region = BuildConfig.AWS_REGION
+        )
+
         BedrockRuntimeClient {
             region = BuildConfig.AWS_REGION
-            credentialsProvider = StaticCredentialsProvider {
-                accessKeyId = BuildConfig.AWS_ACCESS_KEY
-                secretAccessKey = BuildConfig.AWS_SECRET_KEY
-            }
+            credentialsProvider = cognitoProvider
             httpClient = OkHttpEngine {
                 connectTimeout = 60.seconds
                 socketReadTimeout = 120.seconds
@@ -112,9 +113,9 @@ class BedrockClient @Inject constructor() {
         try {
             val tierDefinitions = when (programType) {
                 "Strength" -> """
-                    - Tier 1: Reps: Low (1-5). Sets: High (5-8). Load: Very Heavy (85-95% 1RM). RPE: 8-9 (1-2 RIR). PRROGRESSION: Linear Load.
-                    - Tier 2: Reps: Low (3-6). Sets: Moderate (3-5). Load: Heavy (75-85% 1RM). RPE: 8-9 (1-2 RIR). PRROGRESSION: Volume Accumulation.
-                    - Tier 3: Reps: Moderate/High (8-15). Sets: Moderate (3-4). Load: Moderate (muscle failure). RPE: 9-10 (0-1 RIR). PRROGRESSION: Density.
+                    - Tier 1: Reps: Low (1-5). Sets: High (5-8). Load: Very Heavy (85-95% 1RM). RPE: 8-9 (1-2 RIR). PROGRESSION: Linear Load.
+                    - Tier 2: Reps: Low (3-6). Sets: Moderate (3-5). Load: Heavy (75-85% 1RM). RPE: 8-9 (1-2 RIR). PROGRESSION: Volume Accumulation.
+                    - Tier 3: Reps: Moderate/High (8-15). Sets: Moderate (3-4). Load: Moderate (muscle failure). RPE: 9-10 (0-1 RIR). PROGRESSION: Density.
                 """.trimIndent()
 
                 "Hypertrophy" -> """
@@ -143,7 +144,6 @@ class BedrockClient @Inject constructor() {
                     val sorted = sessions.sortedBy { it.completedWorkout.date }
                     val first = sorted.first().completedWorkout
                     val last = sorted.last().completedWorkout
-                    val progress = last.weight - first.weight
                     "- $name: Started at ${first.weight}lbs, currently at ${last.weight}lbs (Avg RPE: ${sessions.map { it.completedWorkout.rpe }.average().toInt()})"
                 }.joinToString("\n")
 
@@ -209,7 +209,6 @@ class BedrockClient @Inject constructor() {
                 8. If the user is older (>40), prefer lower fatigue exercises and higher rep ranges for joint health unless specified otherwise.
 
                 Do not include preamble or markdown formatting.
-                    
             """.trimIndent()
 
             val userPrompt = "Generate plan for ${userAge}yo male, ${userWeight}kg, Goal: ${goal}."
@@ -238,14 +237,13 @@ class BedrockClient @Inject constructor() {
             val jsonRegex = Regex("\\{.*\\}", setOf(RegexOption.DOT_MATCHES_ALL))
             val match = jsonRegex.find(rawText)
 
-            // FIX: Removed 'return' keywords below
             if (match != null) {
                 val cleanJson = match.value
                 Log.d("BedrockService", "Clean JSON: $cleanJson")
-                jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson) // Implicitly returned
+                jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
             } else {
                 Log.e("BedrockError", "AI returned invalid format: $rawText")
-                GeneratedPlanResponse(explanation = "Error: AI response format invalid.") // Implicitly returned
+                GeneratedPlanResponse(explanation = "Error: AI response format invalid.")
             }
 
         } catch (e: Exception) {

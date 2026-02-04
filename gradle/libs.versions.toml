@@ -39,6 +39,7 @@ androidx-navigation-compose = { group = "androidx.navigation", name = "navigatio
 aws-sdk-kotlin-bom = { group = "aws.sdk.kotlin", name = "bom", version.ref = "awsSdk" }
 aws-bedrock-runtime = { group = "aws.sdk.kotlin", name = "bedrockruntime" }
 aws-cognito-identity = { group = "aws.sdk.kotlin", name = "cognitoidentity" }
+aws-auth = { group = "aws.sdk.kotlin", name = "auth" }
 http-client-engine-okhttp = { group = "aws.smithy.kotlin", name = "http-client-engine-okhttp", version = "1.0.1" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
 hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }

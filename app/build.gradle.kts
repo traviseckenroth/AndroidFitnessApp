@@ -35,15 +35,15 @@ android {
             useSupportLibrary = true
         }
 
-        // Inject API Keys
-        val accessKey = localProperties["AWS_ACCESS_KEY"] ?: ""
-        val secretKey = localProperties["AWS_SECRET_KEY"] ?: ""
+        // --- FIX: ADD COGNITO KEYS HERE ---
+        val awsRegion = localProperties.getProperty("AWS_REGION") ?: "us-east-1"
+        val cognitoPoolId = localProperties.getProperty("COGNITO_IDENTITY_POOL_ID") ?: ""
 
-        buildConfigField("String", "AWS_ACCESS_KEY", "\"$accessKey\"")
-        buildConfigField("String", "AWS_SECRET_KEY", "\"$secretKey\"")
-        buildConfigField("String", "AWS_REGION", "\"us-east-1\"")
+        buildConfigField("String", "AWS_REGION", "\"$awsRegion\"")
+        buildConfigField("String", "COGNITO_IDENTITY_POOL_ID", "\"$cognitoPoolId\"")
+        buildConfigField("String", "COGNITO_USER_POOL_ID", "\"${localProperties.getProperty("COGNITO_USER_POOL_ID")}\"")
+        buildConfigField("String", "COGNITO_CLIENT_ID", "\"${localProperties.getProperty("COGNITO_CLIENT_ID")}\"")
     }
-
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -58,7 +58,7 @@ android {
 
     buildFeatures {
         compose = true
-        buildConfig = true
+        buildConfig = true // Required for the buildConfigField above to work
     }
 
     packaging {
@@ -70,12 +70,13 @@ android {
 
 dependencies {
     // --- Core Android ---
+    // --- Core Android ---
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.lifecycle.runtime)
     implementation(libs.androidx.activity.compose)
-
+    implementation("aws.sdk.kotlin:cognitoidentityprovider:1.0.41") // or matching your other aws versions
     // --- Compose ---
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
@@ -100,23 +101,35 @@ dependencies {
 
     // --- AWS SDK for Kotlin ---
     implementation(platform(libs.aws.sdk.kotlin.bom))
+
+    // 1. Bedrock Runtime (for AI)
     implementation(libs.aws.bedrock.runtime)
+
+    // 2. Cognito Identity (for Guest Credentials) -> THIS REPLACES 'auth'
     implementation(libs.aws.cognito.identity)
+
+    // 3. HTTP Client Engine
     implementation(libs.http.client.engine.okhttp)
+
+    // REMOVE THIS LINE IF IT EXISTS:
+    // implementation("aws.sdk.kotlin:auth") <--- CAUSING THE ERROR
 
     // --- Serialization ---
     implementation(libs.kotlinx.serialization.json)
 
+    // --- Preferences ---
     implementation(libs.androidx.datastore.preferences)
-// CameraX for live preview
+
+    // --- CameraX ---
     val cameraxVersion = "1.3.1"
     implementation("androidx.camera:camera-core:$cameraxVersion")
     implementation("androidx.camera:camera-camera2:$cameraxVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
     implementation("androidx.camera:camera-view:$cameraxVersion")
 
-    // FIX: Use the Beta version (Stable 18.0.0 does not exist yet)
+    // --- ML Kit ---
     implementation("com.google.mlkit:pose-detection-accurate:18.0.0-beta5")
+
     // --- Testing ---
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

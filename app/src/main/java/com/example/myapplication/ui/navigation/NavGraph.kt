@@ -1,6 +1,5 @@
 package com.example.myapplication.ui.navigation
 
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -17,8 +16,11 @@ import com.example.myapplication.ui.plan.GeneratePlanScreen
 import com.example.myapplication.ui.plan.ManualPlanScreen
 import com.example.myapplication.ui.plan.PlanViewModel
 import com.example.myapplication.ui.profile.ProfileScreen
+import com.example.myapplication.ui.warmup.WarmUpScreen
 import com.example.myapplication.ui.workout.ActiveSessionViewModel
 import com.example.myapplication.ui.workout.ActiveWorkoutScreen
+import com.example.myapplication.ui.auth.LoginScreen
+import com.example.myapplication.ui.auth.SignUpScreen
 
 @Composable
 fun NavGraph(
@@ -28,24 +30,71 @@ fun NavGraph(
 ) {
     NavHost(
         navController = navController,
-        startDestination = "home",
+        startDestination = "login", // Start at Login
         modifier = modifier
     ) {
-        composable("home") {
-            HomeScreen(
-                onNavigateToWorkout = { workoutId: Long ->
-                    navController.navigate("active_workout/$workoutId")
+        // --- AUTHENTICATION ---
+        composable("login") {
+            LoginScreen(
+                onLoginSuccess = {
+                    navController.navigate("home") {
+                        popUpTo("login") { inclusive = true }
+                    }
                 },
-                onNavigateToExerciseList = { navController.navigate("exercise_list") }
+                onNavigateToSignUp = {
+                    navController.navigate("signup")
+                }
             )
         }
 
+        composable("signup") {
+            SignUpScreen(
+                onSignUpSuccess = {
+                    // After verifying, go back to login so they can sign in with new credentials
+                    navController.navigate("login") {
+                        popUpTo("signup") { inclusive = true }
+                    }
+                },
+                onBackToLogin = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable("signup") {
+            SignUpScreen(
+                onSignUpSuccess = {
+                    // After verifying, go back to login so they can sign in with new credentials
+                    navController.navigate("login") { popUpTo("signup") { inclusive = true } }
+                },
+                onBackToLogin = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        // --- 1. HOME ROUTE ---
+        composable("home") {
+            HomeScreen(
+                onNavigateToWorkout = { workoutId ->
+                    navController.navigate("active_workout/$workoutId")
+                },
+                // Quick Actions Mappings:
+                onNavigateToExerciseList = { navController.navigate("exercise_list") },
+                onManualLogClick = { navController.navigate("manual_creator") },
+                onWarmUpClick = { navController.navigate("warm_up") }
+            )
+        }
+
+        // --- 2. PLAN ROUTE (Fixed: Named "plan" to match Bottom Bar) ---
         composable("plan") {
             GeneratePlanScreen(
                 viewModel = planViewModel,
                 onManualCreateClick = { navController.navigate("manual_creator") },
                 onPlanGenerated = {
-                    navController.popBackStack()
+                    // Navigate to home after generating to show the new calendar
+                    navController.navigate("home") {
+                        popUpTo("home") { inclusive = true }
+                    }
                 }
             )
         }
@@ -56,6 +105,10 @@ fun NavGraph(
 
         composable("profile") {
             ProfileScreen()
+        }
+
+        composable("warm_up") {
+            WarmUpScreen(onBack = { navController.popBackStack() })
         }
 
         composable("manual_creator") {

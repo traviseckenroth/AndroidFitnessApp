@@ -322,7 +322,45 @@ class WorkoutRepository @Inject constructor(
         // 3. Run Optimization
         return autoRegulateFutureWorkouts(workout.planId, sets, workout.scheduledDate)
     }
+    suspend fun injectWarmUpSets(workoutId: Long, exerciseId: Long, workingWeight: Int) {
+        // 1. Get existing sets
+        val currentSets = workoutDao.getSetsForWorkoutList(workoutId)
+            .filter { it.exerciseId == exerciseId }
+            .sortedBy { it.setNumber }
 
+        if (currentSets.isEmpty()) return
+
+        // 2. Define Warm-up Progression (Bar -> 50% -> 75%)
+        // Round to nearest 5
+        fun roundToFive(w: Double) = (w / 5).toInt() * 5
+
+        val warmups = listOf(
+            // Set 1: Empty Bar (or very light) - 10 Reps
+            WorkoutSetEntity(
+                workoutId = workoutId, exerciseId = exerciseId, setNumber = 1,
+                suggestedReps = 10, suggestedLbs = 45, suggestedRpe = 0, isCompleted = false
+            ),
+            // Set 2: 50% of working weight - 5 Reps
+            WorkoutSetEntity(
+                workoutId = workoutId, exerciseId = exerciseId, setNumber = 2,
+                suggestedReps = 5, suggestedLbs = roundToFive(workingWeight * 0.5), suggestedRpe = 0, isCompleted = false
+            ),
+            // Set 3: 75% of working weight - 3 Reps
+            WorkoutSetEntity(
+                workoutId = workoutId, exerciseId = exerciseId, setNumber = 3,
+                suggestedReps = 3, suggestedLbs = roundToFive(workingWeight * 0.75), suggestedRpe = 0, isCompleted = false
+            )
+        )
+
+        // 3. Shift existing sets down by 3
+        val updatedOriginalSets = currentSets.map { it.copy(setNumber = it.setNumber + 3) }
+
+        // 4. Save everything (Delete old, insert new mix)
+        // Note: In a real app, you might do this transactionally.
+        // For now, we update the existing ones and insert the new ones.
+        updatedOriginalSets.forEach { workoutDao.updateSet(it) }
+        workoutDao.insertSets(warmups)
+    }
     private suspend fun autoRegulateFutureWorkouts(
         planId: Long,
         completedSets: List<WorkoutSetEntity>,

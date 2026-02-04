@@ -1,18 +1,21 @@
 package com.example.myapplication.ui.workout
 
+import android.app.Application
+import android.content.Intent // <--- NEW IMPORTS
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.repository.WorkoutRepository
+import com.example.myapplication.service.WorkoutTimerService // <--- IMPORT YOUR SERVICE
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+// import kotlinx.coroutines.delay // <--- REMOVED (Service handles ticking)
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.isActive // <--- REMOVED
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -31,7 +34,8 @@ data class ExerciseState(
 
 @HiltViewModel
 class ActiveSessionViewModel @Inject constructor(
-    private val repository: WorkoutRepository
+    private val repository: WorkoutRepository,
+    private val application: Application
 ) : ViewModel() {
 
     private val _workoutId = MutableStateFlow<Long>(-1)
@@ -46,9 +50,22 @@ class ActiveSessionViewModel @Inject constructor(
     private val _workoutSummary = MutableStateFlow<List<String>?>(null)
     val workoutSummary: StateFlow<List<String>?> = _workoutSummary
 
-    private val timerJobs = mutableMapOf<Long, Job>()
+    // private val timerJobs = mutableMapOf<Long, Job>() // <--- REMOVED (No longer managing jobs manually)
 
     init {
+        // --- NEW: LISTEN TO THE SERVICE ---
+        // This ensures that even if the app restarts, the UI picks up the running timer immediately.
+        viewModelScope.launch {
+            WorkoutTimerService.timerState.collect { serviceState ->
+                updateLocalTimerState(
+                    activeExerciseId = serviceState.activeExerciseId,
+                    remainingTime = serviceState.remainingTime.toLong(),
+                    isRunning = serviceState.isRunning
+                )
+            }
+        }
+        // ----------------------------------
+
         viewModelScope.launch {
             _workoutId.collectLatest { id ->
                 if (id != -1L) {
@@ -113,41 +130,33 @@ class ActiveSessionViewModel @Inject constructor(
         }
     }
 
-    fun loadWorkout(workoutId: Long) {
-        _workoutId.value = workoutId
-    }
+    // ... (Keep loadWorkout, updateSetCompletion, updateSetReps, updateSetWeight, updateSetRpe, swapExercise, getTopAlternatives, toggleExerciseVisibility, addWarmUpSets exactly as they are) ...
+
+    fun loadWorkout(workoutId: Long) { _workoutId.value = workoutId }
 
     fun updateSetCompletion(set: WorkoutSetEntity, isCompleted: Boolean) {
-        viewModelScope.launch {
-            repository.updateSet(set.copy(isCompleted = isCompleted))
-        }
+        viewModelScope.launch { repository.updateSet(set.copy(isCompleted = isCompleted)) }
+        // Optional: Auto-start timer when set is checked
+        // if(isCompleted) startSetTimer(set.parentExerciseId)
     }
 
     fun updateSetReps(set: WorkoutSetEntity, newReps: String) {
         val repsInt = newReps.toIntOrNull() ?: return
-        viewModelScope.launch {
-            repository.updateSet(set.copy(actualReps = repsInt))
-        }
+        viewModelScope.launch { repository.updateSet(set.copy(actualReps = repsInt)) }
     }
 
     fun updateSetWeight(set: WorkoutSetEntity, newLbs: String) {
         val lbsFloat = newLbs.toFloatOrNull() ?: return
-        viewModelScope.launch {
-            repository.updateSet(set.copy(actualLbs = lbsFloat))
-        }
+        viewModelScope.launch { repository.updateSet(set.copy(actualLbs = lbsFloat)) }
     }
 
     fun updateSetRpe(set: WorkoutSetEntity, newRpe: String) {
         val rpeFloat = newRpe.toFloatOrNull() ?: return
-        viewModelScope.launch {
-            repository.updateSet(set.copy(actualRpe = rpeFloat))
-        }
+        viewModelScope.launch { repository.updateSet(set.copy(actualRpe = rpeFloat)) }
     }
 
     fun swapExercise(oldExerciseId: Long, newExerciseId: Long) {
-        viewModelScope.launch {
-            repository.swapExercise(_workoutId.value, oldExerciseId, newExerciseId)
-        }
+        viewModelScope.launch { repository.swapExercise(_workoutId.value, oldExerciseId, newExerciseId) }
     }
 
     suspend fun getTopAlternatives(exercise: ExerciseEntity): List<ExerciseEntity> {
@@ -156,98 +165,70 @@ class ActiveSessionViewModel @Inject constructor(
 
     fun toggleExerciseVisibility(exerciseId: Long) {
         _exerciseStates.value = _exerciseStates.value.map {
-            if (it.exercise.exerciseId == exerciseId) {
-                it.copy(areSetsVisible = !it.areSetsVisible)
-            } else {
-                it
+            if (it.exercise.exerciseId == exerciseId) it.copy(areSetsVisible = !it.areSetsVisible) else it
+        }
+    }
+
+    fun addWarmUpSets(exerciseId: Long, workingWeight: Int) {
+        viewModelScope.launch {
+            val workoutId = _workoutId.value
+            if (workoutId != -1L) {
+                repository.injectWarmUpSets(workoutId, exerciseId, workingWeight)
             }
         }
     }
 
+    // --- UPDATED TIMER LOGIC (Using Service) ---
+
     fun startSetTimer(exerciseId: Long) {
-        // Avoid multiple overlapping timers for the same exercise
-        if (timerJobs[exerciseId]?.isActive == true) return
+        // Find the duration based on the exercise
+        val exerciseState = _exerciseStates.value.find { it.exercise.exerciseId == exerciseId } ?: return
+        val durationSeconds = (exerciseState.exercise.estimatedTimePerSet * 60).toInt()
 
-        timerJobs[exerciseId] = viewModelScope.launch {
-            val exerciseState = _exerciseStates.value.find { it.exercise.exerciseId == exerciseId } ?: return@launch
-            val sets = exerciseState.sets
-            // Tier-based rest time: estimatedTimePerSet is used as the baseline
-            val restTime = (exerciseState.exercise.estimatedTimePerSet * 60).toLong()
-
-            for (index in sets.indices) {
-                val currentSet = sets[index]
-
-                // Auto-advance: skip sets that are already finished
-                if (currentSet.isCompleted) continue
-
-                var remainingTime = restTime
-                updateTimerState(exerciseId, remainingTime, isRunning = true, isFinished = false)
-
-                // Standard countdown loop
-                while (remainingTime > 0 && isActive) {
-                    delay(1000)
-                    remainingTime--
-                    updateTimerState(exerciseId, remainingTime, isRunning = true, isFinished = false)
-                }
-
-                // Post-countdown logic
-                if (isActive) {
-                    // Automatically record set completion in the DB
-                    updateSetCompletion(currentSet, true)
-
-                    // If it's the final set, stop and mark finished
-                    if (index == sets.lastIndex) {
-                        updateTimerState(exerciseId, 0, isRunning = false, isFinished = true)
-                        break
-                    }
-                    // Loop continues to next set automatically
-                }
-            }
+        // Send "Start" command to the Foreground Service
+        val intent = Intent(application, WorkoutTimerService::class.java).apply {
+            action = WorkoutTimerService.ACTION_START
+            putExtra(WorkoutTimerService.EXTRA_SECONDS, durationSeconds)
+            putExtra(WorkoutTimerService.EXTRA_EXERCISE_ID, exerciseId)
         }
+        application.startService(intent)
     }
 
     fun skipSetTimer(exerciseId: Long) {
-        // Instead of cancelling the job (which kills the loop),
-        // we start a new job that just forces the state to 0.
-        // The startSetTimer loop is designed to continue when remainingTime reaches 0.
+        // Send "Stop" command to the Foreground Service
+        val intent = Intent(application, WorkoutTimerService::class.java).apply {
+            action = WorkoutTimerService.ACTION_STOP
+        }
+        application.startService(intent)
+    }
 
-        val currentState = _exerciseStates.value.find { it.exercise.exerciseId == exerciseId }
-        if (currentState != null && currentState.timerState.isRunning) {
-            // We cancel the current countdown job
-            timerJobs[exerciseId]?.cancel()
-
-            // We immediately mark the current set as complete and trigger the NEXT timer
-            viewModelScope.launch {
-                val sets = currentState.sets
-                val currentSetIndex = sets.indexOfFirst { !it.isCompleted }
-
-                if (currentSetIndex != -1) {
-                    val currentSet = sets[currentSetIndex]
-                    updateSetCompletion(currentSet, true)
-
-                    // If not the last set, restart timer for the next set immediately
-                    if (currentSetIndex < sets.lastIndex) {
-                        startSetTimer(exerciseId)
-                    } else {
-                        updateTimerState(exerciseId, 0, isRunning = false, isFinished = true)
-                    }
-                }
+    // --- NEW: Helper to update UI based on Service State ---
+    private fun updateLocalTimerState(activeExerciseId: Long?, remainingTime: Long, isRunning: Boolean) {
+        _exerciseStates.value = _exerciseStates.value.map { state ->
+            if (state.exercise.exerciseId == activeExerciseId) {
+                // This is the active timer
+                state.copy(timerState = ExerciseTimerState(
+                    remainingTime = remainingTime,
+                    isRunning = isRunning,
+                    isFinished = !isRunning && remainingTime == 0L
+                ))
+            } else {
+                // This is NOT the active timer, ensure it looks idle
+                // We keep the default duration if it's idle
+                val defaultDuration = (state.exercise.estimatedTimePerSet * 60).toLong()
+                state.copy(timerState = ExerciseTimerState(
+                    remainingTime = defaultDuration,
+                    isRunning = false,
+                    isFinished = false
+                ))
             }
         }
     }
 
-    private fun updateTimerState(exerciseId: Long, time: Long, isRunning: Boolean, isFinished: Boolean) {
-        _exerciseStates.value = _exerciseStates.value.map {
-            if (it.exercise.exerciseId == exerciseId) {
-                it.copy(timerState = ExerciseTimerState(
-                    remainingTime = time,
-                    isRunning = isRunning,
-                    isFinished = isFinished
-                ))
-            } else it
-        }
-    }
     fun finishWorkout(workoutId: Long) {
+        // Stop any running timer service
+        skipSetTimer(-1)
+
         viewModelScope.launch {
             val report = repository.completeWorkout(workoutId)
             _workoutSummary.value = report
@@ -259,6 +240,7 @@ class ActiveSessionViewModel @Inject constructor(
     }
 }
 
+// ... (Keep generateCoachBriefing) ...
 private fun generateCoachBriefing(exercises: List<ExerciseEntity>, sets: List<WorkoutSetEntity>): String {
     if (exercises.isEmpty() || sets.isEmpty()) return "Ready to start your workout?"
     val tier1Count = exercises.count { it.tier == 1 }
