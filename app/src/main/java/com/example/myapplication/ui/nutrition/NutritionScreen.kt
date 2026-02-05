@@ -31,7 +31,7 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
             .verticalScroll(scrollState),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
-        Text("Nutrition Guide", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text("Nutrition Guide", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
 
         when (val state = uiState) {
             is NutritionUiState.Loading -> {

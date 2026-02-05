@@ -56,6 +56,12 @@ fun GeneratePlanScreen(
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
+            // Dynamic Header
+            Text(
+                text = if (uiState is PlanUiState.Success) "Your 4-Week Plan" else "Plan Generator",
+                style = MaterialTheme.typography.headlineLarge // Unified Font
+            )
+            Spacer(modifier = Modifier.height(16.dp))
             Text("Plan Generator", style = MaterialTheme.typography.headlineMedium)
             Spacer(modifier = Modifier.height(16.dp))
 

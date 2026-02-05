@@ -54,7 +54,7 @@ fun InsightsScreen(
             item {
                 Text(
                     "Performance Insights",
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.headlineLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
                 )

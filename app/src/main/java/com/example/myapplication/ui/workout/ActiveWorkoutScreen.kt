@@ -218,24 +218,30 @@ fun ExerciseHeader(
         modifier = Modifier.fillMaxWidth().clickable { onToggleVisibility() },
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Updated Column: Now contains Name AND Info Icon in a Row
         Column(modifier = Modifier.weight(1f)) {
-            // UPDATED: High contrast title
-            Text(
-                text = exercise.name,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Row(modifier = Modifier.padding(top = 4.dp)) {
-                Badge(containerColor = MaterialTheme.colorScheme.primary) {
-                    Text("Tier ${exercise.tier}", color = MaterialTheme.colorScheme.onPrimary)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = exercise.name,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                // MOVED: Help Icon is now here, next to the name
+                IconButton(onClick = { showDescriptionDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Default.Help,
+                        contentDescription = "Info",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp) // Slightly smaller for inline look
+                    )
                 }
+            }
+            Row(modifier = Modifier.padding(top = 4.dp)) {
+                Badge(containerColor = MaterialTheme.colorScheme.primary) { Text("Tier ${exercise.tier}", color = Color.Black) }
                 Spacer(modifier = Modifier.width(8.dp))
                 if (!exercise.equipment.isNullOrBlank()) {
-                    // UPDATED: Darker badge for contrast
-                    Badge(containerColor = MaterialTheme.colorScheme.secondaryContainer) {
-                        Text(exercise.equipment, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                    }
+                    Badge(containerColor = Color.DarkGray) { Text(exercise.equipment, color = Color.White) }
                 }
             }
         }
@@ -251,10 +257,6 @@ fun ExerciseHeader(
                 label = { Text("Warm-up") },
                 leadingIcon = { Icon(Icons.Default.LocalFireDepartment, null, tint = Color(0xFFFF9800)) }
             )
-        }
-
-        IconButton(onClick = { showDescriptionDialog = true }) {
-            Icon(Icons.Default.Help, "Info", tint = MaterialTheme.colorScheme.primary)
         }
 
         if (FormAnalyzer.isSupported(exercise.name)) {

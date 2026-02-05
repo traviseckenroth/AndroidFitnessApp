@@ -58,7 +58,7 @@ fun ProfileScreen(viewModel: ProfileViewModel = hiltViewModel()) {
         ) {
             item {
                 Spacer(modifier = Modifier.height(24.dp))
-                Text("Your Profile", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Text("Your Profile", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
             }
 
             // 1. Biometrics Row
