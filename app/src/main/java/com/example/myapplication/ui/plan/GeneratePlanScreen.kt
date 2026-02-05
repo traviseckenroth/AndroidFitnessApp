@@ -65,7 +65,7 @@ fun GeneratePlanScreen(
 
     // -- FORM STATE --
     var goalInput by remember { mutableStateOf("") }
-    val programs = listOf("Strength", "Hypertrophy", "Endurance")
+    val programs = listOf("Strength", "Physique", "Endurance")
     var selectedProgram by remember { mutableStateOf(programs[0]) }
     var isDropdownExpanded by remember { mutableStateOf(false) }
     var durationHours by remember { mutableFloatStateOf(1.0f) }

@@ -29,7 +29,7 @@ object AppModule {
             // 1. Bump version to force a clean slate (wipes old duplicate data)
             "workout_db_v22"
         )
-            .fallbackToDestructiveMigration(false)
+            .fallbackToDestructiveMigration()
             // 2. REMOVED the .addCallback block entirely to fix the race condition.
             // MainActivity handles population now.
             .build()

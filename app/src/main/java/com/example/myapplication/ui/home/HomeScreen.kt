@@ -18,11 +18,13 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.local.DailyWorkoutEntity
-import com.example.myapplication.ui.theme.ElectricBlue
 import com.example.myapplication.ui.theme.MutedGrey
-import com.example.myapplication.ui.theme.NeonLime
+import com.example.myapplication.ui.theme.PrimaryIndigo
+import com.example.myapplication.ui.theme.SecondaryIndigo
+import com.example.myapplication.ui.theme.SuccessGreen
 import java.time.LocalDate
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,24 +42,32 @@ fun HomeScreen(
     val workoutDates by homeViewModel.workoutDates.collectAsState()
     val isHealthSynced by homeViewModel.isHealthSynced.collectAsState()
 
-    // Refresh sync status every time the screen is composed/returned to
     LaunchedEffect(Unit) {
         homeViewModel.checkHealthSyncStatus()
     }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("My Fitness", style = MaterialTheme.typography.headlineSmall) },
+            CenterAlignedTopAppBar( // Changed to CenterAligned for the "Studio" look
+                title = {
+                    Text(
+                        "My Fitness",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
                 actions = {
                     IconButton(onClick = onSettingsClick) {
                         Icon(
                             imageVector = Icons.Default.Settings,
                             contentDescription = "Settings",
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
         }
     ) { paddingValues ->
@@ -65,7 +75,7 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp)
+                .padding(horizontal = 20.dp) // Increased padding for "Breathability"
         ) {
             // Calendar Component
             InfiniteScrollingCalendar(
@@ -75,7 +85,7 @@ fun HomeScreen(
                 onDateSelected = { newDate -> homeViewModel.updateSelectedDate(newDate) }
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(32.dp)) // Increased vertical rhythm
 
             // --- HEALTH SYNC STATUS ---
             HealthSyncCard(
@@ -83,23 +93,24 @@ fun HomeScreen(
                 onNavigateToSettings = onSettingsClick
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
             Text(
                 "TODAY'S SCHEDULE",
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.primary,
+                letterSpacing = 1.2.sp // Technical tracking
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             dailyWorkout?.let {
                 TodayWorkoutCard(it, onNavigateToWorkout)
             } ?: RestDayRecoveryCard(onWarmUpClick = onWarmUpClick)
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
             Text("QUICK ACTIONS", style = MaterialTheme.typography.labelLarge)
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             QuickActionsSection(
                 onNavigateToExerciseList = onNavigateToExerciseList,
@@ -109,29 +120,30 @@ fun HomeScreen(
         }
     }
 }
+
 @Composable
 fun RestDayRecoveryCard(onWarmUpClick: () -> Unit) {
-    Card(
+    ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface
         ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+        elevation = CardDefaults.elevatedCardElevation(2.dp)
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.padding(24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector = Icons.Default.SelfImprovement, // Or use a custom recovery icon
+                    imageVector = Icons.Default.SelfImprovement,
                     contentDescription = null,
-                    tint = ElectricBlue, // Consistent with the new "Performance" palette
+                    tint = PrimaryIndigo, // Updated from ElectricBlue
                     modifier = Modifier.size(28.dp)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
                     text = "REST & RECOVER",
                     style = MaterialTheme.typography.labelLarge,
-                    color = ElectricBlue
+                    color = PrimaryIndigo // Updated from ElectricBlue
                 )
             }
 
@@ -145,73 +157,74 @@ fun RestDayRecoveryCard(onWarmUpClick: () -> Unit) {
 
             Text(
                 text = "Active recovery improves blood flow and speeds up muscle repair.",
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             // Suggested Mobility Drill Preview
             Surface(
-                color = MaterialTheme.colorScheme.background.copy(alpha = 0.4f),
+                color = MaterialTheme.colorScheme.background, // Clean studio background
                 shape = MaterialTheme.shapes.small,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Default.Bolt,
                         contentDescription = null,
-                        tint = NeonLime,
-                        modifier = Modifier.size(16.dp)
+                        tint = SecondaryIndigo, // Updated from NeonLime
+                        modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Suggested: World's Greatest Stretch (5 reps/side)",
+                        text = "Suggested: World's Greatest Stretch",
                         style = MaterialTheme.typography.bodyMedium,
-                        fontStyle = FontStyle.Italic
+                        fontStyle = FontStyle.Italic,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             OutlinedButton(
                 onClick = onWarmUpClick,
                 modifier = Modifier.fillMaxWidth(),
-                border = BorderStroke(1.dp, ElectricBlue),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = ElectricBlue)
+                border = BorderStroke(1.dp, PrimaryIndigo), // Updated from ElectricBlue
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryIndigo)
             ) {
                 Text("VIEW ALL MOBILITY PROTOCOLS")
             }
         }
     }
 }
+
 @Composable
 fun HealthSyncCard(
     isSynced: Boolean,
     onNavigateToSettings: () -> Unit
 ) {
-    Card(
+    ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium, // Using theme-defined shapes
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSynced)
-                MaterialTheme.colorScheme.surfaceVariant
-            else
-                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.1f)
-        ),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
         onClick = onNavigateToSettings
     ) {
         Row(
-            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     shape = CircleShape,
-                    // Brand Consistency: Use ElectricBlue instead of Pink
-                    color = if (isSynced) ElectricBlue else MutedGrey,
+                    // Updated: Use PrimaryIndigo for active state
+                    color = if (isSynced) PrimaryIndigo else MutedGrey,
                     modifier = Modifier.size(32.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -233,7 +246,7 @@ fun HealthSyncCard(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = if (isSynced) "Activity syncing active" else "Not connected to Google Fit",
+                        text = if (isSynced) "Activity syncing active" else "Not connected",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -244,7 +257,7 @@ fun HealthSyncCard(
                 Icon(
                     imageVector = Icons.Default.CheckCircle,
                     contentDescription = "Synced",
-                    tint = Color(0xFF4CAF50),
+                    tint = SuccessGreen, // Updated from hardcoded hex
                     modifier = Modifier.size(24.dp)
                 )
             } else {
@@ -265,6 +278,7 @@ fun QuickActionsSection(
     onManualLogClick: () -> Unit,
     onWarmUpClick: () -> Unit
 ) {
+    // Removed specific container colors to enforce the "Uniform Neutral" style
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -272,8 +286,6 @@ fun QuickActionsSection(
         QuickActionItem(
             icon = Icons.Default.FitnessCenter,
             label = "Exercises",
-            color = MaterialTheme.colorScheme.primaryContainer,
-            iconColor = MaterialTheme.colorScheme.onPrimaryContainer,
             onClick = onNavigateToExerciseList,
             modifier = Modifier.weight(1f)
         )
@@ -281,8 +293,6 @@ fun QuickActionsSection(
         QuickActionItem(
             icon = Icons.Default.Edit,
             label = "Log Work",
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            iconColor = MaterialTheme.colorScheme.onSecondaryContainer,
             onClick = onManualLogClick,
             modifier = Modifier.weight(1f)
         )
@@ -290,8 +300,6 @@ fun QuickActionsSection(
         QuickActionItem(
             icon = Icons.Default.DirectionsRun,
             label = "Warm Up",
-            color = MaterialTheme.colorScheme.tertiaryContainer,
-            iconColor = MaterialTheme.colorScheme.onTertiaryContainer,
             onClick = onWarmUpClick,
             modifier = Modifier.weight(1f)
         )
@@ -302,15 +310,17 @@ fun QuickActionsSection(
 fun QuickActionItem(
     icon: ImageVector,
     label: String,
-    color: Color,
-    iconColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(
+    // Redesigned to be "Outlined" and subtle
+    OutlinedCard(
         onClick = onClick,
         modifier = modifier.height(90.dp),
-        colors = CardDefaults.cardColors(containerColor = color),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         shape = RoundedCornerShape(16.dp)
     ) {
         Column(
@@ -318,9 +328,18 @@ fun QuickActionItem(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(imageVector = icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(28.dp))
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary, // Uniform Primary Color
+                modifier = Modifier.size(28.dp)
+            )
             Spacer(modifier = Modifier.height(4.dp))
-            Text(text = label, style = MaterialTheme.typography.labelMedium, color = iconColor)
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }
@@ -331,31 +350,43 @@ fun TodayWorkoutCard(workout: DailyWorkoutEntity, onNavigate: (Long) -> Unit) {
         onClick = { onNavigate(workout.workoutId) },
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
-        )
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.elevatedCardElevation(
+            defaultElevation = 3.dp, // Increased slightly for hierarchy
+            pressedElevation = 6.dp
+        ),
+        shape = MaterialTheme.shapes.medium
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.background,
-                    modifier = Modifier.size(40.dp)
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                    modifier = Modifier.size(48.dp)
                 ) { Box(contentAlignment = Alignment.Center) { Text("💪") } }
+
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
-                    Text(workout.title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text(
+                        text = workout.title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Scheduled Session",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(20.dp))
             Button(
                 onClick = { onNavigate(workout.workoutId) },
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                )
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Text("START WORKOUT")
+                Text("START SESSION", fontWeight = FontWeight.Bold)
             }
         }
     }

@@ -31,24 +31,11 @@ fun NavGraph(
 ) {
     NavHost(
         navController = navController,
-        startDestination = "home", // Set this to "home" to skip login
+        startDestination = "login", // Reverted back to "login"
         modifier = modifier
     ) {
-        // --- 1. HOME ROUTE ---
-        composable("home") {
-            HomeScreen(
-                onNavigateToWorkout = { workoutId ->
-                    navController.navigate("active_workout/$workoutId")
-                },
-                onNavigateToExerciseList = { navController.navigate("exercise_list") },
-                onManualLogClick = { navController.navigate("manual_creator") },
-                onWarmUpClick = { navController.navigate("warm_up") },
-                onSettingsClick = { navController.navigate("settings") }
-            )
-        }
-
-        // --- 2. AUTH ROUTES (Disabled/Unused for testing) ---
-        /* composable("login") {
+        // --- 1. AUTH ROUTES ---
+        composable("login") {
             LoginScreen(
                 onLoginSuccess = {
                     navController.navigate("home") {
@@ -69,15 +56,27 @@ fun NavGraph(
                 onBackToLogin = { navController.popBackStack() }
             )
         }
-        */
+
+        // --- 2. HOME ROUTE ---
+        composable("home") {
+            HomeScreen(
+                onNavigateToWorkout = { workoutId ->
+                    navController.navigate("active_workout/$workoutId")
+                },
+                onNavigateToExerciseList = { navController.navigate("exercise_list") },
+                onManualLogClick = { navController.navigate("manual_creator") },
+                onWarmUpClick = { navController.navigate("warm_up") },
+                onSettingsClick = { navController.navigate("settings") }
+            )
+        }
 
         // --- 3. APP WORKFLOWS ---
         composable("settings") {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onLogoutSuccess = {
-                    // Navigate back to home instead of login while testing
-                    navController.navigate("home") {
+                    // Navigate back to login on logout
+                    navController.navigate("login") {
                         popUpTo(0) { inclusive = true }
                     }
                 }

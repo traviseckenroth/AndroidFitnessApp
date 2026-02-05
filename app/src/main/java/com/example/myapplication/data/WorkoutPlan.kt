@@ -5,9 +5,19 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class WorkoutPlan(
     val explanation: String,
-    val weeks: List<WeeklyPlan>
+    val weeks: List<WeeklyPlan>,
+    val nutrition: NutritionPlan? = null
 )
 
+
+@Serializable
+data class NutritionPlan(
+    val calories: String = "",
+    val protein: String = "",
+    val carbs: String = "",
+    val fats: String = "",
+    val timing: String = ""
+)
 @Serializable
 data class WeeklyPlan(
     val week: Int,
@@ -33,4 +43,7 @@ data class Exercise(
     val estimatedTimePerSet: Double,
     val rpe: Int,
     val suggestedLbs: Float = 0f
+
+
+
 )

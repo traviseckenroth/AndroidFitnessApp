@@ -10,6 +10,7 @@ import com.example.myapplication.data.local.WorkoutPlanEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.remote.BedrockClient
+import com.example.myapplication.data.remote.NutritionPlan
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import java.util.Calendar
@@ -19,6 +20,8 @@ import javax.inject.Singleton
 import com.example.myapplication.data.remote.GeneratedDay
 import com.example.myapplication.data.remote.GeneratedExercise
 import kotlin.math.roundToInt
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
 
 @Singleton
 class WorkoutRepository @Inject constructor(
@@ -62,52 +65,62 @@ class WorkoutRepository @Inject constructor(
     ): Long {
         Log.d("WorkoutRepo", "Generating Plan for: $goal")
 
-        // --- FIX: CLEAR STAGNANT FUTURE WORKOUTS ---
-        // Only deletes workouts scheduled for now or in the future that haven't been finished.
-        // This preserves "CompletedWorkoutEntity" history in its separate table.
+        // Cleanup previous future scheduled workouts
         workoutDao.deleteFutureUncompletedWorkouts(System.currentTimeMillis())
 
         val workoutHistory = workoutDao.getCompletedWorkoutsWithExercise().first()
         val availableExercises = workoutDao.getAllExercises().first()
-
         val height = userPrefs.userHeight.first()
         val weight = userPrefs.userWeight.first()
         val age = userPrefs.userAge.first()
 
+        // 1. Fetch AI Response (Single declaration)
         val aiResponse = bedrockClient.generateWorkoutPlan(
             goal = goal,
-            duration = duration.toFloat(),
+            programType = programType, // Order fixed
             days = days,
-            programType = programType,
+            duration = duration.toFloat(),
             workoutHistory = workoutHistory,
             availableExercises = availableExercises,
+            userAge = age,
             userHeight = height,
-            userWeight = weight, // Fixed: Pass as Double
-            userAge = age
+            userWeight = weight
         )
 
         val startDate = System.currentTimeMillis()
+
+        // Serialize nutrition for database storage
+        val nutritionJson = aiResponse.nutrition?.let {
+            Json.encodeToString(it)
+        }
+
         val planEntity = WorkoutPlanEntity(
             name = "$programType for $goal",
             startDate = startDate,
             goal = goal,
-            programType = programType
+            programType = programType,
+            nutritionJson = nutritionJson
         )
-// --- NEW: STRICT TIME ENFORCEMENT ---
-        // We trust the AI for exercise selection, but we trust math for the clock.
+
+        // 2. Apply Time Constraints to AI schedule
         val adjustedSchedule = enforceTimeConstraints(aiResponse.schedule, duration.toFloat())
 
+        // 3. Determine Deload Ratios (Strength/Physique = 4:1, Endurance = 3:1)
+        val totalWeeks = if (programType == "Endurance") 4 else 5
+        val deloadWeekIndex = if (programType == "Endurance") 4 else 5
+
         val fullPlanData = mutableMapOf<DailyWorkoutEntity, List<WorkoutSetEntity>>()
-        val totalWeeks = 4
 
         for (weekNum in 1..totalWeeks) {
-            aiResponse.schedule.forEach { templateDay ->
+            val isDeload = weekNum == deloadWeekIndex
+
+            adjustedSchedule.forEach { templateDay ->
                 val workoutDate = calculateSmartDate(startDate, weekNum, templateDay.day)
 
                 val workoutEntity = DailyWorkoutEntity(
                     planId = 0,
                     scheduledDate = workoutDate,
-                    title = templateDay.title,
+                    title = if (isDeload) "DELOAD: ${'$'}{templateDay.title}" else templateDay.title,
                     isCompleted = false
                 )
 
@@ -117,29 +130,31 @@ class WorkoutRepository @Inject constructor(
                     val realEx = availableExercises.find { it.name.equals(aiEx.name, ignoreCase = true) }
 
                     realEx?.let { validExercise ->
-                        val adjustedSets = when (weekNum) {
-                            4 -> (aiEx.sets / 2).coerceAtLeast(2)
-                            2, 3 -> aiEx.sets + 1
-                            else -> aiEx.sets
+                        // APPLY RESEARCH: Deload weeks reduce sets by 40% and load by 30%
+                        val finalSets = if (isDeload) {
+                            (aiEx.sets * 0.6f).roundToInt().coerceAtLeast(2)
+                        } else {
+                            when (weekNum) {
+                                4 -> aiEx.sets + 1 // Peaking week
+                                else -> aiEx.sets
+                            }
                         }
 
-                        val adjustedLbs = if (weekNum == 3) {
-                            (aiEx.suggestedLbs * 1.05f).toInt()
+                        val finalLbs = if (isDeload) {
+                            (aiEx.suggestedLbs * 0.7f).toInt()
                         } else {
                             aiEx.suggestedLbs.toInt()
                         }
 
-                        val safeLbs = if (adjustedLbs == 0) 45 else adjustedLbs
-
-                        for (setNum in 1..adjustedSets) {
+                        for (setNum in 1..finalSets) {
                             setsForThisWorkout.add(
                                 WorkoutSetEntity(
                                     workoutId = 0,
                                     exerciseId = validExercise.exerciseId,
                                     setNumber = setNum,
                                     suggestedReps = aiEx.suggestedReps,
-                                    suggestedRpe = if (weekNum == 4) (aiEx.suggestedRpe - 1).coerceAtLeast(5) else aiEx.suggestedRpe,
-                                    suggestedLbs = safeLbs,
+                                    suggestedRpe = if (isDeload) 5 else aiEx.suggestedRpe,
+                                    suggestedLbs = if (finalLbs == 0) 45 else finalLbs,
                                     isCompleted = false
                                 )
                             )
@@ -150,8 +165,7 @@ class WorkoutRepository @Inject constructor(
             }
         }
 
-        val planId = workoutDao.saveFullWorkoutPlan(planEntity, fullPlanData)
-        return planId
+        return workoutDao.saveFullWorkoutPlan(planEntity, fullPlanData)
     }
     /**
      * Post-processes the AI schedule to strictly enforce session duration.
@@ -243,7 +257,7 @@ class WorkoutRepository @Inject constructor(
                             name = realEx?.name ?: "Unknown",
                             sets = setList.size,
                             reps = firstSet.suggestedReps.toString(),
-                            rest = "${(realEx?.estimatedTimePerSet ?: 2.0).toInt() * 60}s",
+                            rest = "${'$'}{(realEx?.estimatedTimePerSet ?: 2.0).toInt() * 60}s",
                             tier = realEx?.tier ?: 1,
                             explanation = realEx?.notes ?: "",
                             estimatedTimePerSet = realEx?.estimatedTimePerSet ?: 2.0,

@@ -4,26 +4,20 @@ package com.example.myapplication.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// --- Midnight Performance Palette ---
+// --- Minimalist Studio Palette ---
+// These colors replace the high-contrast "Midnight" scheme with a clean, modern aesthetic.
 
-// Accents: High energy, sporty
-val ElectricBlue = Color(0xFF2979FF)
-val NeonVolt = Color(0xFFC6FF00)
+// Backgrounds & Surfaces: Focused on "breathability" and subtle depth
+val StudioBackground = Color(0xFFFBFBFF) // Off-white "Studio" background
+val StudioSurface = Color(0xFFFFFFFF)    // Pure white for elevated cards
+val SubtleOutline = Color(0xFFE0E2E6)    // Very light borders for containers
 
-// Backgrounds: Deep, technical greys
-val MidnightBlack = Color(0xFF121212)
-val Gunmetal = Color(0xFF1E2126) // Card background
-val Charcoal = Color(0xFF2C2F36) // Lighter surface / borders
+// Accents: Professional and focused
+val PrimaryIndigo = Color(0xFF3F51B5)    // Focused, professional primary action
+val SecondaryIndigo = Color(0xFF5C6BC0)  // Lighter indigo for secondary elements
+val SuccessGreen = Color(0xFF4CAF50)     // Functional color for positive actions
 
-// Text
-val WhitePrimary = Color(0xFFEEEEEE)
-val GreySecondary = Color(0xFFB0B3B8)
-
-val DeepBlack = Color(0xFF000000)
-val SurfaceGrey = Color(0xFF121212)
-val NeonLime = Color(0xFFD7FF42) // Signature Brand Color
-val MutedGrey = Color(0xFF8E8E93)
-
-// Brand Color Mapping for Consistency
-val HealthSyncActive = ElectricBlue // Replaces Pink for a unified sporty look
-val SuccessGreen = Color(0xFF4CAF50)
+// Text: Hierarchy through tonal greys
+val WhitePrimary = Color(0xFFEEEEEE)     // Keep for potential dark mode use
+val NeutralGrey = Color(0xFF676767)      // Soft secondary text
+val MutedGrey = Color(0xFF8E8E93)        // For disabled or tertiary text

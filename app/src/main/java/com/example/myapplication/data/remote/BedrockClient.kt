@@ -18,9 +18,19 @@ import kotlinx.serialization.json.Json
 
 // --- AI RESPONSE DATA MODELS ---
 @Serializable
+data class NutritionPlan(
+    val calories: String = "",
+    val protein: String = "",
+    val carbs: String = "",
+    val fats: String = "",
+    val timing: String = ""
+)
+
+@Serializable
 data class GeneratedPlanResponse(
     val explanation: String = "",
-    val schedule: List<GeneratedDay> = emptyList()
+    val schedule: List<GeneratedDay> = emptyList(),
+    val nutrition: NutritionPlan? = null
 )
 
 @Serializable
@@ -118,14 +128,19 @@ class BedrockClient @Inject constructor(
                     - Tier 3: Reps: Moderate/High (8-15). Sets: Moderate (3-4). Load: Moderate (muscle failure). RPE: 9-10 (0-1 RIR). PROGRESSION: Density.
                 """.trimIndent()
 
-                "Hypertrophy" -> """
+                "Physique" -> """
                     - Tier 1: Reps: Low (5–8). Sets: High (3–5). Load: Heavy (75-90% 1RM). RPE: 8 (2 RIR). PROGRESSION: Add Weight.
                     - Tier 2: Reps: Moderate (8–12). Sets: Moderate (3–4). Load: Moderate (60-75% 1RM). RPE: 9 (1 RIR). PROGRESSION: Add Reps/Form.
                     - Tier 3: Reps: High (12–20). Sets: Moderate (2–3). Load: Light (40-60% 1RM). RPE: 10 (Failure). PROGRESSION: Add Reps/Form.
                 """.trimIndent()
 
-                "Powerlifting" -> "- Tier 1: SBD Competition Lifts ONLY."
-                else -> "Use standard progressive overload."
+                "Endurance" -> """
+                - Tier 1 (Sport-Specific): Aerobic Base (Zone 1) or HIIT (Zone 3) intervals. Focus: VO2 Max/Mitochondrial Mass. Rest: Variable.
+                - Tier 2 (Stability Strength): 8-12 reps. Focus: Unilateral stability & posterior chain resilience. Rest: 60s.
+                - Tier 3 (Joint Integrity): High-rep isolation or Isometrics. Focus: Injury Prevention (TKEs, 90/90, Copenhagen Planks). Rest: 30-60s.
+                """.trimIndent()
+
+                else -> "Use standard progressive overload across 3 tiers (Primary, Secondary, Accessory)."
             }
 
             val historyString = workoutHistory.joinToString(separator = "\n") { item ->
@@ -148,7 +163,13 @@ class BedrockClient @Inject constructor(
                 }.joinToString("\n")
 
             val systemPrompt = """
-                You are an expert strength coach. Generate a **1-week workout template** that will be repeated for a 4-week block.
+                You are an expert strength and endurance coach. Generate a 1-week template based on these scientific principles:                USER CONTEXT:
+                
+                PROGRAM RULES:
+                - STRENGTH: Focus on 'Big Four' (Squat, Deadlift, Bench, OHP). Structure: Explosive -> Primary (1-5 reps, 85-100% 1RM) -> Secondary -> Accessory. Rest: 2-5 mins.
+                - PHYSIQUE: 6-12 reps, 75-85% 1RM. Min 10 sets/muscle/week. Use 'fractional sets' (indirect work = 0.5 sets). Rest: 60-90s.
+                - ENDURANCE: Polarized Model (80% Zone 1, 20% Zone 3). Include 2-3x weekly injury prevention (Single-leg squats, RDLs, Copenhagen planks).
+               
                 USER CONTEXT:
                 - Age: ${userAge} years old (Adjust volume/intensity for recovery capacity).
                 - Height: ${userHeight} cm.
@@ -156,21 +177,34 @@ class BedrockClient @Inject constructor(
                 - Goal: ${goal}
                 - Schedule: ${days.joinToString()}
                 - Duration: ${totalMinutes} minutes per session.
-      
+                
                 TRAINING HISTORY:
                 ${if (historySummary.isBlank()) "No previous history." else historySummary}
-                
+                                
                 AVAILABLE EXERCISES (Use these when possible):
                 ${exerciseListString}
                 
+                NUTRITION RULES (Include in JSON):
+                - Strength: 1.4-2.0g/kg Protein, 3-5g/kg Carbs. Timing: Carbs 60-90m pre-workout.
+                - Physique: 1.6-2.2g/kg Protein, 55-60% Carbs. Timing: 2:1 Carb/Protein post-workout.
+                - Endurance: 5-12g/kg Carbs (based on intensity), 1.2-1.8g/kg Protein.
+  
                 STRICT OUTPUT FORMAT: 
                 Return a valid JSON object with two root keys: "explanation" and "schedule".
                 - "explanation": A string explaining the reasoning for the chosen exercises, progressions, and overall structure of the plan in less than 500 characters.
+                - "nutrition": { "calories": "...", "protein": "...", "carbs": "...", "fats": "...", "timing": "..." },
                 - "schedule": A list of daily sessions for **WEEK 1 ONLY**.
 
-                JSON EXAMPLE:
+                   JSON EXAMPLE:
                 {
-                    "explanation": "Given your age of 45 and goal of hypertrophy, we are prioritizing joint-friendly movements...",                  
+                    "explanation": "Given your age of 45 and goal of Physique, we are prioritizing joint-friendly movements...", 
+                    "nutrition": {
+                        "calories": "2800",
+                        "protein": "180g",
+                        "carbs": "300g",
+                        "fats": "80g",
+                        "timing": "High carbs pre-workout"
+                    },
                     "schedule": [
                     {
                       "week": 1,
@@ -211,7 +245,7 @@ class BedrockClient @Inject constructor(
                 Do not include preamble or markdown formatting.
             """.trimIndent()
 
-            val userPrompt = "Generate plan for ${userAge}yo male, ${userWeight}kg, Goal: ${goal}."
+            val userPrompt = "Generate plan for ${userAge}year old, ${userWeight}kg, Goal: ${goal}."
 
             val requestBody = ClaudeRequest(
                 max_tokens = 6000,
