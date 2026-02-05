@@ -93,6 +93,9 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+    val room_version = "2.6.1" // Update this to the latest stable version
+    implementation("androidx.room:room-runtime:$room_version")
+    ksp("androidx.room:room-compiler:$room_version")
 
     // --- Hilt (Dependency Injection) ---
     implementation(libs.hilt.android)
