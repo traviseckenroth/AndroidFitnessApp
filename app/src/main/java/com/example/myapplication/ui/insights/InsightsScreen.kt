@@ -1,30 +1,38 @@
+// app/src/main/java/com/example/myapplication/ui/insights/InsightsScreen.kt
+
 package com.example.myapplication.ui.insights
 
+import android.graphics.Paint
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.myapplication.ui.plan.NutrientItem // Ensure this is accessible or redefined below
+import kotlin.math.roundToInt
 
 @Composable
 fun InsightsScreen(
     viewModel: InsightsViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val currentPlan by viewModel.currentPlan.collectAsState()
-
-    // Alias to match your existing logic
-    val state = uiState
+    val state by viewModel.uiState.collectAsState()
     var showExerciseDropdown by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -37,7 +45,6 @@ fun InsightsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            // --- HEADER ---
             item {
                 Text(
                     "Performance Insights",
@@ -47,62 +54,13 @@ fun InsightsScreen(
                 )
             }
 
-            // --- NEW: CURRENT PLAN STRATEGY & NUTRITION ---
-            currentPlan?.let { plan ->
-                item {
-                    InsightCard(title = "Active Plan: ${plan.explanation.take(30)}...") {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            // Explanation
-                            Text(
-                                text = plan.explanation,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-
-                            // Nutrition Section
-                            plan.nutrition?.let { nutrition ->
-                                Divider(color = MaterialTheme.colorScheme.outlineVariant)
-
-                                Text(
-                                    "Nutrition Targets",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    NutrientStat("Calories", nutrition.calories)
-                                    NutrientStat("Protein", nutrition.protein)
-                                    NutrientStat("Carbs", nutrition.carbs)
-                                    NutrientStat("Fats", nutrition.fats)
-                                }
-
-                                if (nutrition.timing.isNotBlank()) {
-                                    Text(
-                                        text = "Timing: ${nutrition.timing}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontStyle = FontStyle.Italic,
-                                        color = MaterialTheme.colorScheme.secondary
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // --- 1RM GRAPH SECTION ---
             item {
                 InsightCard(title = "Estimated 1 Rep Max") {
-                    // Exercise Selector
                     Box(modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { showExerciseDropdown = !showExerciseDropdown } // Fix toggle logic
+                                .clickable { showExerciseDropdown = true }
                                 .padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -133,7 +91,6 @@ fun InsightsScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // THE GRAPH
                     if (state.oneRepMaxHistory.isNotEmpty()) {
                         OneRepMaxGraph(
                             dataPoints = state.oneRepMaxHistory,
@@ -152,20 +109,17 @@ fun InsightsScreen(
                 }
             }
 
-            // --- MUSCLE BALANCE SECTION ---
             item {
                 InsightCard(title = "Volume Distribution") {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        if (state.muscleVolumeDistribution.isNotEmpty()) {
-                            val maxVol = state.muscleVolumeDistribution.values.maxOrNull() ?: 1.0
+                        val maxVol = state.muscleVolumeDistribution.values.maxOrNull() ?: 1.0
+                        state.muscleVolumeDistribution.entries
+                            .sortedByDescending { it.value }
+                            .forEach { (muscle, volume) ->
+                                MuscleVolumeRow(muscle, volume, maxVol)
+                            }
 
-                            state.muscleVolumeDistribution.entries
-                                .sortedByDescending { it.value }
-                                .forEach { (muscle, volume) ->
-
-                                    MuscleVolumeRow(muscle, volume, maxVol)
-                                }
-                        } else {
+                        if (state.muscleVolumeDistribution.isEmpty()) {
                             Text("No workout data yet.", color = Color.Gray)
                         }
                     }
@@ -175,44 +129,41 @@ fun InsightsScreen(
     }
 }
 
-// --- HELPER COMPOSABLES ---
-
-@Composable
-fun NutrientStat(label: String, value: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-// Re-defining InsightCard here if it wasn't global,
-// otherwise you can remove this if it exists elsewhere.
 @Composable
 fun InsightCard(title: String, content: @Composable () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(modifier = Modifier.height(16.dp))
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(12.dp))
             content()
         }
     }
 }
+
+@Composable
+fun MuscleVolumeRow(muscle: String, volume: Double, maxVolume: Double) {
+    val percentage = (volume / maxVolume).toFloat()
+    Column {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(muscle, style = MaterialTheme.typography.bodyMedium)
+            Text("${(volume / 1000).roundToInt()}k lbs", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        LinearProgressIndicator(
+            progress = { percentage },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .clip(RoundedCornerShape(4.dp)),
+            color = MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
+        )
+    }
+}
+
 @Composable
 fun OneRepMaxGraph(
     dataPoints: List<Pair<Long, Float>>,
@@ -237,12 +188,14 @@ fun OneRepMaxGraph(
             val yRatio = i / 2f
             val yPos = height * (1 - yRatio)
             val labelValue = (minVal + (range * yRatio)).roundToInt()
+
             drawLine(
                 color = Color.Gray.copy(alpha = 0.2f),
                 start = Offset(0f, yPos),
                 end = Offset(width, yPos),
                 strokeWidth = 1.dp.toPx()
             )
+
             drawContext.canvas.nativeCanvas.drawText(
                 labelValue.toString(),
                 0f,
@@ -264,6 +217,7 @@ fun OneRepMaxGraph(
             drawCircle(color = lineColor, center = Offset(x, y), radius = 4.dp.toPx())
         }
         drawPath(path = path, color = lineColor, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
+
         val fillPath = Path()
         fillPath.addPath(path)
         fillPath.lineTo(width, height)

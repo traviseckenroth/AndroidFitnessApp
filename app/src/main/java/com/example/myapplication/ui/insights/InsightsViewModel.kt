@@ -19,9 +19,28 @@ import javax.inject.Inject
 class InsightsViewModel @Inject constructor(
     private val repository: WorkoutRepository
 ) : ViewModel() {
-
-    private val _uiState = MutableStateFlow(InsightsUiState())
-    val uiState: StateFlow<InsightsUiState> = _uiState.asStateFlow()
+    private val _selectedExercise = MutableStateFlow<com.example.myapplication.data.local.ExerciseEntity?>(null)
+    val uiState: StateFlow<InsightsUIState> = combine(
+        repository.getAllExercises(),
+        repository.getMuscleVolumeDistribution(),
+        _selectedExercise
+    ) { exercises, distribution, selected ->
+        val history = selected?.let { repository.getOneRepMaxHistory(it.id) } ?: emptyList()
+        InsightsUIState(
+            availableExercises = exercises,
+            selectedExercise = selected ?: exercises.firstOrNull(),
+            oneRepMaxHistory = history,
+            muscleVolumeDistribution = distribution
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000), // 5s timeout to handle config changes
+        initialValue = InsightsUIState()
+    )
+    fun selectExercise(exercise: com.example.myapplication.data.local.ExerciseEntity) {
+        _selectedExercise.value = exercise
+    }
+}
     private val _currentPlan = MutableStateFlow<WorkoutPlan?>(null)
     val currentPlan: StateFlow<WorkoutPlan?> = _currentPlan.asStateFlow()
     init {
