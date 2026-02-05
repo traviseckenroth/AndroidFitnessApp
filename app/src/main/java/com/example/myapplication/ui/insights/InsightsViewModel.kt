@@ -1,5 +1,3 @@
-// app/src/main/java/com/example/myapplication/ui/insights/InsightsViewModel.kt
-
 package com.example.myapplication.ui.insights
 
 import androidx.lifecycle.ViewModel
@@ -26,31 +24,42 @@ class InsightsViewModel @Inject constructor(
     }
 
     private fun loadInitialData() {
+        // 1. Load Exercises
         viewModelScope.launch {
             repository.getAllExercises().collect { exercises ->
-                _uiState.value = _uiState.value.copy(availableExercises = exercises)
-                if (exercises.isNotEmpty() && _uiState.value.selectedExercise == null) {
+                val currentSelected = _uiState.value.selectedExercise
+                _uiState.value = _uiState.value.copy(
+                    availableExercises = exercises,
+                    // Preserve selection if exists, else pick first
+                    selectedExercise = currentSelected ?: exercises.firstOrNull()
+                )
+
+                // If we just set the default exercise, load its graph data
+                if (currentSelected == null && exercises.isNotEmpty()) {
                     selectExercise(exercises.first())
                 }
             }
         }
 
+        // 2. Load History & Volume Stats
         viewModelScope.launch {
-            // Updated to fetch both past history AND the newly accepted plan volume
             repository.getAllCompletedWorkouts().collect { completedWorkouts ->
-                // Calculate volume from actually performed workouts
-                val completedVolume = completedWorkouts
+                // Calculate Volume by Muscle Group
+                val volumeByMuscle = completedWorkouts
                     .filter { it.exercise.muscleGroup != null }
                     .groupBy { it.exercise.muscleGroup!! }
                     .mapValues { (_, workouts) ->
                         workouts.sumOf { it.completedWorkout.totalVolume.toDouble() }
                     }
 
-                // Update state with current progress
+                // Get Recent History (Last 10 items)
+                val sortedHistory = completedWorkouts
+                    .sortedByDescending { it.completedWorkout.date }
+                    .take(10)
+
                 _uiState.value = _uiState.value.copy(
-                    muscleVolumeDistribution = completedVolume,
-                    totalWorkouts = completedWorkouts.size,
-                    isLoading = false
+                    muscleVolumeDistribution = volumeByMuscle,
+                    recentWorkouts = sortedHistory
                 )
             }
         }
@@ -59,12 +68,11 @@ class InsightsViewModel @Inject constructor(
     fun selectExercise(exercise: ExerciseEntity) {
         _uiState.value = _uiState.value.copy(selectedExercise = exercise)
         viewModelScope.launch {
-            // Using existing repository method to fetch history for the specific exercise
             repository.getCompletedWorkoutsForExercise(exercise.exerciseId).collect { completed ->
-                val oneRepMaxHistory = completed.map {
-                    // Estimated 1RM formula: Weight * (1 + Reps/30)
+                val oneRepMaxHistory = completed.sortedBy { it.completedWorkout.date }.map {
+                    // Epley Formula: Weight * (1 + Reps/30)
                     val estimated1RM = it.completedWorkout.totalVolume * (1 + (it.completedWorkout.totalReps / 30.0f))
-                    Pair(it.completedWorkout.date, estimated1RM)
+                    Pair(it.completedWorkout.date, estimated1RM.toFloat())
                 }
                 _uiState.value = _uiState.value.copy(oneRepMaxHistory = oneRepMaxHistory)
             }

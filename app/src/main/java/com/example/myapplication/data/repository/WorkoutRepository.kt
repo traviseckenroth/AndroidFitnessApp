@@ -85,6 +85,11 @@ class WorkoutRepository @Inject constructor(
     ): Long {
         Log.d("WorkoutRepo", "Generating Plan for: $goal")
 
+        // 1. CAPTURE EXISTING NUTRITION (The Fix)
+        // Before we delete or create anything, grab the nutrition from the current plan
+        val previousPlan = workoutDao.getLatestPlan()
+        val existingNutritionJson = previousPlan?.nutritionJson
+
         // Cleanup previous future scheduled workouts
         workoutDao.deleteFutureUncompletedWorkouts(System.currentTimeMillis())
 
@@ -94,7 +99,7 @@ class WorkoutRepository @Inject constructor(
         val weight = userPrefs.userWeight.first()
         val age = userPrefs.userAge.first()
 
-        // 1. Fetch AI Response (Exercises Only)
+        // 2. Fetch AI Response (Exercises Only)
         val aiResponse = bedrockClient.generateWorkoutPlan(
             goal = goal,
             programType = programType,
@@ -109,19 +114,21 @@ class WorkoutRepository @Inject constructor(
 
         val startDate = System.currentTimeMillis()
 
-        // Create Plan Entity with NULL nutrition initially
+        // 3. Create Plan Entity (PRESERVING NUTRITION)
         val planEntity = WorkoutPlanEntity(
             name = "$programType for $goal",
             startDate = startDate,
             goal = goal,
             programType = programType,
-            nutritionJson = null
+            nutritionJson = existingNutritionJson // <--- Pass the saved JSON here instead of null
         )
 
-        // 2. Apply Time Constraints to AI schedule
+        // 4. Apply Time Constraints to AI schedule
         val adjustedSchedule = enforceTimeConstraints(aiResponse.schedule, duration.toFloat())
 
-        // 3. Determine Deload Ratios
+        // ... (Rest of the function remains exactly the same) ...
+
+        // 5. Determine Deload Ratios
         val totalWeeks = if (programType == "Endurance") 4 else 5
         val deloadWeekIndex = if (programType == "Endurance") 4 else 5
 

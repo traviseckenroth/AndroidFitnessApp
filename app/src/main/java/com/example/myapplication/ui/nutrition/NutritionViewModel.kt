@@ -13,7 +13,7 @@ import javax.inject.Inject
 sealed interface NutritionUiState {
     object Loading : NutritionUiState
     data class Success(val plan: NutritionPlan) : NutritionUiState
-    object Locked : NutritionUiState // Represents "No Plan"
+    object Empty : NutritionUiState // Renamed from Locked
     data class Error(val msg: String) : NutritionUiState
 }
 
@@ -33,16 +33,14 @@ class NutritionViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = NutritionUiState.Loading
             try {
-                // Check if current active plan has nutrition
-                val plan = repository.getPlanDetails(0) // 0 or active ID logic
+                val plan = repository.getPlanDetails(0)
                 if (plan.nutrition != null) {
-                    _uiState.value = NutritionUiState.Success(plan.nutrition)
+                    _uiState.value = NutritionUiState.Success(plan.nutrition!!)
                 } else {
-                    _uiState.value = NutritionUiState.Locked
+                    _uiState.value = NutritionUiState.Empty
                 }
             } catch (e: Exception) {
-                // If no plan exists at all
-                _uiState.value = NutritionUiState.Locked
+                _uiState.value = NutritionUiState.Empty
             }
         }
     }

@@ -87,7 +87,7 @@ fun MainScreen() {
 sealed class Screen(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     object Home : Screen("home", "Home", Icons.Default.Home)
     object Plan : Screen("plan", "Plan", Icons.Default.CalendarToday)
-    object Nutrition : Screen("nutrition", "Diet", Icons.Default.Restaurant) // Add Nutrition Object
+    object Nutrition : Screen("nutrition", "Nutrition", Icons.Default.Restaurant) // Add Nutrition Object
     object Insights : Screen("insights", "Insights", Icons.Default.Analytics)
     object Profile : Screen("profile", "Profile", Icons.Default.Person)
 }

@@ -6,8 +6,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Bolt // Changed Icon
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,7 +18,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.NutritionPlan
-import kotlinx.coroutines.launch
 
 @Composable
 fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
@@ -26,7 +25,10 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
     val scrollState = rememberScrollState()
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(scrollState),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .verticalScroll(scrollState),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
         Text("Nutrition Guide", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
@@ -37,9 +39,9 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
                     CircularProgressIndicator()
                 }
             }
-            is NutritionUiState.Locked -> {
-                // PREMIUM UPSELL UI
-                LockedNutritionCard(onGenerateClick = { viewModel.generateNutrition() })
+            is NutritionUiState.Empty -> {
+                // STANDARD GENERATE UI
+                EmptyNutritionCard(onGenerateClick = { viewModel.generateNutrition() })
             }
             is NutritionUiState.Success -> {
                 // UNLOCKED CONTENT
@@ -47,16 +49,17 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
             }
             is NutritionUiState.Error -> {
                 Text("Error: ${state.msg}", color = MaterialTheme.colorScheme.error)
+                Button(onClick = { viewModel.generateNutrition() }) { Text("Retry") }
             }
         }
     }
 }
 
 @Composable
-fun LockedNutritionCard(onGenerateClick: () -> Unit) {
+fun EmptyNutritionCard(onGenerateClick: () -> Unit) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(
             modifier = Modifier.padding(32.dp).fillMaxWidth(),
@@ -64,15 +67,15 @@ fun LockedNutritionCard(onGenerateClick: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Box(
-                modifier = Modifier.size(64.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                modifier = Modifier.size(64.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+                Icon(Icons.Default.Bolt, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
             }
 
-            Text("Unlock AI Nutrition", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Generate Nutrition Plan", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(
-                "Generate a personalized macro breakdown and meal timing strategy based on your specific biometrics and workout goal.",
+                "Create a daily macro breakdown based on your active workout plan, body stats, and diet preferences.",
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 style = MaterialTheme.typography.bodyMedium
             )
@@ -80,7 +83,7 @@ fun LockedNutritionCard(onGenerateClick: () -> Unit) {
             Button(onClick = onGenerateClick, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Default.Restaurant, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Generate Plan (Premium)")
+                Text("Generate Plan")
             }
         }
     }
@@ -95,12 +98,12 @@ fun NutritionDetailCard(plan: NutritionPlan) {
                 Spacer(modifier = Modifier.width(12.dp))
                 Text("Daily Targets", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             }
-            Divider(modifier = Modifier.padding(vertical = 16.dp))
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 
             MacroRow("Calories", plan.calories, MaterialTheme.colorScheme.primary)
-            MacroRow("Protein", plan.protein, Color(0xFFE57373)) // Red-ish
-            MacroRow("Carbs", plan.carbs, Color(0xFF64B5F6))    // Blue-ish
-            MacroRow("Fats", plan.fats, Color(0xFFFFD54F))      // Yellow-ish
+            MacroRow("Protein", plan.protein, Color(0xFFE57373))
+            MacroRow("Carbs", plan.carbs, Color(0xFF64B5F6))
+            MacroRow("Fats", plan.fats, Color(0xFFFFD54F))
 
             Spacer(modifier = Modifier.height(24.dp))
             Text("Timing Strategy", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)

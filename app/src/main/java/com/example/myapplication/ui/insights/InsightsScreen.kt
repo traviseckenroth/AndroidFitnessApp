@@ -2,19 +2,17 @@ package com.example.myapplication.ui.insights
 
 import android.graphics.Paint
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,6 +27,10 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.myapplication.data.local.CompletedWorkoutWithExercise
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.roundToInt
 
 @Composable
@@ -48,6 +50,7 @@ fun InsightsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
+            // --- HEADER ---
             item {
                 Text(
                     "Performance Insights",
@@ -57,6 +60,12 @@ fun InsightsScreen(
                 )
             }
 
+            // --- AI STATUS (Moved from Profile) ---
+            item {
+                AIStatusCard()
+            }
+
+            // --- 1RM GRAPH SECTION ---
             item {
                 InsightCard(title = "Estimated 1 Rep Max") {
                     Box(modifier = Modifier.fillMaxWidth()) {
@@ -101,9 +110,7 @@ fun InsightsScreen(
                         )
                     } else {
                         Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(200.dp),
+                            modifier = Modifier.fillMaxWidth().height(200.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text("No history for this exercise.", color = Color.Gray)
@@ -112,10 +119,12 @@ fun InsightsScreen(
                 }
             }
 
+            // --- MUSCLE BALANCE SECTION ---
             item {
                 InsightCard(title = "Volume Distribution") {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         val maxVol = state.muscleVolumeDistribution.values.maxOrNull() ?: 1.0
+
                         state.muscleVolumeDistribution.entries
                             .sortedByDescending { it.value }
                             .forEach { (muscle, volume) ->
@@ -128,7 +137,104 @@ fun InsightsScreen(
                     }
                 }
             }
+
+            // --- RECENT HISTORY (Moved from Profile, Limited to 10) ---
+            item {
+                Text(
+                    "Recent Activity",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+            }
+
+            if (state.recentWorkouts.isEmpty()) {
+                item {
+                    Text("No recent workouts logged.", color = Color.Gray)
+                }
+            } else {
+                items(state.recentWorkouts) { item ->
+                    CompletedWorkoutCard(item)
+                }
+            }
+
+            item { Spacer(modifier = Modifier.height(48.dp)) }
         }
+    }
+}
+
+// --- COMPONENTS ---
+
+@Composable
+fun AIStatusCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
+    ) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Hybrid Optimization Active",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "AI designs your macro-cycle. Local algorithms auto-regulate your weights weekly based on RPE.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary)
+            )
+        }
+    }
+}
+
+@Composable
+fun CompletedWorkoutCard(item: CompletedWorkoutWithExercise) {
+    val sdf = SimpleDateFormat("MMM dd", Locale.getDefault())
+    val dateString = sdf.format(Date(item.completedWorkout.date))
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(item.exercise.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    dateString,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                VerticalStat(label = "REPS", value = "${item.completedWorkout.reps}")
+                VerticalStat(label = "LBS", value = "${item.completedWorkout.weight}")
+                VerticalStat(label = "RPE", value = "${item.completedWorkout.rpe}")
+            }
+        }
+    }
+}
+
+@Composable
+fun VerticalStat(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold
+        )
+        Text(value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.ExtraBold)
     }
 }
 
@@ -149,6 +255,7 @@ fun InsightCard(title: String, content: @Composable () -> Unit) {
 @Composable
 fun MuscleVolumeRow(muscle: String, volume: Double, maxVolume: Double) {
     val percentage = (volume / maxVolume).toFloat()
+
     Column {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(muscle, style = MaterialTheme.typography.bodyMedium)
@@ -168,11 +275,9 @@ fun MuscleVolumeRow(muscle: String, volume: Double, maxVolume: Double) {
 }
 
 @Composable
-fun OneRepMaxGraph(
-    dataPoints: List<Pair<Long, Float>>,
-    lineColor: Color
-) {
+fun OneRepMaxGraph(dataPoints: List<Pair<Long, Float>>, lineColor: Color) {
     val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
+
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
@@ -183,6 +288,7 @@ fun OneRepMaxGraph(
         val maxVal = values.maxOrNull() ?: 100f
         val minVal = values.minOrNull() ?: 0f
         val range = (maxVal - minVal).coerceAtLeast(10f)
+
         val width = size.width
         val height = size.height
         val pointSpacing = width / (dataPoints.size - 1).coerceAtLeast(1)
@@ -216,9 +322,11 @@ fun OneRepMaxGraph(
             val normalizedY = (value - minVal) / range
             val x = index * pointSpacing
             val y = height - (normalizedY * height)
+
             if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
             drawCircle(color = lineColor, center = Offset(x, y), radius = 4.dp.toPx())
         }
+
         drawPath(path = path, color = lineColor, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
 
         val fillPath = Path()
@@ -226,6 +334,12 @@ fun OneRepMaxGraph(
         fillPath.lineTo(width, height)
         fillPath.lineTo(0f, height)
         fillPath.close()
-        drawPath(fillPath, brush = Brush.verticalGradient(colors = listOf(lineColor.copy(alpha = 0.3f), Color.Transparent)))
+
+        drawPath(
+            path = fillPath,
+            brush = Brush.verticalGradient(
+                colors = listOf(lineColor.copy(alpha = 0.3f), Color.Transparent)
+            )
+        )
     }
 }
