@@ -34,7 +34,8 @@ fun NavGraph(
         startDestination = "login", // Start at Login
         modifier = modifier
     ) {
-        // --- AUTHENTICATION ---
+        // -// Temporarily comment out or ignore the Login/SignUp logic
+        /*
         composable("login") {
             LoginScreen(
                 onLoginSuccess = {
@@ -61,6 +62,7 @@ fun NavGraph(
                 }
             )
         }
+        */
         composable("settings") {
             SettingsScreen(
                 onBack = { navController.popBackStack() },

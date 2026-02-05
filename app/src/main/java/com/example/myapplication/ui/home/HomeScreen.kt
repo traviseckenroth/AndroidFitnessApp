@@ -1,5 +1,6 @@
 package com.example.myapplication.ui.home
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,10 +15,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.local.DailyWorkoutEntity
+import com.example.myapplication.ui.theme.ElectricBlue
+import com.example.myapplication.ui.theme.MutedGrey
+import com.example.myapplication.ui.theme.NeonLime
 import java.time.LocalDate
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -80,12 +85,16 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Text("TODAY'S SCHEDULE", style = MaterialTheme.typography.labelLarge)
+            Text(
+                "TODAY'S SCHEDULE",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
             Spacer(modifier = Modifier.height(8.dp))
 
             dailyWorkout?.let {
                 TodayWorkoutCard(it, onNavigateToWorkout)
-            } ?: NoWorkoutCard()
+            } ?: RestDayRecoveryCard(onWarmUpClick = onWarmUpClick)
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -100,7 +109,83 @@ fun HomeScreen(
         }
     }
 }
+@Composable
+fun RestDayRecoveryCard(onWarmUpClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.SelfImprovement, // Or use a custom recovery icon
+                    contentDescription = null,
+                    tint = ElectricBlue, // Consistent with the new "Performance" palette
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = "REST & RECOVER",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = ElectricBlue
+                )
+            }
 
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "No lifting today, but don't stay static.",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                text = "Active recovery improves blood flow and speeds up muscle repair.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Suggested Mobility Drill Preview
+            Surface(
+                color = MaterialTheme.colorScheme.background.copy(alpha = 0.4f),
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Bolt,
+                        contentDescription = null,
+                        tint = NeonLime,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Suggested: World's Greatest Stretch (5 reps/side)",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontStyle = FontStyle.Italic
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedButton(
+                onClick = onWarmUpClick,
+                modifier = Modifier.fillMaxWidth(),
+                border = BorderStroke(1.dp, ElectricBlue),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = ElectricBlue)
+            ) {
+                Text("VIEW ALL MOBILITY PROTOCOLS")
+            }
+        }
+    }
+}
 @Composable
 fun HealthSyncCard(
     isSynced: Boolean,
@@ -108,26 +193,25 @@ fun HealthSyncCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.medium, // Using theme-defined shapes
         colors = CardDefaults.cardColors(
             containerColor = if (isSynced)
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-            else
                 MaterialTheme.colorScheme.surfaceVariant
+            else
+                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.1f)
         ),
         onClick = onNavigateToSettings
     ) {
         Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     shape = CircleShape,
-                    color = if (isSynced) Color(0xFFE91E63) else Color.Gray,
+                    // Brand Consistency: Use ElectricBlue instead of Pink
+                    color = if (isSynced) ElectricBlue else MutedGrey,
                     modifier = Modifier.size(32.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
