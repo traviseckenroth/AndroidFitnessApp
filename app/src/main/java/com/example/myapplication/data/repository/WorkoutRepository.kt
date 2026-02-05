@@ -121,7 +121,7 @@ class WorkoutRepository @Inject constructor(
                 val workoutEntity = DailyWorkoutEntity(
                     planId = 0,
                     scheduledDate = workoutDate,
-                    title = if (isDeload) "DELOAD: ${'$'}{templateDay.title}" else templateDay.title,
+                    title = if (isDeload) "DELOAD: ${templateDay.title}" else templateDay.title,
                     isCompleted = false
                 )
 
