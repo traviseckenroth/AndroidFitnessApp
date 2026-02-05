@@ -8,6 +8,7 @@ import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Restaurant // Import the Restaurant icon
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -21,7 +22,6 @@ import androidx.navigation.compose.rememberNavController
 import com.example.myapplication.ui.navigation.NavGraph
 import com.example.myapplication.ui.theme.PrimaryIndigo
 import com.example.myapplication.ui.theme.StudioSurface
-import com.example.myapplication.ui.theme.SubtleOutline
 
 @Composable
 fun MainScreen() {
@@ -31,6 +31,7 @@ fun MainScreen() {
     val items = listOf(
         Screen.Home,
         Screen.Plan,
+        Screen.Nutrition, // Add Nutrition here
         Screen.Insights,
         Screen.Profile
     )
@@ -82,10 +83,11 @@ fun MainScreen() {
     }
 }
 
-// Simple Sealed Class for Navigation Items (If not already defined elsewhere)
+// Simple Sealed Class for Navigation Items
 sealed class Screen(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     object Home : Screen("home", "Home", Icons.Default.Home)
     object Plan : Screen("plan", "Plan", Icons.Default.CalendarToday)
+    object Nutrition : Screen("nutrition", "Diet", Icons.Default.Restaurant) // Add Nutrition Object
     object Insights : Screen("insights", "Insights", Icons.Default.Analytics)
     object Profile : Screen("profile", "Profile", Icons.Default.Person)
 }

@@ -1,3 +1,5 @@
+// app/src/main/java/com/example/myapplication/ui/navigation/NavGraph.kt
+
 package com.example.myapplication.ui.navigation
 
 import androidx.compose.runtime.Composable
@@ -12,6 +14,7 @@ import com.example.myapplication.ui.exercise.ExerciseListScreen
 import com.example.myapplication.ui.exercise_history.ExerciseHistoryScreen
 import com.example.myapplication.ui.home.HomeScreen
 import com.example.myapplication.ui.insights.InsightsScreen
+import com.example.myapplication.ui.nutrition.NutritionScreen // --- 1. IMPORT ---
 import com.example.myapplication.ui.settings.SettingsScreen
 import com.example.myapplication.ui.plan.GeneratePlanScreen
 import com.example.myapplication.ui.plan.ManualPlanScreen
@@ -31,7 +34,7 @@ fun NavGraph(
 ) {
     NavHost(
         navController = navController,
-        startDestination = "login", // Reverted back to "login"
+        startDestination = "login",
         modifier = modifier
     ) {
         // --- 1. AUTH ROUTES ---
@@ -75,7 +78,6 @@ fun NavGraph(
             SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onLogoutSuccess = {
-                    // Navigate back to login on logout
                     navController.navigate("login") {
                         popUpTo(0) { inclusive = true }
                     }
@@ -93,6 +95,11 @@ fun NavGraph(
                     }
                 }
             )
+        }
+
+        // --- 2. ADD NUTRITION ROUTE ---
+        composable("nutrition") {
+            NutritionScreen()
         }
 
         composable("insights") {

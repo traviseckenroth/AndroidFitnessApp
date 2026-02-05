@@ -6,22 +6,21 @@ import com.example.myapplication.data.local.CompletedWorkoutWithExercise
 import com.example.myapplication.data.local.DailyWorkoutEntity
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutDao
-import com.example.myapplication.data.local.WorkoutPlanEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.remote.BedrockClient
+import com.example.myapplication.data.remote.NutritionPlan
+import com.example.myapplication.data.remote.GeneratedDay
+import com.example.myapplication.data.remote.GeneratedExercise
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import java.util.Calendar
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
-import com.example.myapplication.data.remote.GeneratedDay
-import com.example.myapplication.data.remote.GeneratedExercise
 import kotlin.math.roundToInt
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
-import com.example.myapplication.data.NutritionPlan
 
 @Singleton
 class WorkoutRepository @Inject constructor(
@@ -51,17 +50,34 @@ class WorkoutRepository @Inject constructor(
     fun getExercisesByIds(exerciseIds: List<Long>): Flow<List<ExerciseEntity>> = workoutDao.getExercisesByIds(exerciseIds)
     fun getAllCompletedWorkouts(): Flow<List<CompletedWorkoutWithExercise>> = workoutDao.getCompletedWorkoutsWithExercise()
     fun getCompletedWorkoutsForExercise(exerciseId: Long): Flow<List<CompletedWorkoutWithExercise>> = workoutDao.getCompletedWorkoutsForExercise(exerciseId)
+
+    // --- PROFILE READS ---
     fun getUserHeight(): Flow<Int> = userPrefs.userHeight
     fun getUserWeight(): Flow<Double> = userPrefs.userWeight
     fun getUserAge(): Flow<Int> = userPrefs.userAge
-    suspend fun saveBiometrics(height: Int, weight: Double, age: Int) = userPrefs.saveBiometrics(height, weight, age)
 
-    // --- PLAN GENERATION ---
+    // New Profile Fields
+    fun getUserGender(): Flow<String> = userPrefs.userGender
+    fun getUserActivity(): Flow<String> = userPrefs.userActivity
+    fun getUserBodyFat(): Flow<Double?> = userPrefs.userBodyFat
+    fun getUserDiet(): Flow<String> = userPrefs.userDiet
+    fun getUserGoalPace(): Flow<String> = userPrefs.userGoalPace
+
+    // --- PROFILE WRITES ---
+    suspend fun saveProfile(
+        height: Int, weight: Double, age: Int,
+        gender: String, activity: String, bodyFat: Double?,
+        diet: String, pace: String
+    ) {
+        userPrefs.saveProfile(height, weight, age, gender, activity, bodyFat, diet, pace)
+    }
+
+    // --- 1. WORKOUT GENERATION ONLY ---
     suspend fun generateAndSavePlan(
         goal: String,
         duration: Int,
         days: List<String>,
-        programType: String = "Physique"
+        programType: String = "Hypertrophy"
     ): Long {
         Log.d("WorkoutRepo", "Generating Plan for: $goal")
 
@@ -74,10 +90,10 @@ class WorkoutRepository @Inject constructor(
         val weight = userPrefs.userWeight.first()
         val age = userPrefs.userAge.first()
 
-        // 1. Fetch AI Response (Single declaration)
+        // 1. Fetch AI Response (Exercises Only)
         val aiResponse = bedrockClient.generateWorkoutPlan(
             goal = goal,
-            programType = programType, // Order fixed
+            programType = programType,
             days = days,
             duration = duration.toFloat(),
             workoutHistory = workoutHistory,
@@ -89,24 +105,19 @@ class WorkoutRepository @Inject constructor(
 
         val startDate = System.currentTimeMillis()
 
-        // Serialize nutrition for database storage
-        val nutritionJson = aiResponse.nutrition?.let {
-            Json.encodeToString(it)
-        }
-
+        // Create Plan Entity with NULL nutrition initially
         val planEntity = WorkoutPlanEntity(
             name = "$programType for $goal",
-            startDate = System.currentTimeMillis(),
+            startDate = startDate,
             goal = goal,
             programType = programType,
-            nutritionJson = nutritionJson,
-            explanation = aiResponse.explanation // Save this!
+            nutritionJson = null
         )
 
         // 2. Apply Time Constraints to AI schedule
         val adjustedSchedule = enforceTimeConstraints(aiResponse.schedule, duration.toFloat())
 
-        // 3. Determine Deload Ratios (Strength/Physique = 4:1, Endurance = 3:1)
+        // 3. Determine Deload Ratios
         val totalWeeks = if (programType == "Endurance") 4 else 5
         val deloadWeekIndex = if (programType == "Endurance") 4 else 5
 
@@ -131,7 +142,6 @@ class WorkoutRepository @Inject constructor(
                     val realEx = availableExercises.find { it.name.equals(aiEx.name, ignoreCase = true) }
 
                     realEx?.let { validExercise ->
-                        // APPLY RESEARCH: Deload weeks reduce sets by 40% and load by 30%
                         val finalSets = if (isDeload) {
                             (aiEx.sets * 0.6f).roundToInt().coerceAtLeast(2)
                         } else {
@@ -168,23 +178,54 @@ class WorkoutRepository @Inject constructor(
 
         return workoutDao.saveFullWorkoutPlan(planEntity, fullPlanData)
     }
+
+    // --- 2. NUTRITION GENERATION ONLY ---
+    suspend fun generateAndSaveNutrition(): NutritionPlan {
+        val height = userPrefs.userHeight.first()
+        val weight = userPrefs.userWeight.first()
+        val age = userPrefs.userAge.first()
+        val gender = userPrefs.userGender.first()
+        val activity = userPrefs.userActivity.first()
+        val diet = userPrefs.userDiet.first()
+        val pace = userPrefs.userGoalPace.first()
+
+        // Get current active plan to know the goal
+        // Assumes WorkoutDao has a method to get the latest plan
+        val currentPlan = workoutDao.getLatestPlan() ?: throw Exception("No active workout plan found")
+
+        val nutrition = bedrockClient.generateNutritionPlan(
+            goal = currentPlan.goal,
+            userAge = age,
+            userHeight = height,
+            userWeight = weight,
+            gender = gender,
+            activityLevel = activity,
+            dietType = diet,
+            goalPace = pace
+        )
+
+        // Update DB
+        val nutritionJson = Json.encodeToString(nutrition)
+        workoutDao.updateNutrition(currentPlan.planId, nutritionJson)
+
+        return nutrition
+    }
+
     /**
      * Post-processes the AI schedule to strictly enforce session duration.
      * Rules: T1=4m, T2=2.5m, T3=1.5m.
-     * Cuts T3 volume first if too long. Adds T1 volume first if too short.
      */
     private fun enforceTimeConstraints(schedule: List<GeneratedDay>, targetHours: Float): List<GeneratedDay> {
         val targetMinutes = (targetHours * 60).toInt()
         val tolerance = 5 // +/- 5 minutes is acceptable
 
         return schedule.map { day ->
-            var exercises = day.exercises.toMutableList()
+            val exercises = day.exercises.toMutableList()
             var currentMinutes = calculateTotalMinutes(exercises)
 
             // 1. CUT VOLUME if too long
             while (currentMinutes > targetMinutes + tolerance) {
                 // Find a candidate to cut. Priority: Tier 3 (lowest importance) -> Tier 2 -> Tier 1
-                // Also require sets > 2 so we don't eliminate exercises entirely unless necessary
                 val cutCandidateIndex = exercises.indexOfFirst {
                     it == exercises.filter { e -> e.sets > 2 }
                         .sortedWith(compareByDescending<GeneratedExercise> { ex -> ex.tier }.thenByDescending { ex -> ex.sets })
@@ -196,14 +237,12 @@ class WorkoutRepository @Inject constructor(
                     exercises[cutCandidateIndex] = ex.copy(sets = ex.sets - 1)
                     currentMinutes = calculateTotalMinutes(exercises)
                 } else {
-                    break // Cannot cut any further without removing exercises
+                    break
                 }
             }
 
             // 2. ADD VOLUME if too short
             while (currentMinutes < targetMinutes - tolerance) {
-                // Add to Tier 1 first (Strength), then Tier 2. Avoid adding to T3 endlessly.
-                // Cap sets at 6 to prevent absurdity.
                 val addCandidateIndex = exercises.indexOfFirst {
                     it == exercises.filter { e -> e.tier <= 2 && e.sets < 6 }
                         .sortedBy { ex -> ex.tier } // Prioritize T1
@@ -215,7 +254,7 @@ class WorkoutRepository @Inject constructor(
                     exercises[addCandidateIndex] = ex.copy(sets = ex.sets + 1)
                     currentMinutes = calculateTotalMinutes(exercises)
                 } else {
-                    break // No suitable exercises to add volume to
+                    break
                 }
             }
 
@@ -233,15 +272,23 @@ class WorkoutRepository @Inject constructor(
             ex.sets * timePerSet
         }
     }
-    suspend fun getPlanDetails(planId: Long): com.example.myapplication.data.WorkoutPlan {
-        val planEntity = workoutDao.getPlanById(planId)
-        val workouts = workoutDao.getWorkoutsForPlan(planId)
-        val allExercises = workoutDao.getAllExercisesOneShot()
 
-        // Parse Nutrition
+    suspend fun getPlanDetails(planId: Long): com.example.myapplication.data.WorkoutPlan {
+        // If planId is 0, try to get the active/latest plan
+        val targetPlanId = if (planId == 0L) {
+            workoutDao.getLatestPlan()?.planId ?: 0L
+        } else {
+            planId
+        }
+
+        // Fetch specific plan entity to get Nutrition JSON
+        val planEntity = workoutDao.getPlanById(targetPlanId)
         val nutrition = planEntity?.nutritionJson?.let {
             try { Json.decodeFromString<NutritionPlan>(it) } catch(e: Exception) { null }
         }
+
+        val workouts = workoutDao.getWorkoutsForPlan(targetPlanId)
+        val allExercises = workoutDao.getAllExercisesOneShot()
 
         val weeklyPlans = mutableListOf<com.example.myapplication.data.WeeklyPlan>()
 
@@ -264,7 +311,7 @@ class WorkoutRepository @Inject constructor(
                             name = realEx?.name ?: "Unknown",
                             sets = setList.size,
                             reps = firstSet.suggestedReps.toString(),
-                            rest = "${'$'}{(realEx?.estimatedTimePerSet ?: 2.0).toInt() * 60}s",
+                            rest = "${(realEx?.estimatedTimePerSet ?: 2.0).toInt() * 60}s",
                             tier = realEx?.tier ?: 1,
                             explanation = realEx?.notes ?: "",
                             estimatedTimePerSet = realEx?.estimatedTimePerSet ?: 2.0,
@@ -285,16 +332,12 @@ class WorkoutRepository @Inject constructor(
         }
 
         return com.example.myapplication.data.WorkoutPlan(
-            explanation = "Your custom 4-week progression has been generated and saved.",
+            explanation = planEntity?.name ?: "Your Plan",
             weeks = weeklyPlans,
             nutrition = nutrition
         )
     }
-    // 3. ADD getLatestPlanDetails for Insights
-    suspend fun getLatestPlanDetails(): com.example.myapplication.data.WorkoutPlan? {
-        val latestPlan = workoutDao.getLatestPlan() ?: return null
-        return getPlanDetails(latestPlan.planId)
-    }
+
     private fun getDayNameFromDate(date: Long): String {
         val cal = Calendar.getInstance()
         cal.timeInMillis = date
@@ -353,6 +396,7 @@ class WorkoutRepository @Inject constructor(
         // 3. Run Optimization
         return autoRegulateFutureWorkouts(workout.planId, sets, workout.scheduledDate)
     }
+
     suspend fun injectWarmUpSets(workoutId: Long, exerciseId: Long, workingWeight: Int) {
         // 1. Get existing sets
         val currentSets = workoutDao.getSetsForWorkoutList(workoutId)
@@ -362,21 +406,17 @@ class WorkoutRepository @Inject constructor(
         if (currentSets.isEmpty()) return
 
         // 2. Define Warm-up Progression (Bar -> 50% -> 75%)
-        // Round to nearest 5
         fun roundToFive(w: Double) = (w / 5).toInt() * 5
 
         val warmups = listOf(
-            // Set 1: Empty Bar (or very light) - 10 Reps
             WorkoutSetEntity(
                 workoutId = workoutId, exerciseId = exerciseId, setNumber = 1,
                 suggestedReps = 10, suggestedLbs = 45, suggestedRpe = 0, isCompleted = false
             ),
-            // Set 2: 50% of working weight - 5 Reps
             WorkoutSetEntity(
                 workoutId = workoutId, exerciseId = exerciseId, setNumber = 2,
                 suggestedReps = 5, suggestedLbs = roundToFive(workingWeight * 0.5), suggestedRpe = 0, isCompleted = false
             ),
-            // Set 3: 75% of working weight - 3 Reps
             WorkoutSetEntity(
                 workoutId = workoutId, exerciseId = exerciseId, setNumber = 3,
                 suggestedReps = 3, suggestedLbs = roundToFive(workingWeight * 0.75), suggestedRpe = 0, isCompleted = false
@@ -386,12 +426,11 @@ class WorkoutRepository @Inject constructor(
         // 3. Shift existing sets down by 3
         val updatedOriginalSets = currentSets.map { it.copy(setNumber = it.setNumber + 3) }
 
-        // 4. Save everything (Delete old, insert new mix)
-        // Note: In a real app, you might do this transactionally.
-        // For now, we update the existing ones and insert the new ones.
+        // 4. Save everything
         updatedOriginalSets.forEach { workoutDao.updateSet(it) }
         workoutDao.insertSets(warmups)
     }
+
     private suspend fun autoRegulateFutureWorkouts(
         planId: Long,
         completedSets: List<WorkoutSetEntity>,
@@ -456,7 +495,7 @@ class WorkoutRepository @Inject constructor(
         return adjustmentLogs
     }
 
-    // --- SWAP LOGIC (Using Major Muscle) ---
+    // --- SWAP LOGIC ---
     suspend fun getBestAlternatives(currentExercise: ExerciseEntity): List<ExerciseEntity> {
         val majorMuscle = currentExercise.majorMuscle
 

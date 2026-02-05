@@ -1,3 +1,5 @@
+// app/src/main/java/com/example/myapplication/data/remote/BedrockClient.kt
+
 package com.example.myapplication.data.remote
 
 import android.util.Log
@@ -7,7 +9,7 @@ import aws.smithy.kotlin.runtime.http.engine.okhttp.OkHttpEngine
 import com.example.myapplication.BuildConfig
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
 import com.example.myapplication.data.local.ExerciseEntity
-import com.example.myapplication.data.repository.AuthRepository // Ensure this is imported
+import com.example.myapplication.data.repository.AuthRepository
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration.Companion.seconds
@@ -17,6 +19,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 // --- AI RESPONSE DATA MODELS ---
+
 @Serializable
 data class NutritionPlan(
     val calories: String = "",
@@ -87,7 +90,7 @@ private val jsonConfig = Json {
 // --- CLIENT CLASS ---
 @Singleton
 class BedrockClient @Inject constructor(
-    private val authRepository: AuthRepository // Correctly injected in constructor
+    private val authRepository: AuthRepository
 ) {
 
     // Initialize client using your Custom Cognito Provider
@@ -108,6 +111,7 @@ class BedrockClient @Inject constructor(
         }
     }
 
+    // --- 1. GENERATE WORKOUT PLAN (Exercise Only) ---
     suspend fun generateWorkoutPlan(
         goal: String,
         programType: String,
@@ -143,24 +147,22 @@ class BedrockClient @Inject constructor(
                 else -> "Use standard progressive overload across 3 tiers (Primary, Secondary, Accessory)."
             }
 
-            val historyString = workoutHistory.joinToString(separator = "\n") { item ->
-                "- ${item.completedWorkout.date}: ${item.completedWorkout.reps} reps at ${item.completedWorkout.weight} lbs (RPE ${item.completedWorkout.rpe})"
-            }
-
-            val exerciseListString = availableExercises.joinToString("\n") { ex ->
-                "- ${ex.name} (Tier ${ex.tier}, ${ex.estimatedTimePerSet} mins/set)"
-            }
-
-            val totalMinutes = (duration * 60).toInt()
-
             val historySummary = workoutHistory
                 .groupBy { it.exercise.name }
                 .map { (name, sessions) ->
                     val sorted = sessions.sortedBy { it.completedWorkout.date }
                     val first = sorted.first().completedWorkout
                     val last = sorted.last().completedWorkout
-                    "- $name: Started at ${first.weight}lbs, currently at ${last.weight}lbs (Avg RPE: ${sessions.map { it.completedWorkout.rpe }.average().toInt()})"
+                    "- $name: Started at ${first.weight}lbs, currently at ${last.weight}lbs (Avg RPE: ${
+                        sessions.map { it.completedWorkout.rpe }.average().toInt()
+                    })"
                 }.joinToString("\n")
+
+            val exerciseListString = availableExercises.joinToString("\n") { ex ->
+                "- ${ex.name} (Tier ${ex.tier}, ${ex.estimatedTimePerSet} mins/set)"
+            }
+
+            val totalMinutes = (duration * 60).toInt()
 
             val systemPrompt = """
                 You are an expert strength and endurance coach. Generate a 1-week template based on these scientific principles:                USER CONTEXT:
@@ -183,28 +185,15 @@ class BedrockClient @Inject constructor(
                                 
                 AVAILABLE EXERCISES (Use these when possible):
                 ${exerciseListString}
-                
-                NUTRITION RULES (Include in JSON):
-                - Strength: 1.4-2.0g/kg Protein, 3-5g/kg Carbs. Timing: Carbs 60-90m pre-workout.
-                - Physique: 1.6-2.2g/kg Protein, 55-60% Carbs. Timing: 2:1 Carb/Protein post-workout.
-                - Endurance: 5-12g/kg Carbs (based on intensity), 1.2-1.8g/kg Protein.
-  
+               
                 STRICT OUTPUT FORMAT: 
                 Return a valid JSON object with two root keys: "explanation" and "schedule".
                 - "explanation": A string explaining the reasoning for the chosen exercises, progressions, and overall structure of the plan in less than 500 characters.
-                - "nutrition": { "calories": "...", "protein": "...", "carbs": "...", "fats": "...", "timing": "..." },
                 - "schedule": A list of daily sessions for **WEEK 1 ONLY**.
 
                    JSON EXAMPLE:
                 {
                     "explanation": "Given your age of 45 and goal of Physique, we are prioritizing joint-friendly movements...", 
-                    "nutrition": {
-                        "calories": "2800",
-                        "protein": "180g",
-                        "carbs": "300g",
-                        "fats": "80g",
-                        "timing": "High carbs pre-workout"
-                    },
                     "schedule": [
                     {
                       "week": 1,
@@ -247,42 +236,90 @@ class BedrockClient @Inject constructor(
 
             val userPrompt = "Generate plan for ${userAge}year old, ${userWeight}kg, Goal: ${goal}."
 
-            val requestBody = ClaudeRequest(
-                max_tokens = 6000,
-                system = systemPrompt,
-                messages = listOf(Message(role = "user", content = userPrompt))
-            )
+            // Use the shared helper to invoke Claude
+            val cleanJson = invokeClaude(systemPrompt, userPrompt)
 
-            val jsonString = jsonConfig.encodeToString(ClaudeRequest.serializer(), requestBody)
-
-            val request = InvokeModelRequest {
-                modelId = "anthropic.claude-3-haiku-20240307-v1:0"
-                contentType = "application/json"
-                accept = "application/json"
-                body = jsonString.toByteArray()
-            }
-
-            val response = client.invokeModel(request)
-            val responseBody = response.body?.decodeToString() ?: ""
-
-            val outerResponse = jsonConfig.decodeFromString<ClaudeResponse>(responseBody)
-
-            val rawText = outerResponse.content.firstOrNull()?.text ?: ""
-            val jsonRegex = Regex("\\{.*\\}", setOf(RegexOption.DOT_MATCHES_ALL))
-            val match = jsonRegex.find(rawText)
-
-            if (match != null) {
-                val cleanJson = match.value
-                Log.d("BedrockService", "Clean JSON: $cleanJson")
-                jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
-            } else {
-                Log.e("BedrockError", "AI returned invalid format: $rawText")
-                GeneratedPlanResponse(explanation = "Error: AI response format invalid.")
-            }
+            // Decode the Workout Response
+            jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
 
         } catch (e: Exception) {
             Log.e("BedrockError", "Error invoking model", e)
             GeneratedPlanResponse(explanation = "Error: ${e.localizedMessage}")
         }
+    }
+
+    // --- 2. GENERATE NUTRITION PLAN (Separate Call) ---
+    suspend fun generateNutritionPlan(
+        goal: String,
+        userAge: Int,
+        userHeight: Int,
+        userWeight: Double,
+        gender: String,
+        activityLevel: String,
+        dietType: String,
+        goalPace: String
+    ): NutritionPlan = withContext(Dispatchers.Default) {
+
+        try {
+            val systemPrompt = """
+            You are a sports nutritionist. Create a daily nutrition target for a user.
+            Stats: $gender, Age $userAge, ${userHeight}cm, ${userWeight}kg.
+            Activity: $activityLevel.
+            Goal: $goal ($goalPace).
+            Diet Preference: $dietType.
+
+            OUTPUT FORMAT (JSON ONLY, NO TEXT):
+            {
+              "calories": "2500",
+              "protein": "180g",
+              "carbs": "250g",
+              "fats": "80g",
+              "timing": "Suggest meal timing based on workout (e.g., Carb heavy post-workout)"
+            }
+            Do not include preamble or markdown formatting.
+            """.trimIndent()
+
+            val userPrompt = "Generate nutrition plan."
+
+            // Use the shared helper to invoke Claude
+            val cleanJson = invokeClaude(systemPrompt, userPrompt)
+
+            // Decode the Nutrition Response
+            jsonConfig.decodeFromString<NutritionPlan>(cleanJson)
+
+        } catch (e: Exception) {
+            Log.e("BedrockError", "Error generating nutrition", e)
+            NutritionPlan(timing = "Error generating plan. Please try again.")
+        }
+    }
+
+    // --- SHARED API HELPER ---
+    private suspend fun invokeClaude(systemPrompt: String, userPrompt: String): String {
+        val requestBody = ClaudeRequest(
+            max_tokens = 6000,
+            system = systemPrompt,
+            messages = listOf(Message(role = "user", content = userPrompt))
+        )
+
+        val jsonString = jsonConfig.encodeToString(ClaudeRequest.serializer(), requestBody)
+
+        val request = InvokeModelRequest {
+            modelId = "anthropic.claude-3-haiku-20240307-v1:0"
+            contentType = "application/json"
+            accept = "application/json"
+            body = jsonString.toByteArray()
+        }
+
+        val response = client.invokeModel(request)
+        val responseBody = response.body?.decodeToString() ?: ""
+
+        val outerResponse = jsonConfig.decodeFromString<ClaudeResponse>(responseBody)
+        val rawText = outerResponse.content.firstOrNull()?.text ?: ""
+
+        // Extract JSON from potential Markdown wrapper
+        val jsonRegex = Regex("\\{.*\\}", setOf(RegexOption.DOT_MATCHES_ALL))
+        val match = jsonRegex.find(rawText)
+
+        return match?.value ?: throw Exception("AI returned invalid format: $rawText")
     }
 }

@@ -10,8 +10,9 @@ import androidx.room.RoomDatabase
         DailyWorkoutEntity::class,
         WorkoutSetEntity::class,
         CompletedWorkoutEntity::class
+        WorkoutPlanEntity::class
     ],
-    version = 13,
+    version = 15,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

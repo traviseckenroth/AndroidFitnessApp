@@ -1,3 +1,5 @@
+// app/src/main/java/com/example/myapplication/data/local/WorkoutDao.kt
+
 package com.example.myapplication.data.local
 
 import androidx.room.*
@@ -14,7 +16,6 @@ interface WorkoutDao {
     @Query("SELECT * FROM exercises")
     suspend fun getAllExercisesOneShot(): List<ExerciseEntity>
 
-    // --- FIX FOR SWAP LOGIC ---
     @Query("SELECT * FROM exercises WHERE majorMuscle = :majorMuscle AND exerciseId != :currentId")
     suspend fun getAlternativesByMajorMuscle(majorMuscle: String, currentId: Long): List<ExerciseEntity>
 
@@ -29,15 +30,13 @@ interface WorkoutDao {
 
     @Query("SELECT * FROM workout_sets WHERE workoutId = :workoutId ORDER BY exerciseId, setNumber")
     fun getSetsForWorkout(workoutId: Long): Flow<List<WorkoutSetEntity>>
-    @Query("SELECT * FROM plans WHERE planId = :planId")
-    suspend fun getPlanById(planId: Long): WorkoutPlanEntity?
 
-    @Query("SELECT * FROM plans ORDER BY planId DESC LIMIT 1")
-    suspend fun getLatestPlan(): WorkoutPlanEntity?
     @Query("SELECT * FROM daily_workouts WHERE isCompleted = 1 ORDER BY scheduledDate DESC")
     fun getCompletedWorkouts(): Flow<List<DailyWorkoutEntity>>
+
     @Query("DELETE FROM daily_workouts WHERE scheduledDate >= :currentTime AND isCompleted = 0")
     suspend fun deleteFutureUncompletedWorkouts(currentTime: Long): Int
+
     @Transaction
     @Query("SELECT * FROM completed_workouts")
     fun getCompletedWorkoutsWithExercise(): Flow<List<CompletedWorkoutWithExercise>>
@@ -46,11 +45,22 @@ interface WorkoutDao {
     @Query("SELECT * FROM completed_workouts WHERE exerciseId = :exerciseId")
     fun getCompletedWorkoutsForExercise(exerciseId: Long): Flow<List<CompletedWorkoutWithExercise>>
 
+    // --- PLAN QUERIES ---
     @Query("SELECT * FROM daily_workouts WHERE planId = :planId ORDER BY scheduledDate ASC")
     suspend fun getWorkoutsForPlan(planId: Long): List<DailyWorkoutEntity>
 
     @Query("SELECT * FROM workout_sets WHERE workoutId = :workoutId ORDER BY setNumber ASC")
     suspend fun getSetsForWorkoutList(workoutId: Long): List<WorkoutSetEntity>
+
+    @Query("SELECT * FROM workout_plans ORDER BY startDate DESC LIMIT 1")
+    suspend fun getLatestPlan(): WorkoutPlanEntity?
+
+    @Query("SELECT * FROM workout_plans WHERE planId = :planId")
+    suspend fun getPlanById(planId: Long): WorkoutPlanEntity?
+
+    // --- FIX: Change return type from Unit (implicit) to Int ---
+    @Query("UPDATE workout_plans SET nutritionJson = :nutritionJson WHERE planId = :planId")
+    suspend fun updateNutrition(planId: Long, nutritionJson: String): Int
 
     // --- WRITES ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)

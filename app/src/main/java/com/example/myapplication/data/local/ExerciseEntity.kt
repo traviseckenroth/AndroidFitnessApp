@@ -1,3 +1,5 @@
+// app/src/main/java/com/example/myapplication/data/local/ExerciseEntity.kt
+
 package com.example.myapplication.data.local
 
 import androidx.room.Embedded
@@ -11,9 +13,9 @@ import androidx.room.Relation
 data class ExerciseEntity(
     @PrimaryKey(autoGenerate = true) val exerciseId: Long = 0,
     val name: String,
-    val muscleGroup: String?, // "Legs", "Back"
-    val majorMuscle: String,  // "Quads", "Lats" (NEW - For Swaps)
-    val minorMuscle: String? = null, // "Glutes", "Biceps" (NEW)
+    val muscleGroup: String?,
+    val majorMuscle: String,
+    val minorMuscle: String? = null,
     val equipment: String?,
     val tier: Int,
     val loadability: String?,
@@ -24,16 +26,15 @@ data class ExerciseEntity(
     val videoUrl: String? = null
 )
 
-// ... WorkoutPlanEntity, DailyWorkoutEntity, etc. (No changes needed) ...
-@Entity(tableName = "plans")
+// FIX: Table name must match what is used in WorkoutDao queries ("workout_plans")
+@Entity(tableName = "workout_plans")
 data class WorkoutPlanEntity(
     @PrimaryKey(autoGenerate = true) val planId: Long = 0,
     val name: String,
     val startDate: Long,
     val goal: String,
     val programType: String,
-    val nutritionJson: String? = null,
-    val explanation: String? = null
+    val nutritionJson: String? = null
 )
 
 @Entity(

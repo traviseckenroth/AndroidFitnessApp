@@ -29,6 +29,10 @@ class PlanViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<PlanUiState>(PlanUiState.Empty)
     val uiState: StateFlow<PlanUiState> = _uiState.asStateFlow()
 
+    // New: Track acceptance in ViewModel so it survives navigation
+    private val _isPlanAccepted = MutableStateFlow(false)
+    val isPlanAccepted = _isPlanAccepted.asStateFlow()
+
     fun generatePlan(goal: String, program: String, duration: Float, days: List<String>) {
         if (goal.isBlank()) {
             _uiState.value = PlanUiState.Error("Please enter a goal.")
@@ -37,8 +41,9 @@ class PlanViewModel @Inject constructor(
 
         viewModelScope.launch {
             _uiState.value = PlanUiState.Loading
+            _isPlanAccepted.value = false // Reset for new generation
             try {
-                // 1. Generate & Save (Background Thread)
+                // 1. Generate & Save
                 val planId = withContext(Dispatchers.IO) {
                     repository.generateAndSavePlan(
                         goal = goal,
@@ -47,13 +52,11 @@ class PlanViewModel @Inject constructor(
                         programType = program
                     )
                 }
-
-                // 2. Fetch the FULL 4-week structure we just saved
+                // 2. Fetch Full Details
                 val fullPlan = withContext(Dispatchers.IO) {
                     repository.getPlanDetails(planId)
                 }
-
-                // 3. Show it
+                // 3. Update State
                 _uiState.value = PlanUiState.Success(fullPlan)
 
             } catch (e: Exception) {
@@ -62,7 +65,12 @@ class PlanViewModel @Inject constructor(
         }
     }
 
+    fun acceptCurrentPlan() {
+        _isPlanAccepted.value = true
+    }
+
     fun resetState() {
         _uiState.value = PlanUiState.Empty
+        _isPlanAccepted.value = false
     }
 }

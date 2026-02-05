@@ -1,5 +1,4 @@
 // app/src/main/java/com/example/myapplication/ui/plan/GeneratePlanScreen.kt
-
 package com.example.myapplication.ui.plan
 
 import android.widget.Toast
@@ -25,10 +24,12 @@ fun GeneratePlanScreen(
     viewModel: PlanViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    // FIX: Observe acceptance state from ViewModel instead of local state
+    val isAccepted by viewModel.isPlanAccepted.collectAsState()
+
     val context = LocalContext.current
 
-    // -- WORKFLOW STATE --
-    var isAccepted by remember { mutableStateOf(false) }
+    // -- LOCAL UI STATE --
     var showExerciseDialog by remember { mutableStateOf(false) }
     var showNutritionDialog by remember { mutableStateOf(false) }
 
@@ -42,7 +43,8 @@ fun GeneratePlanScreen(
     val selectedDays = remember { mutableStateListOf<String>() }
 
     // -- AUTO-OPEN DIALOG ON SUCCESS --
-    LaunchedEffect(uiState) {
+    // Only open if Success AND NOT accepted yet
+    LaunchedEffect(uiState, isAccepted) {
         if (uiState is PlanUiState.Success && !isAccepted) {
             showExerciseDialog = true
         }
@@ -71,15 +73,12 @@ fun GeneratePlanScreen(
                 selectedDays,
                 { day -> if (selectedDays.contains(day)) selectedDays.remove(day) else selectedDays.add(day) },
                 programs, daysOfWeek,
-                {
-                    isAccepted = false // Reset state for new generation
-                    viewModel.generatePlan(goalInput, selectedProgram, durationHours, selectedDays)
-                },
+                { viewModel.generatePlan(goalInput, selectedProgram, durationHours, selectedDays) },
                 onManualCreateClick,
                 uiState is PlanUiState.Loading
             )
 
-            // 2. SHOW SUMMARY CARDS (After Acceptance)
+            // 2. SHOW SUMMARY CARDS (Only if Accepted)
             if (isAccepted && uiState is PlanUiState.Success) {
                 val plan = (uiState as PlanUiState.Success).plan
                 Spacer(modifier = Modifier.height(24.dp))
@@ -141,7 +140,7 @@ fun GeneratePlanScreen(
                         if (!isAccepted) {
                             Button(
                                 onClick = {
-                                    isAccepted = true
+                                    viewModel.acceptCurrentPlan() // Update VM state
                                     showExerciseDialog = false
                                 },
                                 modifier = Modifier.fillMaxWidth()
@@ -191,8 +190,7 @@ fun GeneratePlanScreen(
     }
 }
 
-// ... PlanInputForm and PlanDisplay remain unchanged ...
-// (Ensure you keep the existing PlanInputForm and PlanDisplay composables at the bottom of the file)
+// Reuse existing Form and Display components
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PlanInputForm(
@@ -228,7 +226,7 @@ fun PlanInputForm(
         }
     }
 
-    // DURATION SLIDER (Re-added)
+    // DURATION SLIDER
     Spacer(modifier = Modifier.height(8.dp))
     Text("Session Duration: ${durationHours} Hours", style = MaterialTheme.typography.labelMedium)
     Slider(
