@@ -32,7 +32,8 @@ interface WorkoutDao {
 
     @Query("SELECT * FROM daily_workouts WHERE isCompleted = 1 ORDER BY scheduledDate DESC")
     fun getCompletedWorkouts(): Flow<List<DailyWorkoutEntity>>
-
+    @Query("DELETE FROM daily_workouts WHERE scheduledDate >= :currentTime AND isCompleted = 0")
+    suspend fun deleteFutureUncompletedWorkouts(currentTime: Long): Int
     @Transaction
     @Query("SELECT * FROM completed_workouts")
     fun getCompletedWorkoutsWithExercise(): Flow<List<CompletedWorkoutWithExercise>>

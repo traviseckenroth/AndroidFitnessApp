@@ -62,6 +62,11 @@ class WorkoutRepository @Inject constructor(
     ): Long {
         Log.d("WorkoutRepo", "Generating Plan for: $goal")
 
+        // --- FIX: CLEAR STAGNANT FUTURE WORKOUTS ---
+        // Only deletes workouts scheduled for now or in the future that haven't been finished.
+        // This preserves "CompletedWorkoutEntity" history in its separate table.
+        workoutDao.deleteFutureUncompletedWorkouts(System.currentTimeMillis())
+
         val workoutHistory = workoutDao.getCompletedWorkoutsWithExercise().first()
         val availableExercises = workoutDao.getAllExercises().first()
 
