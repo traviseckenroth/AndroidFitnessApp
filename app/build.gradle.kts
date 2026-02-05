@@ -92,6 +92,7 @@ dependencies {
     // --- Room Database ---
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
+    implementation(libs.androidx.compose.runtime)
     ksp(libs.androidx.room.compiler)
     val room_version = "2.6.1" // Update this to the latest stable version
     implementation("androidx.room:room-runtime:$room_version")

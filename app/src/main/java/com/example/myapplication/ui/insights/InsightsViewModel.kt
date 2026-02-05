@@ -28,10 +28,7 @@ class InsightsViewModel @Inject constructor(
     private fun loadInitialData() {
         viewModelScope.launch {
             repository.getAllExercises().collect { exercises ->
-                _uiState.value = _uiState.value.copy(
-                    availableExercises = exercises,
-                    isLoading = false
-                )
+                _uiState.value = _uiState.value.copy(availableExercises = exercises)
                 if (exercises.isNotEmpty() && _uiState.value.selectedExercise == null) {
                     selectExercise(exercises.first())
                 }
@@ -39,16 +36,21 @@ class InsightsViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+            // Updated to fetch both past history AND the newly accepted plan volume
             repository.getAllCompletedWorkouts().collect { completedWorkouts ->
-                val volumeByMuscle = completedWorkouts
+                // Calculate volume from actually performed workouts
+                val completedVolume = completedWorkouts
                     .filter { it.exercise.muscleGroup != null }
                     .groupBy { it.exercise.muscleGroup!! }
                     .mapValues { (_, workouts) ->
                         workouts.sumOf { it.completedWorkout.totalVolume.toDouble() }
                     }
+
+                // Update state with current progress
                 _uiState.value = _uiState.value.copy(
-                    muscleVolumeDistribution = volumeByMuscle,
-                    totalWorkouts = completedWorkouts.size
+                    muscleVolumeDistribution = completedVolume,
+                    totalWorkouts = completedWorkouts.size,
+                    isLoading = false
                 )
             }
         }

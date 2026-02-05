@@ -13,14 +13,15 @@ room = "2.7.0-alpha05"
 ksp = "2.0.0-1.0.21"
 composeCompiler = "2.0.0"
 activityCompose = "1.8.2"
-composeBom = "2024.02.00"
-lifecycleRuntime = "2.6.2"
-navigationCompose = "2.7.7"
+composeBom = "2024.09.00"
+lifecycleRuntime = "2.8.4"
+navigationCompose = "2.8.0"
 awsSdk = "1.3.9"
 serialization = "1.6.3"
 hilt = "2.59"
 hiltNavigationCompose = "1.1.0"
 googleServices = "4.4.2"
+runtime = "1.10.2"
 
 [libraries]
 androidx-compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
@@ -59,6 +60,7 @@ androidx-compose-material-icons = { group = "androidx.compose.material", name = 
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
+androidx-compose-runtime = { group = "androidx.compose.runtime", name = "runtime", version.ref = "runtime" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
