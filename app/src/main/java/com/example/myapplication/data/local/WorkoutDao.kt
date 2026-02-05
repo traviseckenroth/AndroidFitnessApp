@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface WorkoutDao {
+    // --- EXERCISE READS ---
     @Query("SELECT * FROM exercises")
     fun getAllExercises(): Flow<List<ExerciseEntity>>
 
@@ -14,9 +15,11 @@ interface WorkoutDao {
     @Query("SELECT * FROM exercises")
     suspend fun getAllExercisesOneShot(): List<ExerciseEntity>
 
-    @Query("SELECT * FROM exercises WHERE majorMuscle = :majorMuscle AND exerciseId != :currentId")
-    suspend fun getAlternativesByMajorMuscle(majorMuscle: String, currentId: Long): List<ExerciseEntity>
+    // Updated Swap Logic: Enforce Same Tier
+    @Query("SELECT * FROM exercises WHERE majorMuscle = :majorMuscle AND tier = :targetTier AND exerciseId != :currentId")
+    suspend fun getAlternativesByMajorMuscleAndTier(majorMuscle: String, targetTier: Int, currentId: Long): List<ExerciseEntity>
 
+    // --- WORKOUT READS ---
     @Query("SELECT * FROM daily_workouts WHERE workoutId = :workoutId")
     suspend fun getWorkoutById(workoutId: Long): DailyWorkoutEntity?
 
@@ -32,10 +35,13 @@ interface WorkoutDao {
     @Query("SELECT * FROM daily_workouts WHERE isCompleted = 1 ORDER BY scheduledDate DESC")
     fun getCompletedWorkouts(): Flow<List<DailyWorkoutEntity>>
 
-    // FIX: Added Return Type Int
-    @Query("DELETE FROM daily_workouts WHERE scheduledDate >= :currentTime AND isCompleted = 0")
-    suspend fun deleteFutureUncompletedWorkouts(currentTime: Long): Int
+    @Query("SELECT * FROM daily_workouts WHERE planId = :planId ORDER BY scheduledDate ASC")
+    suspend fun getWorkoutsForPlan(planId: Long): List<DailyWorkoutEntity>
 
+    @Query("SELECT * FROM workout_sets WHERE workoutId = :workoutId ORDER BY setNumber ASC")
+    suspend fun getSetsForWorkoutList(workoutId: Long): List<WorkoutSetEntity>
+
+    // --- HISTORY / COMPLETED ---
     @Transaction
     @Query("SELECT * FROM completed_workouts")
     fun getCompletedWorkoutsWithExercise(): Flow<List<CompletedWorkoutWithExercise>>
@@ -44,23 +50,14 @@ interface WorkoutDao {
     @Query("SELECT * FROM completed_workouts WHERE exerciseId = :exerciseId")
     fun getCompletedWorkoutsForExercise(exerciseId: Long): Flow<List<CompletedWorkoutWithExercise>>
 
-    @Query("SELECT * FROM daily_workouts WHERE planId = :planId ORDER BY scheduledDate ASC")
-    suspend fun getWorkoutsForPlan(planId: Long): List<DailyWorkoutEntity>
-
-    @Query("SELECT * FROM workout_sets WHERE workoutId = :workoutId ORDER BY setNumber ASC")
-    suspend fun getSetsForWorkoutList(workoutId: Long): List<WorkoutSetEntity>
-
+    // --- PLAN / NUTRITION ---
     @Query("SELECT * FROM workout_plans ORDER BY startDate DESC LIMIT 1")
     suspend fun getLatestPlan(): WorkoutPlanEntity?
 
     @Query("SELECT * FROM workout_plans WHERE planId = :planId")
     suspend fun getPlanById(planId: Long): WorkoutPlanEntity?
 
-    // FIX: Added Return Type Int (Crucial for "unexpected jvm signature V" error)
-    @Query("UPDATE workout_plans SET nutritionJson = :nutritionJson WHERE planId = :planId")
-    suspend fun updateNutrition(planId: Long, nutritionJson: String): Int
-
-    // --- WRITES ---
+    // --- WRITES (Suspend functions returning Long/Int/List<Long>) ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPlan(plan: WorkoutPlanEntity): Long
 
@@ -82,6 +79,15 @@ interface WorkoutDao {
     @Query("UPDATE workout_sets SET exerciseId = :newExerciseId WHERE workoutId = :workoutId AND exerciseId = :oldExerciseId")
     suspend fun swapExerciseInSets(workoutId: Long, oldExerciseId: Long, newExerciseId: Long): Int
 
+    @Query("UPDATE workout_plans SET nutritionJson = :nutritionJson WHERE planId = :planId")
+    suspend fun updateNutrition(planId: Long, nutritionJson: String): Int
+
+    @Query("UPDATE daily_workouts SET isCompleted = 1 WHERE workoutId = :workoutId")
+    suspend fun markWorkoutAsComplete(workoutId: Long): Int
+
+    @Query("DELETE FROM daily_workouts WHERE scheduledDate >= :currentTime AND isCompleted = 0")
+    suspend fun deleteFutureUncompletedWorkouts(currentTime: Long): Int
+
     @Query("DELETE FROM exercises")
     suspend fun deleteAllExercises(): Int
 
@@ -98,7 +104,4 @@ interface WorkoutDao {
         }
         return planId
     }
-
-    @Query("UPDATE daily_workouts SET isCompleted = 1 WHERE workoutId = :workoutId")
-    suspend fun markWorkoutAsComplete(workoutId: Long): Int
 }
