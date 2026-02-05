@@ -31,68 +31,15 @@ fun NavGraph(
 ) {
     NavHost(
         navController = navController,
-        startDestination = "login", // Start at Login
+        startDestination = "home", // Set this to "home" to skip login
         modifier = modifier
     ) {
-        // -// Temporarily comment out or ignore the Login/SignUp logic
-        /*
-        composable("login") {
-            LoginScreen(
-                onLoginSuccess = {
-                    navController.navigate("home") {
-                        popUpTo("login") { inclusive = true }
-                    }
-                },
-                onNavigateToSignUp = {
-                    navController.navigate("signup")
-                }
-            )
-        }
-
-        composable("signup") {
-            SignUpScreen(
-                onSignUpSuccess = {
-                    // After verifying, go back to login so they can sign in with new credentials
-                    navController.navigate("login") {
-                        popUpTo("signup") { inclusive = true }
-                    }
-                },
-                onBackToLogin = {
-                    navController.popBackStack()
-                }
-            )
-        }
-        */
-        composable("settings") {
-            SettingsScreen(
-                onBack = { navController.popBackStack() },
-                onLogoutSuccess = {
-                    navController.navigate("login") {
-                        // popUpTo(0) removes EVERY screen from the stack including Home
-                        popUpTo(0) { inclusive = true }
-                        launchSingleTop = true
-                    }
-                }
-            )
-        }
-        composable("signup") {
-            SignUpScreen(
-                onSignUpSuccess = {
-                    // After verifying, go back to login so they can sign in with new credentials
-                    navController.navigate("login") { popUpTo("signup") { inclusive = true } }
-                },
-                onBackToLogin = {
-                    navController.popBackStack()
-                }
-            )
-        }
         // --- 1. HOME ROUTE ---
         composable("home") {
             HomeScreen(
                 onNavigateToWorkout = { workoutId ->
                     navController.navigate("active_workout/$workoutId")
                 },
-                // Quick Actions Mappings:
                 onNavigateToExerciseList = { navController.navigate("exercise_list") },
                 onManualLogClick = { navController.navigate("manual_creator") },
                 onWarmUpClick = { navController.navigate("warm_up") },
@@ -100,13 +47,48 @@ fun NavGraph(
             )
         }
 
-        // --- 2. PLAN ROUTE (Fixed: Named "plan" to match Bottom Bar) ---
+        // --- 2. AUTH ROUTES (Disabled/Unused for testing) ---
+        /* composable("login") {
+            LoginScreen(
+                onLoginSuccess = {
+                    navController.navigate("home") {
+                        popUpTo("login") { inclusive = true }
+                    }
+                },
+                onNavigateToSignUp = { navController.navigate("signup") }
+            )
+        }
+
+        composable("signup") {
+            SignUpScreen(
+                onSignUpSuccess = {
+                    navController.navigate("login") {
+                        popUpTo("signup") { inclusive = true }
+                    }
+                },
+                onBackToLogin = { navController.popBackStack() }
+            )
+        }
+        */
+
+        // --- 3. APP WORKFLOWS ---
+        composable("settings") {
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onLogoutSuccess = {
+                    // Navigate back to home instead of login while testing
+                    navController.navigate("home") {
+                        popUpTo(0) { inclusive = true }
+                    }
+                }
+            )
+        }
+
         composable("plan") {
             GeneratePlanScreen(
                 viewModel = planViewModel,
                 onManualCreateClick = { navController.navigate("manual_creator") },
                 onPlanGenerated = {
-                    // Navigate to home after generating to show the new calendar
                     navController.navigate("home") {
                         popUpTo("home") { inclusive = true }
                     }
@@ -161,10 +143,8 @@ fun NavGraph(
         composable(
             route = "exercise_history/{exerciseId}",
             arguments = listOf(navArgument("exerciseId") { type = NavType.LongType })
-        ) { backStackEntry ->
-            ExerciseHistoryScreen(
-                navController = navController
-            )
+        ) {
+            ExerciseHistoryScreen(navController = navController)
         }
     }
 }
