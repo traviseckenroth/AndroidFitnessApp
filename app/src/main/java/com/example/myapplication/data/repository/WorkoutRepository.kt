@@ -1,3 +1,5 @@
+// app/src/main/java/com/example/myapplication/data/repository/WorkoutRepository.kt
+
 package com.example.myapplication.data.repository
 
 import android.util.Log
@@ -6,12 +8,14 @@ import com.example.myapplication.data.local.CompletedWorkoutWithExercise
 import com.example.myapplication.data.local.DailyWorkoutEntity
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutDao
+import com.example.myapplication.data.local.WorkoutPlanEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.remote.BedrockClient
-import com.example.myapplication.data.remote.NutritionPlan
 import com.example.myapplication.data.remote.GeneratedDay
 import com.example.myapplication.data.remote.GeneratedExercise
+// Import Remote NutritionPlan explicitly
+import com.example.myapplication.data.remote.NutritionPlan
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import java.util.Calendar
@@ -179,8 +183,9 @@ class WorkoutRepository @Inject constructor(
         return workoutDao.saveFullWorkoutPlan(planEntity, fullPlanData)
     }
 
-    // --- 2. NUTRITION GENERATION ONLY ---
-    suspend fun generateAndSaveNutrition(): NutritionPlan {
+    // --- 2. NUTRITION GENERATION ---
+    // Fix: Return the DOMAIN object, not the Remote one
+    suspend fun generateAndSaveNutrition(): com.example.myapplication.data.NutritionPlan {
         val height = userPrefs.userHeight.first()
         val weight = userPrefs.userWeight.first()
         val age = userPrefs.userAge.first()
@@ -189,11 +194,10 @@ class WorkoutRepository @Inject constructor(
         val diet = userPrefs.userDiet.first()
         val pace = userPrefs.userGoalPace.first()
 
-        // Get current active plan to know the goal
-        // Assumes WorkoutDao has a method to get the latest plan
         val currentPlan = workoutDao.getLatestPlan() ?: throw Exception("No active workout plan found")
 
-        val nutrition = bedrockClient.generateNutritionPlan(
+        // 1. Get Remote Object
+        val remoteNutrition = bedrockClient.generateNutritionPlan(
             goal = currentPlan.goal,
             userAge = age,
             userHeight = height,
@@ -204,17 +208,20 @@ class WorkoutRepository @Inject constructor(
             goalPace = pace
         )
 
-        // Update DB
-        val nutritionJson = Json.encodeToString(nutrition)
+        // 2. Save as JSON
+        val nutritionJson = Json.encodeToString(remoteNutrition)
         workoutDao.updateNutrition(currentPlan.planId, nutritionJson)
 
-        return nutrition
+        // 3. Map to Domain Object
+        return com.example.myapplication.data.NutritionPlan(
+            calories = remoteNutrition.calories,
+            protein = remoteNutrition.protein,
+            carbs = remoteNutrition.carbs,
+            fats = remoteNutrition.fats,
+            timing = remoteNutrition.timing
+        )
     }
 
-    /**
-     * Post-processes the AI schedule to strictly enforce session duration.
-     * Rules: T1=4m, T2=2.5m, T3=1.5m.
-     */
     private fun enforceTimeConstraints(schedule: List<GeneratedDay>, targetHours: Float): List<GeneratedDay> {
         val targetMinutes = (targetHours * 60).toInt()
         val tolerance = 5 // +/- 5 minutes is acceptable
@@ -281,10 +288,22 @@ class WorkoutRepository @Inject constructor(
             planId
         }
 
-        // Fetch specific plan entity to get Nutrition JSON
         val planEntity = workoutDao.getPlanById(targetPlanId)
-        val nutrition = planEntity?.nutritionJson?.let {
+
+        // 1. Decode JSON to REMOTE object
+        val remoteNutrition = planEntity?.nutritionJson?.let {
             try { Json.decodeFromString<NutritionPlan>(it) } catch(e: Exception) { null }
+        }
+
+        // 2. Map REMOTE object to DOMAIN object
+        val domainNutrition = remoteNutrition?.let {
+            com.example.myapplication.data.NutritionPlan(
+                calories = it.calories,
+                protein = it.protein,
+                carbs = it.carbs,
+                fats = it.fats,
+                timing = it.timing
+            )
         }
 
         val workouts = workoutDao.getWorkoutsForPlan(targetPlanId)
@@ -334,7 +353,7 @@ class WorkoutRepository @Inject constructor(
         return com.example.myapplication.data.WorkoutPlan(
             explanation = planEntity?.name ?: "Your Plan",
             weeks = weeklyPlans,
-            nutrition = nutrition
+            nutrition = domainNutrition // Now passing the correct type
         )
     }
 

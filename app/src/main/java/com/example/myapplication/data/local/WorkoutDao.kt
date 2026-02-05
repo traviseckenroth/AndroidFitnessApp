@@ -1,5 +1,3 @@
-// app/src/main/java/com/example/myapplication/data/local/WorkoutDao.kt
-
 package com.example.myapplication.data.local
 
 import androidx.room.*
@@ -34,6 +32,7 @@ interface WorkoutDao {
     @Query("SELECT * FROM daily_workouts WHERE isCompleted = 1 ORDER BY scheduledDate DESC")
     fun getCompletedWorkouts(): Flow<List<DailyWorkoutEntity>>
 
+    // FIX: Added Return Type Int
     @Query("DELETE FROM daily_workouts WHERE scheduledDate >= :currentTime AND isCompleted = 0")
     suspend fun deleteFutureUncompletedWorkouts(currentTime: Long): Int
 
@@ -45,7 +44,6 @@ interface WorkoutDao {
     @Query("SELECT * FROM completed_workouts WHERE exerciseId = :exerciseId")
     fun getCompletedWorkoutsForExercise(exerciseId: Long): Flow<List<CompletedWorkoutWithExercise>>
 
-    // --- PLAN QUERIES ---
     @Query("SELECT * FROM daily_workouts WHERE planId = :planId ORDER BY scheduledDate ASC")
     suspend fun getWorkoutsForPlan(planId: Long): List<DailyWorkoutEntity>
 
@@ -58,7 +56,7 @@ interface WorkoutDao {
     @Query("SELECT * FROM workout_plans WHERE planId = :planId")
     suspend fun getPlanById(planId: Long): WorkoutPlanEntity?
 
-    // --- FIX: Change return type from Unit (implicit) to Int ---
+    // FIX: Added Return Type Int (Crucial for "unexpected jvm signature V" error)
     @Query("UPDATE workout_plans SET nutritionJson = :nutritionJson WHERE planId = :planId")
     suspend fun updateNutrition(planId: Long, nutritionJson: String): Int
 

@@ -1,5 +1,3 @@
-// app/src/main/java/com/example/myapplication/data/local/ExerciseEntity.kt
-
 package com.example.myapplication.data.local
 
 import androidx.room.Embedded
@@ -26,7 +24,7 @@ data class ExerciseEntity(
     val videoUrl: String? = null
 )
 
-// FIX: Table name must match what is used in WorkoutDao queries ("workout_plans")
+// FIX: Table name changed to "workout_plans" to match DAO queries
 @Entity(tableName = "workout_plans")
 data class WorkoutPlanEntity(
     @PrimaryKey(autoGenerate = true) val planId: Long = 0,
