@@ -85,13 +85,26 @@ fun ActiveWorkoutScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Active Workout", color = Color.White) },
+                // UPDATED: Use theme colors instead of hardcoded White
+                title = {
+                    Text(
+                        "Active Workout",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
         }
     ) { padding ->
@@ -125,7 +138,6 @@ fun ActiveWorkoutScreen(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     if (exerciseState.areSetsVisible) {
-                        // FIX: Pass the equipment type down to the table
                         SetsTable(
                             sets = exerciseState.sets,
                             equipment = exerciseState.exercise.equipment,
@@ -143,7 +155,7 @@ fun ActiveWorkoutScreen(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
-                        Text("Finish Workout", color = Color.Black, fontWeight = FontWeight.Bold)
+                        Text("Finish Workout", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -154,8 +166,18 @@ fun ActiveWorkoutScreen(
 @Composable
 fun WorkoutHeader(title: String) {
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
-        Text(text = title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Color.White)
-        Text(text = "Focus: Progressive Overload", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+        // UPDATED: Use onSurface (Dark) for readability
+        Text(
+            text = title,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = "Focus: Progressive Overload",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -197,12 +219,23 @@ fun ExerciseHeader(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = exercise.name, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            // UPDATED: High contrast title
+            Text(
+                text = exercise.name,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
             Row(modifier = Modifier.padding(top = 4.dp)) {
-                Badge(containerColor = MaterialTheme.colorScheme.primary) { Text("Tier ${exercise.tier}", color = Color.Black) }
+                Badge(containerColor = MaterialTheme.colorScheme.primary) {
+                    Text("Tier ${exercise.tier}", color = MaterialTheme.colorScheme.onPrimary)
+                }
                 Spacer(modifier = Modifier.width(8.dp))
                 if (!exercise.equipment.isNullOrBlank()) {
-                    Badge(containerColor = Color.DarkGray) { Text(exercise.equipment, color = Color.White) }
+                    // UPDATED: Darker badge for contrast
+                    Badge(containerColor = MaterialTheme.colorScheme.secondaryContainer) {
+                        Text(exercise.equipment, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                    }
                 }
             }
         }
@@ -226,7 +259,7 @@ fun ExerciseHeader(
 
         if (FormAnalyzer.isSupported(exercise.name)) {
             IconButton(onClick = onLaunchCamera) {
-                Icon(Icons.Default.Videocam, "Camera", tint = Color.Red)
+                Icon(Icons.Default.Videocam, "Camera", tint = MaterialTheme.colorScheme.error)
             }
         }
 
@@ -236,17 +269,15 @@ fun ExerciseHeader(
                 showSwapDialog = true
             }
         }) {
-            Icon(Icons.Default.SwapHoriz, "Swap", tint = Color.Gray)
+            Icon(Icons.Default.SwapHoriz, "Swap", tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
-// FIX: Added 'equipment' parameter
 @Composable
 fun SetsTable(sets: List<WorkoutSetEntity>, equipment: String?, viewModel: ActiveSessionViewModel) {
     var showRpeInfo by remember { mutableStateOf(false) }
 
-    // Logic: Only show for Barbell
     val isBarbell = equipment?.contains("Barbell", ignoreCase = true) == true
 
     if (showRpeInfo) {
@@ -254,29 +285,28 @@ fun SetsTable(sets: List<WorkoutSetEntity>, equipment: String?, viewModel: Activ
     }
 
     Column {
+        // UPDATED: Headers use explicit dark grey or onSurfaceVariant for readability
         Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("SET", modifier = Modifier.weight(0.5f), color = Color.Gray, fontSize = 12.sp)
-            Text("LBS", modifier = Modifier.weight(1f), color = Color.Gray, fontSize = 12.sp)
-            Text("REPS", modifier = Modifier.weight(1f), color = Color.Gray, fontSize = 12.sp)
+            Text("SET", modifier = Modifier.weight(0.5f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text("LBS", modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text("REPS", modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold)
 
             Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                Text("RPE", color = Color.Gray, fontSize = 12.sp)
+                Text("RPE", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.width(4.dp))
                 IconButton(onClick = { showRpeInfo = true }, modifier = Modifier.size(16.dp)) {
                     Icon(Icons.Default.Help, "RPE Guide", tint = MaterialTheme.colorScheme.primary)
                 }
             }
 
-            Text("DONE", modifier = Modifier.weight(0.5f), color = Color.Gray, fontSize = 12.sp)
+            Text("DONE", modifier = Modifier.weight(0.5f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
         sets.forEachIndexed { index, set ->
-            // Pass the boolean down
             SetRow(setNumber = index + 1, set = set, isBarbell = isBarbell, viewModel = viewModel)
         }
     }
 }
 
-// FIX: Added 'isBarbell' parameter
 @Composable
 fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel: ActiveSessionViewModel) {
     val focusManager = LocalFocusManager.current
@@ -303,14 +333,16 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Set Number
         Text(
             text = "$setNumber",
             modifier = Modifier.weight(0.5f),
-            color = MaterialTheme.colorScheme.onSurface,
+            color = MaterialTheme.colorScheme.onSurface, // Dark for visibility
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center
         )
 
+        // WEIGHT INPUT
         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
             TextField(
                 value = weightText,
@@ -321,20 +353,20 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
                 placeholder = {
                     Text(
                         text = set.suggestedLbs.toString(),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        // Darker placeholder for light background
+                        color = Color.Gray
                     )
                 },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
                 colors = TextFieldDefaults.colors(
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
+                    focusedTextColor = MaterialTheme.colorScheme.onSurface,   // Black text
+                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface, // Black text
                     unfocusedContainerColor = Color.Transparent,
                     focusedContainerColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Gray,
+                    unfocusedIndicatorColor = MaterialTheme.colorScheme.outline,
                     focusedIndicatorColor = MaterialTheme.colorScheme.primary
                 )
             )
-            // FIX: Only show icon if isBarbell is true
             if (isBarbell) {
                 IconButton(
                     onClick = { showPlateDialog = true },
@@ -345,24 +377,26 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
             }
         }
 
+        // REPS INPUT
         TextField(
             value = repsText,
             onValueChange = { repsText = it },
             modifier = Modifier
                 .weight(1f)
                 .onFocusChanged { if (!it.isFocused) viewModel.updateSetReps(set, repsText) },
-            placeholder = { Text(set.suggestedReps.toString(), color = Color.LightGray) },
+            placeholder = { Text(set.suggestedReps.toString(), color = Color.Gray) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
             colors = TextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
+                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
                 unfocusedContainerColor = Color.Transparent,
                 focusedContainerColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Gray,
+                unfocusedIndicatorColor = MaterialTheme.colorScheme.outline,
                 focusedIndicatorColor = MaterialTheme.colorScheme.primary
             )
         )
 
+        // RPE INPUT
         TextField(
             value = rpeText,
             onValueChange = { rpeText = it },
@@ -373,15 +407,24 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
             colors = TextFieldDefaults.colors(
+                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
                 unfocusedContainerColor = Color.Transparent,
-                focusedContainerColor = Color.Transparent
+                focusedContainerColor = Color.Transparent,
+                unfocusedIndicatorColor = MaterialTheme.colorScheme.outline,
+                focusedIndicatorColor = MaterialTheme.colorScheme.primary
             )
         )
 
         Checkbox(
             checked = set.isCompleted,
             onCheckedChange = { viewModel.updateSetCompletion(set, it) },
-            modifier = Modifier.weight(0.5f)
+            modifier = Modifier.weight(0.5f),
+            colors = CheckboxDefaults.colors(
+                checkedColor = MaterialTheme.colorScheme.primary,
+                checkmarkColor = MaterialTheme.colorScheme.onPrimary,
+                uncheckedColor = Color.Gray
+            )
         )
     }
 }
@@ -396,11 +439,11 @@ fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
     ) {
+        // UPDATED: High contrast digits using the "Monospace" display style we added earlier
         Text(
             text = String.format("%02d:%02d", minutes, seconds),
-            fontSize = 48.sp,
-            fontWeight = FontWeight.Bold,
-            color = if (timerState.isRunning) MaterialTheme.colorScheme.primary else Color.Gray
+            style = MaterialTheme.typography.displayMedium, // Uses your new Monospace definition
+            color = if (timerState.isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
         )
 
         Button(onClick = {
@@ -418,24 +461,29 @@ fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
 @Composable
 fun CoachBriefingCard(briefing: String) {
     if (briefing.isBlank()) return
+    // UPDATED: Use SurfaceVariant (Light Grey) with Dark Text for readability
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E)),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+        ),
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Notifications, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.width(12.dp))
-            Text(text = briefing, style = MaterialTheme.typography.bodyMedium, color = Color.White)
+            Text(text = briefing, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
 
+// ... (Rest of Dialogs - WorkoutSummaryDialog, RpeInfoDialog, SwapExerciseDialog - generally adapt automatically to theme, ensure text is not hardcoded White inside them)
 @Composable
 fun WorkoutSummaryDialog(report: List<String>, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = { },
-        icon = { Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color.Green, modifier = Modifier.size(48.dp)) },
+        icon = { Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(48.dp)) },
         title = { Text("Session Complete!") },
         text = {
             Column {

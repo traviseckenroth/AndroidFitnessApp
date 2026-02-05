@@ -2,6 +2,7 @@ package com.example.myapplication.ui.insights
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.myapplication.data.WorkoutPlan
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.repository.WorkoutRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -9,7 +10,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+
 import javax.inject.Inject
+
+
 
 @HiltViewModel
 class InsightsViewModel @Inject constructor(
@@ -18,11 +22,16 @@ class InsightsViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(InsightsUiState())
     val uiState: StateFlow<InsightsUiState> = _uiState.asStateFlow()
-
+    private val _currentPlan = MutableStateFlow<WorkoutPlan?>(null)
+    val currentPlan: StateFlow<WorkoutPlan?> = _currentPlan.asStateFlow()
     init {
         loadInitialData()
     }
-
+    private fun loadCurrentPlan() {
+        viewModelScope.launch {
+            _currentPlan.value = repository.getLatestPlanDetails()
+        }
+    }
     private fun loadInitialData() {
         viewModelScope.launch {
             repository.getAllExercises().collect { exercises ->

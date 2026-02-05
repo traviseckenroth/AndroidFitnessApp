@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -119,7 +120,7 @@ fun GeneratePlanScreen(
                 ) {
                     Text("Accept & Go to Calendar")
                 }
-
+                PlanOverviewCard(plan)
                 PlanDisplay(plan)
 
                 Spacer(modifier = Modifier.height(32.dp))
@@ -261,5 +262,62 @@ fun PlanDisplay(plan: WorkoutPlan) {
                 }
             }
         }
+    }
+}
+@Composable
+fun PlanOverviewCard(plan: WorkoutPlan) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                "Coach's Strategy",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            Text(
+                text = plan.explanation,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+
+            if (plan.nutrition != null) {
+                Divider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    "Nutrition Targets",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+
+                val n = plan.nutrition
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    NutrientItem("Calories", n.calories)
+                    NutrientItem("Protein", n.protein)
+                    NutrientItem("Carbs", n.carbs)
+                    NutrientItem("Fats", n.fats)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "Timing: ${n.timing}",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun NutrientItem(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+        Text(label, style = MaterialTheme.typography.labelSmall)
     }
 }

@@ -10,7 +10,6 @@ import com.example.myapplication.data.local.WorkoutPlanEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.remote.BedrockClient
-import com.example.myapplication.data.remote.NutritionPlan
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import java.util.Calendar
@@ -22,6 +21,7 @@ import com.example.myapplication.data.remote.GeneratedExercise
 import kotlin.math.roundToInt
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
+import com.example.myapplication.data.NutritionPlan
 
 @Singleton
 class WorkoutRepository @Inject constructor(
@@ -61,7 +61,7 @@ class WorkoutRepository @Inject constructor(
         goal: String,
         duration: Int,
         days: List<String>,
-        programType: String = "Hypertrophy"
+        programType: String = "Physique"
     ): Long {
         Log.d("WorkoutRepo", "Generating Plan for: $goal")
 
@@ -96,10 +96,11 @@ class WorkoutRepository @Inject constructor(
 
         val planEntity = WorkoutPlanEntity(
             name = "$programType for $goal",
-            startDate = startDate,
+            startDate = System.currentTimeMillis(),
             goal = goal,
             programType = programType,
-            nutritionJson = nutritionJson
+            nutritionJson = nutritionJson,
+            explanation = aiResponse.explanation // Save this!
         )
 
         // 2. Apply Time Constraints to AI schedule
@@ -233,8 +234,14 @@ class WorkoutRepository @Inject constructor(
         }
     }
     suspend fun getPlanDetails(planId: Long): com.example.myapplication.data.WorkoutPlan {
+        val planEntity = workoutDao.getPlanById(planId)
         val workouts = workoutDao.getWorkoutsForPlan(planId)
         val allExercises = workoutDao.getAllExercisesOneShot()
+
+        // Parse Nutrition
+        val nutrition = planEntity?.nutritionJson?.let {
+            try { Json.decodeFromString<NutritionPlan>(it) } catch(e: Exception) { null }
+        }
 
         val weeklyPlans = mutableListOf<com.example.myapplication.data.WeeklyPlan>()
 
@@ -279,10 +286,15 @@ class WorkoutRepository @Inject constructor(
 
         return com.example.myapplication.data.WorkoutPlan(
             explanation = "Your custom 4-week progression has been generated and saved.",
-            weeks = weeklyPlans
+            weeks = weeklyPlans,
+            nutrition = nutrition
         )
     }
-
+    // 3. ADD getLatestPlanDetails for Insights
+    suspend fun getLatestPlanDetails(): com.example.myapplication.data.WorkoutPlan? {
+        val latestPlan = workoutDao.getLatestPlan() ?: return null
+        return getPlanDetails(latestPlan.planId)
+    }
     private fun getDayNameFromDate(date: Long): String {
         val cal = Calendar.getInstance()
         cal.timeInMillis = date

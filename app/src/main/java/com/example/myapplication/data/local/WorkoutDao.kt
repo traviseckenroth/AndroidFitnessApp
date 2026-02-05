@@ -29,7 +29,11 @@ interface WorkoutDao {
 
     @Query("SELECT * FROM workout_sets WHERE workoutId = :workoutId ORDER BY exerciseId, setNumber")
     fun getSetsForWorkout(workoutId: Long): Flow<List<WorkoutSetEntity>>
+    @Query("SELECT * FROM plans WHERE planId = :planId")
+    suspend fun getPlanById(planId: Long): WorkoutPlanEntity?
 
+    @Query("SELECT * FROM plans ORDER BY planId DESC LIMIT 1")
+    suspend fun getLatestPlan(): WorkoutPlanEntity?
     @Query("SELECT * FROM daily_workouts WHERE isCompleted = 1 ORDER BY scheduledDate DESC")
     fun getCompletedWorkouts(): Flow<List<DailyWorkoutEntity>>
     @Query("DELETE FROM daily_workouts WHERE scheduledDate >= :currentTime AND isCompleted = 0")

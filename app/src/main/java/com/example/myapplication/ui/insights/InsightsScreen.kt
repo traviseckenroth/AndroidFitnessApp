@@ -1,40 +1,34 @@
 package com.example.myapplication.ui.insights
 
-import android.graphics.Paint
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import kotlin.math.roundToInt
+import com.example.myapplication.ui.plan.NutrientItem // Ensure this is accessible or redefined below
 
 @Composable
 fun InsightsScreen(
     viewModel: InsightsViewModel = hiltViewModel()
 ) {
-    val state by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
+    val currentPlan by viewModel.currentPlan.collectAsState()
+
+    // Alias to match your existing logic
+    val state = uiState
     var showExerciseDropdown by remember { mutableStateOf(false) }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background // DeepBlack
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         LazyColumn(
             modifier = Modifier
@@ -53,6 +47,53 @@ fun InsightsScreen(
                 )
             }
 
+            // --- NEW: CURRENT PLAN STRATEGY & NUTRITION ---
+            currentPlan?.let { plan ->
+                item {
+                    InsightCard(title = "Active Plan: ${plan.explanation.take(30)}...") {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            // Explanation
+                            Text(
+                                text = plan.explanation,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            // Nutrition Section
+                            plan.nutrition?.let { nutrition ->
+                                Divider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                                Text(
+                                    "Nutrition Targets",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    NutrientStat("Calories", nutrition.calories)
+                                    NutrientStat("Protein", nutrition.protein)
+                                    NutrientStat("Carbs", nutrition.carbs)
+                                    NutrientStat("Fats", nutrition.fats)
+                                }
+
+                                if (nutrition.timing.isNotBlank()) {
+                                    Text(
+                                        text = "Timing: ${nutrition.timing}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontStyle = FontStyle.Italic,
+                                        color = MaterialTheme.colorScheme.secondary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // --- 1RM GRAPH SECTION ---
             item {
                 InsightCard(title = "Estimated 1 Rep Max") {
@@ -61,7 +102,7 @@ fun InsightsScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { showExerciseDropdown = true }
+                                .clickable { showExerciseDropdown = !showExerciseDropdown } // Fix toggle logic
                                 .padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -115,15 +156,16 @@ fun InsightsScreen(
             item {
                 InsightCard(title = "Volume Distribution") {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        val maxVol = state.muscleVolumeDistribution.values.maxOrNull() ?: 1.0
+                        if (state.muscleVolumeDistribution.isNotEmpty()) {
+                            val maxVol = state.muscleVolumeDistribution.values.maxOrNull() ?: 1.0
 
-                        state.muscleVolumeDistribution.entries
-                            .sortedByDescending { it.value }
-                            .forEach { (muscle, volume) ->
-                                MuscleVolumeRow(muscle, volume, maxVol)
-                            }
+                            state.muscleVolumeDistribution.entries
+                                .sortedByDescending { it.value }
+                                .forEach { (muscle, volume) ->
 
-                        if (state.muscleVolumeDistribution.isEmpty()) {
+                                    MuscleVolumeRow(muscle, volume, maxVol)
+                                }
+                        } else {
                             Text("No workout data yet.", color = Color.Gray)
                         }
                     }
@@ -133,83 +175,74 @@ fun InsightsScreen(
     }
 }
 
-// --- COMPONENTS ---
+// --- HELPER COMPOSABLES ---
 
 @Composable
-fun InsightCard(title: String, content: @Composable () -> Unit) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Spacer(modifier = Modifier.height(12.dp))
-            content()
-        }
-    }
-}
-
-@Composable
-fun MuscleVolumeRow(muscle: String, volume: Double, maxVolume: Double) {
-    val percentage = (volume / maxVolume).toFloat()
-
-    Column {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(muscle, style = MaterialTheme.typography.bodyMedium)
-            Text("${(volume / 1000).roundToInt()}k lbs", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-        }
-        Spacer(modifier = Modifier.height(4.dp))
-        LinearProgressIndicator(
-            progress = { percentage },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(8.dp)
-                .clip(RoundedCornerShape(4.dp)),
-            color = MaterialTheme.colorScheme.primary,
-            trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
+fun NutrientStat(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
 
+// Re-defining InsightCard here if it wasn't global,
+// otherwise you can remove this if it exists elsewhere.
+@Composable
+fun InsightCard(title: String, content: @Composable () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            content()
+        }
+    }
+}
 @Composable
 fun OneRepMaxGraph(
-    dataPoints: List<Pair<Long, Float>>, // Time, Value
+    dataPoints: List<Pair<Long, Float>>,
     lineColor: Color
 ) {
     val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
-
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
             .height(250.dp)
             .padding(16.dp)
     ) {
-        // 1. Determine Scales
         val values = dataPoints.map { it.second }
         val maxVal = values.maxOrNull() ?: 100f
         val minVal = values.minOrNull() ?: 0f
-        val range = (maxVal - minVal).coerceAtLeast(10f) // Avoid divide by zero
-
-        // 2. Draw Grid & Labels
+        val range = (maxVal - minVal).coerceAtLeast(10f)
         val width = size.width
         val height = size.height
         val pointSpacing = width / (dataPoints.size - 1).coerceAtLeast(1)
 
-        // Draw 3 horizontal grid lines
         for (i in 0..2) {
             val yRatio = i / 2f
             val yPos = height * (1 - yRatio)
             val labelValue = (minVal + (range * yRatio)).roundToInt()
-
-            // Grid Line
             drawLine(
                 color = Color.Gray.copy(alpha = 0.2f),
                 start = Offset(0f, yPos),
                 end = Offset(width, yPos),
                 strokeWidth = 1.dp.toPx()
             )
-
-            // Text Label
             drawContext.canvas.nativeCanvas.drawText(
                 labelValue.toString(),
                 0f,
@@ -221,46 +254,21 @@ fun OneRepMaxGraph(
             )
         }
 
-        // 3. Draw the Line Path
         val path = Path()
         dataPoints.forEachIndexed { index, pair ->
             val value = pair.second
-            // Normalize value to 0-1 range
             val normalizedY = (value - minVal) / range
-
-            // Flip coordinates (Canvas Y=0 is top)
             val x = index * pointSpacing
             val y = height - (normalizedY * height)
-
             if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
-
-            // Draw Dots
-            drawCircle(
-                color = lineColor,
-                center = Offset(x, y),
-                radius = 4.dp.toPx()
-            )
+            drawCircle(color = lineColor, center = Offset(x, y), radius = 4.dp.toPx())
         }
-
-        // Draw Line Stroke
-        drawPath(
-            path = path,
-            color = lineColor,
-            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-        )
-
-        // 4. Fill Gradient below line
+        drawPath(path = path, color = lineColor, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
         val fillPath = Path()
         fillPath.addPath(path)
         fillPath.lineTo(width, height)
         fillPath.lineTo(0f, height)
         fillPath.close()
-
-        drawPath(
-            path = fillPath,
-            brush = Brush.verticalGradient(
-                colors = listOf(lineColor.copy(alpha = 0.3f), Color.Transparent)
-            )
-        )
+        drawPath(fillPath, brush = Brush.verticalGradient(colors = listOf(lineColor.copy(alpha = 0.3f), Color.Transparent)))
     }
 }
