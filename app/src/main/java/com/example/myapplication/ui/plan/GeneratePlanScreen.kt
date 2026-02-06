@@ -23,7 +23,7 @@ fun GeneratePlanScreen(
     viewModel: PlanViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val isAccepted by viewModel.isPlanAccepted.collectAsState() // Observe VM State
+    val isAccepted by viewModel.isPlanAccepted.collectAsState()
     val context = LocalContext.current
 
     // -- LOCAL UI STATE --
@@ -32,7 +32,10 @@ fun GeneratePlanScreen(
     // -- FORM STATE --
     var goalInput by remember { mutableStateOf("") }
     val programs = listOf("Strength", "Physique", "Endurance")
+
+    // FIX: Ensure 'selectedProgram' is declared ONLY ONCE here
     var selectedProgram by remember { mutableStateOf(programs[0]) }
+
     var isDropdownExpanded by remember { mutableStateOf(false) }
     var durationHours by remember { mutableFloatStateOf(1.0f) }
     val daysOfWeek = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -59,11 +62,10 @@ fun GeneratePlanScreen(
             // Dynamic Header
             Text(
                 text = if (uiState is PlanUiState.Success) "Your 4-Week Plan" else "Plan Generator",
-                style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) // Unified Font
+                style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(16.dp))
 
-
-            // 1. INPUT FORM (Always Visible)
+            // 1. INPUT FORM
             PlanInputForm(
                 goalInput, { goalInput = it },
                 selectedProgram, { selectedProgram = it },
@@ -85,8 +87,6 @@ fun GeneratePlanScreen(
                 Spacer(modifier = Modifier.height(16.dp))
                 Text("Active Plan", style = MaterialTheme.typography.titleLarge)
                 Spacer(modifier = Modifier.height(8.dp))
-
-                // NOTE: Nutrition Card Removed (Now in Nutrition Tab)
 
                 // Workout Card
                 ElevatedCard(
@@ -148,8 +148,8 @@ fun GeneratePlanScreen(
     }
 }
 
-// ... PlanInputForm and PlanDisplay remain the same (included for compilation safety) ...
-@OptIn(ExperimentalLayoutApi::class)
+// FIX: Updated PlanInputForm with Definitions and ExposedDropdownMenuBox
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun PlanInputForm(
     goalInput: String, onGoalChange: (String) -> Unit,
@@ -161,6 +161,13 @@ fun PlanInputForm(
     onGenerateClick: () -> Unit, onManualCreateClick: () -> Unit,
     isLoading: Boolean
 ) {
+    // 1. Program Definitions
+    val programDefinitions = mapOf(
+        "Strength" to "Prioritize raw power and 1RM",
+        "Physique" to "Focus on muscle size and aesthetics",
+        "Endurance" to "High reps and cardio for stamina"
+    )
+
     OutlinedTextField(
         value = goalInput,
         onValueChange = onGoalChange,
@@ -168,18 +175,48 @@ fun PlanInputForm(
         modifier = Modifier.fillMaxWidth()
     )
     Spacer(modifier = Modifier.height(16.dp))
-    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-        Box(modifier = Modifier.weight(1f)) {
-            OutlinedButton(onClick = { onDropdownExpand(true) }, modifier = Modifier.fillMaxWidth()) {
-                Text(selectedProgram)
-            }
-            DropdownMenu(expanded = isDropdownExpanded, onDismissRequest = { onDropdownExpand(false) }) {
-                programs.forEach { prog ->
-                    DropdownMenuItem(text = { Text(prog) }, onClick = { onProgramChange(prog); onDropdownExpand(false) })
-                }
+
+    // 2. Dropdown Menu with Definitions
+    ExposedDropdownMenuBox(
+        expanded = isDropdownExpanded,
+        onExpandedChange = { onDropdownExpand(it) },
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+    ) {
+        OutlinedTextField(
+            value = selectedProgram,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Program Type") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isDropdownExpanded) },
+            modifier = Modifier.menuAnchor().fillMaxWidth(),
+            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
+        )
+        ExposedDropdownMenu(
+            expanded = isDropdownExpanded,
+            onDismissRequest = { onDropdownExpand(false) }
+        ) {
+            programs.forEach { selectionOption ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(text = selectionOption, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                text = programDefinitions[selectionOption] ?: "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    onClick = {
+                        onProgramChange(selectionOption)
+                        onDropdownExpand(false)
+                    },
+                    contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                )
             }
         }
     }
+
     Spacer(modifier = Modifier.height(8.dp))
     Text("Session Duration: ${durationHours} Hours", style = MaterialTheme.typography.labelMedium)
     Slider(value = durationHours, onValueChange = onDurationChange, valueRange = 0.5f..2.0f, steps = 2)
