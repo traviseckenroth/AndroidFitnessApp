@@ -31,6 +31,7 @@ class UserPreferencesRepository @Inject constructor(
     private val BODY_FAT_KEY = doublePreferencesKey("user_body_fat")
     private val DIET_KEY = stringPreferencesKey("user_diet")
     private val GOAL_PACE_KEY = stringPreferencesKey("user_goal_pace")
+    private val RECOVERY_KEY = intPreferencesKey("user_recovery")
 
     // Flows
     val userHeight: Flow<Int> = context.dataStore.data.map { it[HEIGHT_KEY] ?: 180 }
@@ -42,7 +43,7 @@ class UserPreferencesRepository @Inject constructor(
     val userBodyFat: Flow<Double?> = context.dataStore.data.map { it[BODY_FAT_KEY] }
     val userDiet: Flow<String> = context.dataStore.data.map { it[DIET_KEY] ?: "Standard" }
     val userGoalPace: Flow<String> = context.dataStore.data.map { it[GOAL_PACE_KEY] ?: "Maintain" }
-
+    val recoveryScore: Flow<Int> = context.dataStore.data.map { it[RECOVERY_KEY] ?: 100 }
     suspend fun saveProfile(
         height: Int, weight: Double, age: Int,
         gender: String, activity: String, bodyFat: Double?,
@@ -72,6 +73,11 @@ class UserPreferencesRepository @Inject constructor(
             prefs[HEIGHT_KEY] = height
             prefs[WEIGHT_KEY] = weight
             prefs[AGE_KEY] = age
+        }
+    }
+    suspend fun saveRecoveryScore(score: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[RECOVERY_KEY] = score
         }
     }
 }

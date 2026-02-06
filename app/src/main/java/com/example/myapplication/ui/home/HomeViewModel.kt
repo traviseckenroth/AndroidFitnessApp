@@ -1,3 +1,4 @@
+// app/src/main/java/com/example/myapplication/ui/home/HomeViewModel.kt
 package com.example.myapplication.ui.home
 
 import androidx.lifecycle.ViewModel
@@ -11,25 +12,13 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
-import com.example.myapplication.data.repository.HealthConnectManager
 import kotlinx.coroutines.launch
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    private val repository: WorkoutRepository,
-    private val healthConnectManager: HealthConnectManager
+    private val repository: WorkoutRepository
 ) : ViewModel() {
-    private val _isHealthSynced = MutableStateFlow(false)
-    val isHealthSynced = _isHealthSynced.asStateFlow()
 
-    init {
-        checkHealthSyncStatus()
-    }
-    fun checkHealthSyncStatus() {
-        viewModelScope.launch {
-            _isHealthSynced.value = healthConnectManager.hasPermissions()
-        }
-    }
     // UI State: The currently selected date (Defaults to Today)
     private val _selectedDate = MutableStateFlow(LocalDate.now())
     val selectedDate: StateFlow<LocalDate> = _selectedDate.asStateFlow()

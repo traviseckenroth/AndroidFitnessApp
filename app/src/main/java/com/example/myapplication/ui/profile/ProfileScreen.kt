@@ -1,3 +1,4 @@
+// app/src/main/java/com/example/myapplication/ui/profile/ProfileScreen.kt
 package com.example.myapplication.ui.profile
 
 import androidx.compose.animation.AnimatedVisibility
@@ -8,10 +9,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -19,152 +23,183 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.delay
 
 @Composable
-fun ProfileScreen(viewModel: ProfileViewModel = hiltViewModel()) {
+fun ProfileScreen(
+    viewModel: ProfileViewModel = hiltViewModel(),
+    onBack: () -> Unit
+) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // Form State
-    var height by remember { mutableStateOf("") }
-    var weight by remember { mutableStateOf("") }
-    var age by remember { mutableStateOf("") }
-    var bodyFat by remember { mutableStateOf("") }
+    // Form State (Local)
+    var height by remember(uiState.height) { mutableStateOf(uiState.height) }
+    var weight by remember(uiState.weight) { mutableStateOf(uiState.weight) }
+    var age by remember(uiState.age) { mutableStateOf(uiState.age) }
+    var bodyFat by remember(uiState.bodyFat) { mutableStateOf(uiState.bodyFat) }
+    var gender by remember(uiState.gender) { mutableStateOf(if(uiState.gender.isBlank()) "Male" else uiState.gender) }
+    var activityLevel by remember(uiState.activityLevel) { mutableStateOf(if(uiState.activityLevel.isBlank()) "Sedentary" else uiState.activityLevel) }
+    var dietType by remember(uiState.dietType) { mutableStateOf(if(uiState.dietType.isBlank()) "Standard" else uiState.dietType) }
+    var goalPace by remember(uiState.goalPace) { mutableStateOf(if(uiState.goalPace.isBlank()) "Maintain" else uiState.goalPace) }
 
-    var gender by remember { mutableStateOf("Male") }
-    var activityLevel by remember { mutableStateOf("Sedentary") }
-    var dietType by remember { mutableStateOf("Standard") }
-    var goalPace by remember { mutableStateOf("Maintain") }
-
-    var showCheckmark by remember { mutableStateOf(false) }
-
-    // Update local state when UI State loads
-    LaunchedEffect(uiState) {
-        if (uiState is ProfileUiState.Success) {
-            val state = uiState as ProfileUiState.Success
-            height = state.height.toString()
-            weight = state.weight.toString()
-            age = state.age.toString()
-            bodyFat = state.bodyFat?.toString() ?: ""
-            gender = state.gender
-            activityLevel = state.activityLevel
-            dietType = state.dietType
-            goalPace = state.goalPace
-        }
+    // Auto-save effect
+    LaunchedEffect(height, weight, age, gender, activityLevel, bodyFat, dietType, goalPace) {
+        val h = height.toIntOrNull() ?: 170
+        val w = weight.toDoubleOrNull() ?: 70.0
+        val a = age.toIntOrNull() ?: 25
+        val bf = bodyFat.toDoubleOrNull()
+        viewModel.saveProfile(h, w, a, gender, activityLevel, bf, dietType, goalPace)
     }
 
-    // Only showing the Form content now
-    Box(modifier = Modifier.fillMaxSize()) {
+    Scaffold { padding ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp), // Changed horizontal-only to all-side 16.dp to match other screens
+            modifier = Modifier.padding(padding).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
-                // REMOVED: Spacer(modifier = Modifier.height(24.dp))
-                // This makes the header flush with the top padding, matching the other screens.
+                Text("Your Profile", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            }
+
+            // --- INTEGRATIONS SECTION ---
+            item {
                 Text(
-                    text = "Your Profile",
-                    style = MaterialTheme.typography.headlineLarge,
-                    fontWeight = FontWeight.Bold
+                    text = "Integrations",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(top = 8.dp)
                 )
             }
 
-            // 1. Biometrics Row
             item {
-                Text("Biometrics", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(value = height, onValueChange = { height = it }, label = { Text("Height (cm)") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                    OutlinedTextField(value = weight, onValueChange = { weight = it }, label = { Text("Weight (kg)") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                    OutlinedTextField(value = age, onValueChange = { age = it }, label = { Text("Age") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(value = bodyFat, onValueChange = { bodyFat = it }, label = { Text("Body Fat % (Opt)") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        // Health Connect
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Health Connect", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "Reads weight & body fat automatically.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontStyle = FontStyle.Italic
+                                )
+                            }
+                            if (uiState.isHealthConnectSyncing) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            } else {
+                                IconButton(onClick = { viewModel.syncHealthConnect() }) {
+                                    Icon(Icons.Default.Sync, contentDescription = "Sync Health Connect")
+                                }
+                            }
+                        }
 
-                    Box(modifier = Modifier.weight(1f).padding(top = 8.dp)) {
-                        ProfileDropdown(
-                            label = "Gender",
-                            options = listOf("Male", "Female"),
-                            selected = gender,
-                            onSelected = { gender = it }
-                        )
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                        // Garmin Connect
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Garmin Connect", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "Reads recovery scores to scale intensity.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontStyle = FontStyle.Italic
+                                )
+                                Text(
+                                    if (uiState.isGarminConnected) "Status: Connected" else "Status: Not Connected",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (uiState.isGarminConnected) Color(0xFF4CAF50) else Color.Gray,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                            if (uiState.isGarminSyncing) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            } else {
+                                Button(
+                                    onClick = { viewModel.syncGarmin() },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (uiState.isGarminConnected) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                                    )
+                                ) {
+                                    Text(if (uiState.isGarminConnected) "Disconnect" else "Connect")
+                                }
+                            }
+                        }
                     }
                 }
             }
 
-            // 2. Lifestyle Section
+            // --- BIOMETRICS HEADER ---
             item {
-                Divider()
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Lifestyle & Nutrition", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-
-                ProfileDropdown(
-                    label = "Activity Level",
-                    options = listOf("Sedentary", "Lightly Active", "Moderately Active", "Very Active"),
-                    selected = activityLevel,
-                    onSelected = { activityLevel = it }
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                ProfileDropdown(
-                    label = "Diet Preference",
-                    options = listOf("Standard", "Keto", "Paleo", "Vegan", "Vegetarian"),
-                    selected = dietType,
-                    onSelected = { dietType = it }
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                ProfileDropdown(
-                    label = "Goal Pace",
-                    options = listOf("Lose 1 lb/week", "Lose 0.5 lb/week", "Maintain", "Gain 0.5 lb/week", "Gain 1 lb/week"),
-                    selected = goalPace,
-                    onSelected = { goalPace = it }
+                Text(
+                    text = "Biometrics",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(top = 24.dp, bottom = 8.dp)
                 )
             }
 
-            // 3. Save Button
+            // --- COMPACT INPUT ROWS ---
+
+            // Row 1: Height & Weight
             item {
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Button(
-                        onClick = {
-                            viewModel.saveProfile(
-                                height = height.toIntOrNull() ?: 180,
-                                weight = weight.toDoubleOrNull() ?: 75.0,
-                                age = age.toIntOrNull() ?: 25,
-                                gender = gender,
-                                activity = activityLevel,
-                                bodyFat = bodyFat.toDoubleOrNull(),
-                                diet = dietType,
-                                pace = goalPace
-                            )
-                            showCheckmark = true
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Save Profile Settings")
-                    }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = height,
+                        onValueChange = { height = it },
+                        label = { Text("Height (cm)") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    OutlinedTextField(
+                        value = weight,
+                        onValueChange = { weight = it },
+                        label = { Text("Weight (kg)") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
                 }
             }
 
-            item { Spacer(modifier = Modifier.height(48.dp)) }
-        }
-
-        // Loading Overlay if needed
-        if (uiState is ProfileUiState.Loading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+            // Row 2: Age & Body Fat
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = age,
+                        onValueChange = { age = it },
+                        label = { Text("Age") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    OutlinedTextField(
+                        value = bodyFat,
+                        onValueChange = { bodyFat = it },
+                        label = { Text("Body Fat %") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
             }
-        }
 
-        // Feedback Animation
-        if (showCheckmark) {
-            LaunchedEffect(showCheckmark) {
-                delay(2000)
-                showCheckmark = false
+            // Row 3: Gender & Activity
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ProfileDropdown("Gender", listOf("Male", "Female", "Other"), gender, Modifier.weight(1f)) { gender = it }
+                    ProfileDropdown("Activity", listOf("Sedentary", "Light", "Moderate", "High"), activityLevel, Modifier.weight(1f)) { activityLevel = it }
+                }
             }
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Surface(shadowElevation = 4.dp, shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
-                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.padding(24.dp).size(48.dp), tint = MaterialTheme.colorScheme.primary)
+
+            // Row 4: Diet & Pace
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ProfileDropdown("Diet", listOf("Standard", "Keto", "Paleo", "Vegan", "Veg"), dietType, Modifier.weight(1f)) { dietType = it }
+                    ProfileDropdown("Goal", listOf("Lose Fast", "Lose Slow", "Maintain", "Gain Slow", "Gain Fast"), goalPace, Modifier.weight(1f)) { goalPace = it }
                 }
             }
         }
@@ -172,10 +207,16 @@ fun ProfileScreen(viewModel: ProfileViewModel = hiltViewModel()) {
 }
 
 @Composable
-fun ProfileDropdown(label: String, options: List<String>, selected: String, onSelected: (String) -> Unit) {
+fun ProfileDropdown(
+    label: String,
+    options: List<String>,
+    selected: String,
+    modifier: Modifier = Modifier,
+    onSelected: (String) -> Unit
+) {
     var expanded by remember { mutableStateOf(false) }
 
-    Column {
+    Column(modifier = modifier) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Box(modifier = Modifier.fillMaxWidth()) {
             OutlinedButton(
@@ -184,7 +225,7 @@ fun ProfileDropdown(label: String, options: List<String>, selected: String, onSe
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text(selected, style = MaterialTheme.typography.bodyMedium)
+                    Text(selected, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
                     Icon(Icons.Default.ArrowDropDown, contentDescription = null)
                 }
             }

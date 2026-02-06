@@ -1,3 +1,4 @@
+// app/src/main/java/com/example/myapplication/ui/home/HomeScreen.kt
 package com.example.myapplication.ui.home
 
 import androidx.compose.foundation.BorderStroke
@@ -31,184 +32,87 @@ import java.time.LocalDate
 @Composable
 fun HomeScreen(
     homeViewModel: HomeViewModel = hiltViewModel(),
-    onNavigateToWorkout: (Long) -> Unit,
-    onNavigateToExerciseList: () -> Unit,
-    onManualLogClick: () -> Unit,
-    onWarmUpClick: () -> Unit,
-    onSettingsClick: () -> Unit
+    onNavigateToWorkout: (Long) -> Unit
 ) {
     val selectedDate by homeViewModel.selectedDate.collectAsState()
-    val dailyWorkout by homeViewModel.dailyWorkout.collectAsState()
     val workoutDates by homeViewModel.workoutDates.collectAsState()
-    val isHealthSynced by homeViewModel.isHealthSynced.collectAsState()
-
-    LaunchedEffect(Unit) {
-        homeViewModel.checkHealthSyncStatus()
-    }
+    val dailyWorkout by homeViewModel.dailyWorkout.collectAsState()
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
+            TopAppBar(
                 title = {
-                    Text(
-                        "My Fitness",
-                        style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) // Unified Font
-                        // Removed fontWeight = Bold to allow headlineLarge's ExtraBold to shine
-                },
-                actions = {
-                    IconButton(onClick = onSettingsClick) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = "Settings",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    Column {
+                        Text(
+                            text = "Hello, Travis",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Let's crush it today!",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MutedGrey
                         )
                     }
                 },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
+                actions = {
+                    IconButton(onClick = {}) {
+                        Icon(imageVector = Icons.Default.Notifications, contentDescription = "Notifications")
+                    }
+                }
             )
         }
-    ) { paddingValues ->
+    ) { padding ->
         Column(
             modifier = Modifier
+                .padding(padding)
                 .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 20.dp)
+                .padding(horizontal = 16.dp)
         ) {
+            // Calendar Strip
             InfiniteScrollingCalendar(
-                initialDate = LocalDate.now(),
+                initialDate = selectedDate,
                 selectedDate = selectedDate,
                 workoutDates = workoutDates,
-                onDateSelected = { newDate -> homeViewModel.updateSelectedDate(newDate) }
+                onDateSelected = { homeViewModel.updateSelectedDate(it) }
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            HealthSyncCard(
-                isSynced = isHealthSynced,
-                onNavigateToSettings = onSettingsClick
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
+            // Workout Card
             Text(
-                "TODAY'S SCHEDULE",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                letterSpacing = 1.2.sp
+                text = "Today's Session",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 12.dp)
             )
-            Spacer(modifier = Modifier.height(12.dp))
 
-            dailyWorkout?.let {
-                TodayWorkoutCard(it, onNavigateToWorkout)
-            } ?: RestDayRecoveryCard(onWarmUpClick = onWarmUpClick)
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            Text("QUICK ACTIONS", style = MaterialTheme.typography.labelLarge)
-            Spacer(modifier = Modifier.height(12.dp))
-
-            QuickActionsSection(
-                onNavigateToExerciseList = onNavigateToExerciseList,
-                onManualLogClick = onManualLogClick,
-                onWarmUpClick = onWarmUpClick
-            )
+            if (dailyWorkout != null) {
+                ActiveWorkoutCard(workout = dailyWorkout!!, onNavigate = onNavigateToWorkout)
+            } else {
+                NoWorkoutCard()
+            }
         }
     }
 }
 
-// ... RestDayRecoveryCard, HealthSyncCard, QuickActionsSection, QuickActionItem, TodayWorkoutCard, NoWorkoutCard remain unchanged ...
 @Composable
-fun RestDayRecoveryCard(onWarmUpClick: () -> Unit) {
-    ElevatedCard(
+fun ActiveWorkoutCard(workout: DailyWorkoutEntity, onNavigate: (Long) -> Unit) {
+    Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.elevatedCardElevation(2.dp)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp, pressedElevation = 6.dp),
+        shape = MaterialTheme.shapes.medium
     ) {
-        Column(modifier = Modifier.padding(24.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.SelfImprovement, null, tint = PrimaryIndigo, modifier = Modifier.size(28.dp))
-                Spacer(modifier = Modifier.width(12.dp))
-                Text("REST & RECOVER", style = MaterialTheme.typography.labelLarge, color = PrimaryIndigo)
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            Text("No lifting today, but don't stay static.", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text("Active recovery improves blood flow and speeds up muscle repair.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(modifier = Modifier.height(20.dp))
-            Surface(
-                color = MaterialTheme.colorScheme.background,
-                shape = MaterialTheme.shapes.small,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Bolt, null, tint = SecondaryIndigo, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Suggested: World's Greatest Stretch", style = MaterialTheme.typography.bodyMedium, fontStyle = FontStyle.Italic, color = MaterialTheme.colorScheme.onSurface)
-                }
-            }
-            Spacer(modifier = Modifier.height(20.dp))
-            OutlinedButton(onClick = onWarmUpClick, modifier = Modifier.fillMaxWidth(), border = BorderStroke(1.dp, PrimaryIndigo), colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryIndigo)) {
-                Text("VIEW ALL MOBILITY PROTOCOLS")
-            }
-        }
-    }
-}
-
-@Composable
-fun HealthSyncCard(isSynced: Boolean, onNavigateToSettings: () -> Unit) {
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
-        onClick = onNavigateToSettings
-    ) {
-        Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(shape = CircleShape, color = if (isSynced) PrimaryIndigo else MutedGrey, modifier = Modifier.size(32.dp)) {
-                    Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Favorite, null, tint = Color.White, modifier = Modifier.size(18.dp)) }
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text("Health Connect", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    Text(if (isSynced) "Activity syncing active" else "Not connected", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            if (isSynced) { Icon(Icons.Default.CheckCircle, "Synced", tint = SuccessGreen, modifier = Modifier.size(24.dp)) }
-            else { Text("FIX", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) }
-        }
-    }
-}
-
-@Composable
-fun QuickActionsSection(onNavigateToExerciseList: () -> Unit, onManualLogClick: () -> Unit, onWarmUpClick: () -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        QuickActionItem(Icons.Default.FitnessCenter, "Exercises", onNavigateToExerciseList, Modifier.weight(1f))
-        QuickActionItem(Icons.Default.Edit, "Log Work", onManualLogClick, Modifier.weight(1f))
-        QuickActionItem(Icons.Default.DirectionsRun, "Warm Up", onWarmUpClick, Modifier.weight(1f))
-    }
-}
-
-@Composable
-fun QuickActionItem(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    OutlinedCard(onClick = onClick, modifier = modifier.height(90.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline), shape = RoundedCornerShape(16.dp)) {
-        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
-        }
-    }
-}
-
-@Composable
-fun TodayWorkoutCard(workout: DailyWorkoutEntity, onNavigate: (Long) -> Unit) {
-    ElevatedCard(onClick = { onNavigate(workout.workoutId) }, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.elevatedCardElevation(defaultElevation = 3.dp, pressedElevation = 6.dp), shape = MaterialTheme.shapes.medium) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f), modifier = Modifier.size(48.dp)) { Box(contentAlignment = Alignment.Center) { Text("💪") } }
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) { Text("💪") }
+                }
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
                     Text(workout.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -216,7 +120,11 @@ fun TodayWorkoutCard(workout: DailyWorkoutEntity, onNavigate: (Long) -> Unit) {
                 }
             }
             Spacer(modifier = Modifier.height(20.dp))
-            Button(onClick = { onNavigate(workout.workoutId) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+            Button(
+                onClick = { onNavigate(workout.workoutId) },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
                 Text("START SESSION", fontWeight = FontWeight.Bold)
             }
         }
@@ -225,9 +133,12 @@ fun TodayWorkoutCard(workout: DailyWorkoutEntity, onNavigate: (Long) -> Unit) {
 
 @Composable
 fun NoWorkoutCard() {
-    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
         Box(modifier = Modifier.padding(24.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Text("Rest Day or No Plan Generated", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Rest Day or No Plan Generated", color = MaterialTheme.colorScheme.onSurface)
         }
     }
 }

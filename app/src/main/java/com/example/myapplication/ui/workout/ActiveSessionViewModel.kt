@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.remote.BedrockClient
+import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.repository.HealthConnectManager
 import com.example.myapplication.data.repository.WorkoutRepository
 import com.example.myapplication.service.WorkoutTimerService
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -38,6 +40,7 @@ data class ExerciseState(
 class ActiveSessionViewModel @Inject constructor(
     private val repository: WorkoutRepository,
     private val application: Application,
+    private val userPrefs: UserPreferencesRepository,
     private val healthConnectManager: HealthConnectManager,
     val bedrockClient: BedrockClient
 ) : ViewModel() {
@@ -83,7 +86,49 @@ class ActiveSessionViewModel @Inject constructor(
                 )
             }
         }
+        fun loadWorkout(workoutId: Long) {
+            viewModelScope.launch {
+                val workoutExercises = repository.getExercisesByIds(
+                    repository.getSetsForSession(workoutId).first().map { it.exerciseId }.distinct()
+                ).first()
 
+                val rawSets = repository.getSetsForSession(workoutId).first()
+
+                // --- RECOVERY ADJUSTMENT LOGIC ---
+                val recoveryScore = userPrefs.recoveryScore.first()
+                val rpeReduction = when {
+                    recoveryScore < 40 -> 2 // Very Tired
+                    recoveryScore < 70 -> 1 // Tired
+                    else -> 0
+                }
+
+                // Apply adjustment to the initial sets displayed
+                val adjustedSets = rawSets.map { set ->
+                    if (rpeReduction > 0) {
+                        set.copy(suggestedRpe = (set.suggestedRpe - rpeReduction).coerceAtLeast(1))
+                    } else {
+                        set
+                    }
+                }
+
+                val groupedSets = adjustedSets.groupBy { it.exerciseId }
+
+                _exerciseStates.value = workoutExercises.map { exercise ->
+                    ExerciseState(
+                        exercise = exercise,
+                        sets = groupedSets[exercise.exerciseId] ?: emptyList(),
+                        timerState = ExerciseTimerState()
+                    )
+                }
+
+                // Add recovery note to briefing
+                var briefing = generateCoachBriefing(workoutExercises, adjustedSets)
+                if (rpeReduction > 0) {
+                    briefing = "⚠️ RECOVERY LOW ($recoveryScore%)\nTargets reduced by $rpeReduction RPE. Take it easy today.\n\n$briefing"
+                }
+                _coachBriefing.value = briefing
+            }
+        }
         // --- LOAD DATA ---
         viewModelScope.launch {
             _workoutId.collectLatest { id ->

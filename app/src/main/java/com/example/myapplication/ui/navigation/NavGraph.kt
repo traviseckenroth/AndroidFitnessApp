@@ -55,11 +55,7 @@ fun NavGraph(
         }
         composable("home") {
             HomeScreen(
-                onNavigateToWorkout = { workoutId -> navController.navigate("active_workout/$workoutId") },
-                onNavigateToExerciseList = { navController.navigate("exercise_list") },
-                onManualLogClick = { navController.navigate("manual_plan") },
-                onWarmUpClick = { navController.navigate("warm_up") },
-                onSettingsClick = { navController.navigate("settings") }
+                onNavigateToWorkout = { workoutId -> navController.navigate("active_workout/$workoutId") }
             )
         }
         composable("settings") {
@@ -84,7 +80,7 @@ fun NavGraph(
         }
         composable("nutrition") { NutritionScreen() }
         composable("insights") { InsightsScreen() }
-        composable("profile") { ProfileScreen() }
+        composable("profile") { ProfileScreen(onBack = { navController.popBackStack() }) }
         composable("warm_up") { WarmUpScreen(onBack = { navController.popBackStack() }) }
         composable("exercise_list") {
             ExerciseListScreen(
