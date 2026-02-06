@@ -5,7 +5,20 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface WorkoutDao {
+
+    // --- FOOD LOGGING (NEW) ---
+
+    @Insert
+    suspend fun insertFoodLog(log: FoodLogEntity): Long
+
+    @Query("SELECT * FROM food_logs WHERE date >= :startOfDay AND date < :endOfDay ORDER BY date DESC")
+    fun getFoodLogsForDate(startOfDay: Long, endOfDay: Long): Flow<List<FoodLogEntity>>
+
+    @Query("SELECT * FROM food_logs ORDER BY date DESC LIMIT 50")
+    fun getRecentFoodLogs(): Flow<List<FoodLogEntity>>
+
     // --- EXERCISE READS ---
+
     @Query("SELECT * FROM exercises")
     fun getAllExercises(): Flow<List<ExerciseEntity>>
 

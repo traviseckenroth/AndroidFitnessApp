@@ -11,14 +11,6 @@ data class WorkoutPlan(
 
 
 @Serializable
-data class NutritionPlan(
-    val calories: String = "",
-    val protein: String = "",
-    val carbs: String = "",
-    val fats: String = "",
-    val timing: String = ""
-)
-@Serializable
 data class WeeklyPlan(
     val week: Int,
     val days: List<DailyWorkout>

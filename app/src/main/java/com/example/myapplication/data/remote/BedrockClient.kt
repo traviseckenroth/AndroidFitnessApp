@@ -19,21 +19,46 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 // --- AI RESPONSE DATA MODELS ---
+// --- 1. NEW DATA MODELS FOR FOOD LOGGING ---
+@Serializable
+data class FoodLogResponse(
+    val foodItems: List<FoodItem>,
+    val totalMacros: MacroSummary,
+    val analysis: String // Brief comment like "High protein meal!"
+)
 
 @Serializable
-data class NutritionPlan(
+data class FoodItem(
+    val name: String,
+    val quantity: String,
+    val calories: Int,
+    val protein: Int,
+    val carbs: Int,
+    val fats: Int
+)
+
+@Serializable
+data class MacroSummary(
+    val calories: Int,
+    val protein: Int,
+    val carbs: Int,
+    val fats: Int
+)
+@Serializable
+data class RemoteNutritionPlan(
     val calories: String = "",
     val protein: String = "",
     val carbs: String = "",
     val fats: String = "",
-    val timing: String = ""
+    val timing: String = "",
+    val explanation: String = ""
 )
 
 @Serializable
 data class GeneratedPlanResponse(
     val explanation: String = "",
     val schedule: List<GeneratedDay> = emptyList(),
-    val nutrition: NutritionPlan? = null
+    val nutrition: RemoteNutritionPlan? = null
 )
 
 @Serializable
@@ -110,7 +135,35 @@ class BedrockClient @Inject constructor(
             }
         }
     }
+    // --- NEW FUNCTION: PARSE NATURAL LANGUAGE FOOD ---
+    suspend fun parseFoodLog(userQuery: String): FoodLogResponse = withContext(Dispatchers.Default) {
+        try {
+            val systemPrompt = """
+                You are an expert AI Nutritionist.
+                TASK: Analyze the user's natural language food log.
+                
+                CRITICAL RULES:
+                1. If quantity is vague (e.g., "a chicken breast", "an egg", "a bowl of rice"), YOU MUST ESTIMATE using standard serving sizes (e.g., Breast=6oz, Egg=Large, Rice=1 cup).
+                2. NEVER return 0 for calories/macros unless the item is water or diet soda.
+                3. Calculate totals accurately.
+                
+                OUTPUT FORMAT (RAW JSON ONLY):
+                {
+                  "foodItems": [
+                    { "name": "Chicken Breast", "quantity": "6oz (Est)", "calories": 280, "protein": 52, "carbs": 0, "fats": 6 }
+                  ],
+                  "totalMacros": { "calories": 280, "protein": 52, "carbs": 0, "fats": 6 },
+                  "analysis": "Brief comment on quality."
+                }
+            """.trimIndent()
 
+            val cleanJson = invokeClaude(systemPrompt, userQuery)
+            jsonConfig.decodeFromString<FoodLogResponse>(cleanJson)
+        } catch (e: Exception) {
+            Log.e("BedrockError", "Error parsing food log", e)
+            FoodLogResponse(emptyList(), MacroSummary(0, 0, 0, 0), "Error: ${e.message}")
+        }
+    }
     // --- 1. GENERATE WORKOUT PLAN (Exercise Only) ---
     suspend fun generateWorkoutPlan(
         goal: String,
@@ -250,46 +303,35 @@ class BedrockClient @Inject constructor(
 
     // --- 2. GENERATE NUTRITION PLAN (Separate Call) ---
     suspend fun generateNutritionPlan(
-        goal: String,
         userAge: Int,
         userHeight: Int,
         userWeight: Double,
         gender: String,
-        activityLevel: String,
         dietType: String,
-        goalPace: String
-    ): NutritionPlan = withContext(Dispatchers.Default) {
-
+        goalPace: String,
+        weeklyWorkoutDays: Int,
+        avgWorkoutDurationMins: Int
+    ): RemoteNutritionPlan = withContext(Dispatchers.Default) {
         try {
             val systemPrompt = """
-            You are a sports nutritionist. Create a daily nutrition target for a user.
-            Stats: $gender, Age $userAge, ${userHeight}cm, ${userWeight}kg.
-            Activity: $activityLevel.
-            Goal: $goal ($goalPace).
-            Diet Preference: $dietType.
-
-            OUTPUT FORMAT (JSON ONLY, NO TEXT):
-            {
-              "calories": "2500",
-              "protein": "180g",
-              "carbs": "250g",
-              "fats": "80g",
-              "timing": "Suggest meal timing based on workout (e.g., Carb heavy post-workout)"
-            }
-            Do not include preamble or markdown formatting.
+                You are a metabolic nutritionist. Calculate daily macros.
+                1. BMR ($userAge yr, $gender, ${userHeight}cm, ${userWeight}kg).
+                2. TDEE (Activity: $weeklyWorkoutDays days/wk, $avgWorkoutDurationMins min/session).
+                3. Apply Goal: $goalPace.
+                
+                OUTPUT JSON ONLY:
+                {
+                  "calories": "2500", "protein": "180g", "carbs": "250g", "fats": "80g",
+                  "timing": "Advice",
+                  "explanation": "Math used."
+                }
             """.trimIndent()
 
-            val userPrompt = "Generate nutrition plan."
-
-            // Use the shared helper to invoke Claude
-            val cleanJson = invokeClaude(systemPrompt, userPrompt)
-
-            // Decode the Nutrition Response
-            jsonConfig.decodeFromString<NutritionPlan>(cleanJson)
-
+            val cleanJson = invokeClaude(systemPrompt, "Generate Nutrition")
+            jsonConfig.decodeFromString<RemoteNutritionPlan>(cleanJson)
         } catch (e: Exception) {
-            Log.e("BedrockError", "Error generating nutrition", e)
-            NutritionPlan(timing = "Error generating plan. Please try again.")
+            Log.e("BedrockError", "Nutrition Gen Failed", e)
+            RemoteNutritionPlan(explanation = "Error generating plan. Please try again.")
         }
     }
 

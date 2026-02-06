@@ -7,6 +7,17 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.Relation
 
+@Entity(tableName = "food_logs")
+data class FoodLogEntity(
+    @PrimaryKey(autoGenerate = true) val logId: Long = 0,
+    val date: Long, // Epoch millis
+    val inputQuery: String, // What the user said
+    val totalCalories: Int,
+    val totalProtein: Int,
+    val totalCarbs: Int,
+    val totalFats: Int,
+    val aiAnalysis: String
+)
 @Entity(tableName = "exercises")
 data class ExerciseEntity(
     @PrimaryKey(autoGenerate = true) val exerciseId: Long = 0,

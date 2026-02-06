@@ -3,6 +3,7 @@ package com.example.myapplication.ui.nutrition
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.NutritionPlan
+import com.example.myapplication.data.local.FoodLogEntity
 import com.example.myapplication.data.repository.WorkoutRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,8 +26,37 @@ class NutritionViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<NutritionUiState>(NutritionUiState.Loading)
     val uiState = _uiState.asStateFlow()
 
+    private val _foodLogs = MutableStateFlow<List<FoodLogEntity>>(emptyList())
+    val foodLogs = _foodLogs.asStateFlow()
+
+    private val _isLogging = MutableStateFlow(false)
+    val isLogging = _isLogging.asStateFlow()
+
     init {
         loadNutrition()
+        loadFoodLogs()
+    }
+
+    private fun loadFoodLogs() {
+        viewModelScope.launch {
+            repository.getTodayFoodLogs().collect {
+                _foodLogs.value = it
+            }
+        }
+    }
+
+    fun logFood(query: String) {
+        if (query.isBlank()) return
+        viewModelScope.launch {
+            _isLogging.value = true
+            try {
+                repository.logFood(query)
+            } catch (e: Exception) {
+                // handle error
+            } finally {
+                _isLogging.value = false
+            }
+        }
     }
 
     private fun loadNutrition() {
