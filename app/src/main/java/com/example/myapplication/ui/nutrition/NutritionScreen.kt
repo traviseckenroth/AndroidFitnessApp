@@ -1,3 +1,5 @@
+// app/src/main/java/com/example/myapplication/ui/nutrition/NutritionScreen.kt
+
 package com.example.myapplication.ui.nutrition
 
 import android.app.Activity
@@ -15,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,13 +37,15 @@ import java.util.Locale
 fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsState()
     val foodLogs by viewModel.foodLogs.collectAsState()
+    val recentFoods by viewModel.recentFoods.collectAsState()
     val isLogging by viewModel.isLogging.collectAsState()
     val consumed by viewModel.consumedMacros.collectAsState()
 
     val scrollState = rememberScrollState()
     val context = LocalContext.current
 
-    var showLogDialog by remember { mutableStateOf(false) }
+    var showVoiceDialog by remember { mutableStateOf(false) }
+    var showManualDialog by remember { mutableStateOf(false) }
 
     val speechLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -50,17 +55,18 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
             if (!spokenText.isNullOrBlank()) {
                 viewModel.logFood(spokenText)
                 Toast.makeText(context, "Analyzing: $spokenText", Toast.LENGTH_SHORT).show()
-                showLogDialog = false
+                showVoiceDialog = false
             }
         }
     }
 
-    if (showLogDialog) {
+    // --- DIALOGS ---
+    if (showVoiceDialog) {
         VoiceLogDialog(
-            onDismiss = { showLogDialog = false },
+            onDismiss = { showVoiceDialog = false },
             onConfirm = { query ->
                 viewModel.logFood(query)
-                showLogDialog = false
+                showVoiceDialog = false
             },
             onMicClick = {
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -78,6 +84,18 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
         )
     }
 
+    if (showManualDialog) {
+        ManualFoodDialog(
+            recentFoods = recentFoods,
+            onDismiss = { showManualDialog = false },
+            onConfirm = { name, cals, pro, carb, fat, meal ->
+                viewModel.logManual(name, cals, pro, carb, fat, meal)
+                showManualDialog = false
+            }
+        )
+    }
+
+    // --- MAIN CONTENT ---
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -88,23 +106,54 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
         ) {
             Text("Nutrition Guide", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
 
+            // UI STATE HANDLING
             when (val state = uiState) {
-                is NutritionUiState.Loading -> Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                is NutritionUiState.Loading -> Box(
+                    modifier = Modifier.fillMaxWidth().height(100.dp),
+                    contentAlignment = Alignment.Center
+                ) { CircularProgressIndicator() }
+
+                is NutritionUiState.NoExercisePlan -> {
+                    Text(
+                        "Please generate an exercise plan in the 'Plan' tab first to enable AI nutrition coaching.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+
                 is NutritionUiState.Empty -> EmptyNutritionCard(onGenerateClick = { viewModel.generateNutrition() })
-                is NutritionUiState.Success -> NutritionDetailCard(state.plan, consumed, onRegenerateClick = { viewModel.generateNutrition() })
-                is NutritionUiState.Error -> Text("Error loading plan")
+
+                is NutritionUiState.Success -> NutritionDetailCard(
+                    state.plan,
+                    consumed,
+                    onRegenerateClick = { viewModel.generateNutrition() }
+                )
+
+                is NutritionUiState.Error -> {
+                    Text("Error: ${state.msg}", color = MaterialTheme.colorScheme.error)
+                }
             }
 
             Text("Today's Logs", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
 
-            Button(
-                onClick = { showLogDialog = true },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
-            ) {
-                Icon(Icons.Default.Mic, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Log Food (AI Voice)")
+            // BUTTONS ROW
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = { showVoiceDialog = true },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                ) {
+                    Icon(Icons.Default.Mic, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Voice Log")
+                }
+                OutlinedButton(
+                    onClick = { showManualDialog = true },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Manual Input")
+                }
             }
 
             if (isLogging) {
@@ -112,25 +161,145 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
                 Text("AI analyzing your meal...", style = MaterialTheme.typography.bodySmall)
             }
 
+            // LOGS LIST (Grouped)
             if (foodLogs.isEmpty()) {
                 Text("No food logged yet today.", color = Color.Gray)
             } else {
-                foodLogs.forEach { log -> FoodLogCard(log) }
+                val grouped = foodLogs.groupBy { it.mealType }
+                val order = listOf("Breakfast", "Lunch", "Dinner", "Snack")
+
+                order.forEach { mealType ->
+                    val logs = grouped[mealType]
+                    if (!logs.isNullOrEmpty()) {
+                        Text(
+                            mealType,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        logs.forEach { log -> FoodLogCard(log) }
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                }
+                // Fallback for custom types
+                grouped.filterKeys { it !in order }.forEach { (type, logs) ->
+                    Text(
+                        type,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    logs.forEach { log -> FoodLogCard(log) }
+                }
             }
             Spacer(modifier = Modifier.height(80.dp))
         }
     }
 }
 
+// --- HELPER COMPOSABLES ---
+
+@Composable
+fun ManualFoodDialog(
+    recentFoods: List<String>,
+    onDismiss: () -> Unit,
+    onConfirm: (String, String, String, String, String, String) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var calories by remember { mutableStateOf("") }
+    var protein by remember { mutableStateOf("") }
+    var carbs by remember { mutableStateOf("") }
+    var fats by remember { mutableStateOf("") }
+    var mealType by remember { mutableStateOf("Snack") }
+    var showDropdown by remember { mutableStateOf(false) }
+
+    val filteredHistory = recentFoods.filter { it.contains(name, ignoreCase = true) && it != name }.take(3)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Manual Entry") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = {
+                            name = it
+                            showDropdown = true
+                        },
+                        label = { Text("Food Name") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    DropdownMenu(
+                        expanded = showDropdown && filteredHistory.isNotEmpty(),
+                        onDismissRequest = { showDropdown = false }
+                    ) {
+                        filteredHistory.forEach { historyItem ->
+                            DropdownMenuItem(
+                                text = { Text(historyItem) },
+                                onClick = {
+                                    name = historyItem
+                                    showDropdown = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(value = calories, onValueChange = { calories = it }, label = { Text("Cals") }, modifier = Modifier.weight(1f))
+                    OutlinedTextField(value = protein, onValueChange = { protein = it }, label = { Text("Pro") }, modifier = Modifier.weight(1f))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(value = carbs, onValueChange = { carbs = it }, label = { Text("Carb") }, modifier = Modifier.weight(1f))
+                    OutlinedTextField(value = fats, onValueChange = { fats = it }, label = { Text("Fat") }, modifier = Modifier.weight(1f))
+                }
+
+                Text("Meal Type:", style = MaterialTheme.typography.labelMedium)
+                Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
+                    listOf("Breakfast", "Lunch", "Dinner", "Snack").forEach { type ->
+                        FilterChip(
+                            selected = mealType == type,
+                            onClick = { mealType = type },
+                            label = { Text(type.take(1)) }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(name, calories, protein, carbs, fats, mealType) }) { Text("Add") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
 @Composable
 fun NutritionDetailCard(
     plan: NutritionPlan,
     consumed: MacroSummary,
-    onRegenerateClick: () -> Unit // New Parameter
+    onRegenerateClick: () -> Unit
 ) {
+    var showStrategyPopup by remember { mutableStateOf(false) }
+
+    if (showStrategyPopup) {
+        AlertDialog(
+            onDismissRequest = { showStrategyPopup = false },
+            title = { Text("Nutrition Strategy", style = MaterialTheme.typography.titleLarge) },
+            text = {
+                Text(
+                    text = plan.explanation.ifBlank { "Based on your biometrics and calculated activity level." },
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showStrategyPopup = false }) { Text("Close") }
+            }
+        )
+    }
+
     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(24.dp)) {
-            // Header with Refresh Icon
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -163,16 +332,28 @@ fun NutritionDetailCard(
                 modifier = Modifier.align(Alignment.End)
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
-            Text("Strategy", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(
-                text = plan.explanation.ifBlank { "Based on your biometrics and calculated activity level." },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
-            )
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Explicit Button at bottom for better UX
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("Strategy", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                IconButton(
+                    onClick = { showStrategyPopup = true },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.HelpOutline,
+                        contentDescription = "Show Strategy Detail",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             OutlinedButton(
                 onClick = onRegenerateClick,
                 modifier = Modifier.fillMaxWidth()
@@ -231,7 +412,10 @@ fun VoiceLogDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit, onMicClic
 
 @Composable
 fun FoodLogCard(log: FoodLogEntity) {
-    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+    ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(log.inputQuery, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(log.aiAnalysis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
@@ -248,9 +432,19 @@ fun FoodLogCard(log: FoodLogEntity) {
 
 @Composable
 fun EmptyNutritionCard(onGenerateClick: () -> Unit) {
-    ElevatedCard(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Column(modifier = Modifier.padding(32.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Box(modifier = Modifier.size(64.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.padding(32.dp).fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Box(
+                modifier = Modifier.size(64.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
                 Icon(Icons.Default.Bolt, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
             }
             Text("Generate Nutrition Plan", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)

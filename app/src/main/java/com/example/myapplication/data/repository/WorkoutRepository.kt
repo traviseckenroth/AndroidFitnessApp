@@ -41,11 +41,26 @@ class WorkoutRepository @Inject constructor(
             totalProtein = aiResponse.totalMacros.protein,
             totalCarbs = aiResponse.totalMacros.carbs,
             totalFats = aiResponse.totalMacros.fats,
-            aiAnalysis = aiResponse.analysis
+            aiAnalysis = aiResponse.analysis,
+            mealType = aiResponse.mealType
         )
         workoutDao.insertFoodLog(entity)
         return entity
     }
+    suspend fun logManualFood(name: String, cals: Int, pro: Int, carb: Int, fat: Int, meal: String) {
+        val entity = FoodLogEntity(
+            date = System.currentTimeMillis(),
+            inputQuery = name, // Storing name as query for history reuse
+            totalCalories = cals,
+            totalProtein = pro,
+            totalCarbs = carb,
+            totalFats = fat,
+            aiAnalysis = "Manual Entry",
+            mealType = meal
+        )
+        workoutDao.insertFoodLog(entity)
+    }
+    fun getRecentFoodHistory(): Flow<List<String>> = workoutDao.getRecentFoodQueries()
 
     fun getTodayFoodLogs(): Flow<List<FoodLogEntity>> {
         val cal = Calendar.getInstance().apply {

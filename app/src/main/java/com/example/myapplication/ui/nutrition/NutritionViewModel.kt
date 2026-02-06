@@ -18,6 +18,7 @@ import javax.inject.Inject
 sealed interface NutritionUiState {
     object Loading : NutritionUiState
     data class Success(val plan: NutritionPlan) : NutritionUiState
+    object NoExercisePlan : NutritionUiState
     object Empty : NutritionUiState // Renamed from Locked
     data class Error(val msg: String) : NutritionUiState
 }
@@ -45,9 +46,19 @@ class NutritionViewModel @Inject constructor(
     private val _isLogging = MutableStateFlow(false)
     val isLogging = _isLogging.asStateFlow()
 
+    private val _recentFoods = MutableStateFlow<List<String>>(emptyList())
+    val recentFoods = _recentFoods.asStateFlow()
+
     init {
         loadNutrition()
         loadFoodLogs()
+        loadHistory()
+    }
+
+    private fun loadHistory() {
+        viewModelScope.launch {
+            repository.getRecentFoodHistory().collect { _recentFoods.value = it }
+        }
     }
 
     private fun loadFoodLogs() {
@@ -57,6 +68,29 @@ class NutritionViewModel @Inject constructor(
             }
         }
     }
+    private fun loadNutrition() {
+        viewModelScope.launch {
+            _uiState.value = NutritionUiState.Loading
+            try {
+                // Fetch the plan. We check if an exercise plan exists at all.
+                val plan = repository.getPlanDetails(0)
+
+                // Logic: If the plan object itself is empty/null (no exercise plan),
+                // show NoExercisePlan. If it exists but has no nutrition, show Empty.
+                if (plan.weeks.isEmpty()) {
+                    _uiState.value = NutritionUiState.NoExercisePlan
+                } else if (plan.nutrition != null) {
+                    _uiState.value = NutritionUiState.Success(plan.nutrition!!)
+                } else {
+                    _uiState.value = NutritionUiState.Empty
+                }
+            } catch (e: Exception) {
+                // Actual data/network errors now go to Error state instead of defaulting to Empty
+                _uiState.value = NutritionUiState.Error("Failed to connect to Bedrock: ${e.message}")
+            }
+        }
+    }
+
 
     fun logFood(query: String) {
         if (query.isBlank()) return
@@ -71,23 +105,18 @@ class NutritionViewModel @Inject constructor(
             }
         }
     }
-
-    private fun loadNutrition() {
+    fun logManual(name: String, cals: String, pro: String, carb: String, fat: String, meal: String) {
         viewModelScope.launch {
-            _uiState.value = NutritionUiState.Loading
-            try {
-                val plan = repository.getPlanDetails(0)
-                if (plan.nutrition != null) {
-                    _uiState.value = NutritionUiState.Success(plan.nutrition!!)
-                } else {
-                    _uiState.value = NutritionUiState.Empty
-                }
-            } catch (e: Exception) {
-                _uiState.value = NutritionUiState.Empty
-            }
+            repository.logManualFood(
+                name,
+                cals.toIntOrNull() ?: 0,
+                pro.toIntOrNull() ?: 0,
+                carb.toIntOrNull() ?: 0,
+                fat.toIntOrNull() ?: 0,
+                meal
+            )
         }
     }
-
     fun generateNutrition() {
         viewModelScope.launch {
             _uiState.value = NutritionUiState.Loading

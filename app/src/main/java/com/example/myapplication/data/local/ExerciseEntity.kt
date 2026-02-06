@@ -16,7 +16,8 @@ data class FoodLogEntity(
     val totalProtein: Int,
     val totalCarbs: Int,
     val totalFats: Int,
-    val aiAnalysis: String
+    val aiAnalysis: String,
+    val mealType: String = "Snack"
 )
 @Entity(tableName = "exercises")
 data class ExerciseEntity(

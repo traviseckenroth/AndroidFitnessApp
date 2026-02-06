@@ -24,7 +24,8 @@ import kotlinx.serialization.json.Json
 data class FoodLogResponse(
     val foodItems: List<FoodItem>,
     val totalMacros: MacroSummary,
-    val analysis: String // Brief comment like "High protein meal!"
+    val analysis: String, // Brief comment like "High protein meal!"
+    val mealType: String = "Snack"
 )
 
 @Serializable
@@ -145,7 +146,9 @@ class BedrockClient @Inject constructor(
                 CRITICAL RULES:
                 1. If quantity is vague (e.g., "a chicken breast", "an egg", "a bowl of rice"), YOU MUST ESTIMATE using standard serving sizes (e.g., Breast=6oz, Egg=Large, Rice=1 cup).
                 2. NEVER return 0 for calories/macros unless the item is water or diet soda.
-                3. Calculate totals accurately.
+                3. DETERMINE MEAL TYPE: Based on the text (e.g., "For breakfast I had...") or typical consumption time (if vague, default to "Snack").
+                   Categories: "Breakfast", "Lunch", "Dinner", "Snack".
+                4. Calculate totals accurately.
                 
                 OUTPUT FORMAT (RAW JSON ONLY):
                 {
@@ -154,6 +157,7 @@ class BedrockClient @Inject constructor(
                   ],
                   "totalMacros": { "calories": 280, "protein": 52, "carbs": 0, "fats": 6 },
                   "analysis": "Brief comment on quality."
+                  "mealType": "Dinner"
                 }
             """.trimIndent()
 

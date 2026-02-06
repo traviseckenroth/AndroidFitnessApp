@@ -19,6 +19,9 @@ interface WorkoutDao {
 
     // --- EXERCISE READS ---
 
+    // NEW: Get distinct food names for autocomplete history
+    @Query("SELECT DISTINCT inputQuery FROM food_logs ORDER BY date DESC LIMIT 20")
+    fun getRecentFoodQueries(): Flow<List<String>>
     @Query("SELECT * FROM exercises")
     fun getAllExercises(): Flow<List<ExerciseEntity>>
 
