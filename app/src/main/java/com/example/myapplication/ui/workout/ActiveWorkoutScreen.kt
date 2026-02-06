@@ -7,6 +7,7 @@ import java.util.Locale
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -39,7 +40,8 @@ import kotlinx.coroutines.launch
 fun ActiveWorkoutScreen(
     workoutId: Long,
     viewModel: ActiveSessionViewModel = hiltViewModel(),
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onWorkoutComplete: (Long) -> Unit
 ) {
     val exerciseStates by viewModel.exerciseStates.collectAsState()
     val coachBriefing by viewModel.coachBriefing.collectAsState()
@@ -62,31 +64,35 @@ fun ActiveWorkoutScreen(
                 exerciseName = activeCameraExerciseState!!.exercise.name,
                 targetWeight = nextSet?.suggestedLbs?.toInt() ?: 0,
                 targetReps = nextSet?.suggestedReps ?: 0,
-                onClose = { activeCameraExerciseState = null }
+                onClose = { activeCameraExerciseState = null },
+                // NEW: Connect the UI to the Bedrock Client in the ViewModel
+                fetchAiCue = { issue ->
+                    viewModel.bedrockClient.generateCoachingCue(
+                        activeCameraExerciseState!!.exercise.name,
+                        issue,
+                        0 // You can pass actual rep count if available
+                    )
+                }
             )
         }
         return
     }
-
     LaunchedEffect(workoutId) {
         viewModel.loadWorkout(workoutId)
     }
 
-    if (workoutSummary != null) {
-        WorkoutSummaryDialog(
-            report = workoutSummary!!,
-            onDismiss = {
-                viewModel.clearSummary()
-                onBack()
-            }
-        )
+    LaunchedEffect(workoutSummary) {
+        if (workoutSummary != null) {
+            // Once the viewmodel generates the summary (meaning db is updated), we navigate
+            viewModel.clearSummary() // Optional cleanup
+            onWorkoutComplete(workoutId)
+        }
     }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                // UPDATED: Use theme colors instead of hardcoded White
                 title = {
                     Text(
                         "Active Workout",
@@ -167,7 +173,6 @@ fun ActiveWorkoutScreen(
 @Composable
 fun WorkoutHeader(title: String) {
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
-        // UPDATED: Use onSurface (Dark) for readability
         Text(
             text = title,
             style = MaterialTheme.typography.headlineSmall,
@@ -219,7 +224,6 @@ fun ExerciseHeader(
         modifier = Modifier.fillMaxWidth().clickable { onToggleVisibility() },
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Updated Column: Now contains Name AND Info Icon in a Row
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -229,13 +233,12 @@ fun ExerciseHeader(
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f, fill = false)
                 )
-                // MOVED: Help Icon is now here, next to the name
                 IconButton(onClick = { showDescriptionDialog = true }) {
                     Icon(
-                        imageVector = Icons.Default.Help,
+                        imageVector = Icons.AutoMirrored.Filled.Help, // Updated icon
                         contentDescription = "Info",
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp) // Slightly smaller for inline look
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
@@ -248,8 +251,8 @@ fun ExerciseHeader(
             }
         }
 
-        val hasWarmups = exerciseState.sets.any { it.suggestedRpe == 0 }
-        if (exerciseState.exercise.tier == 1 && !hasWarmups) {
+        // Inline "hasWarmups" check
+        if (exerciseState.exercise.tier == 1 && !exerciseState.sets.any { it.suggestedRpe == 0 }) {
             Spacer(modifier = Modifier.width(8.dp))
             AssistChip(
                 onClick = {
@@ -282,14 +285,11 @@ fun ExerciseHeader(
 fun SetsTable(sets: List<WorkoutSetEntity>, equipment: String?, viewModel: ActiveSessionViewModel) {
     var showRpeInfo by remember { mutableStateOf(false) }
 
-    val isBarbell = equipment?.contains("Barbell", ignoreCase = true) == true
-
     if (showRpeInfo) {
         RpeInfoDialog(onDismiss = { showRpeInfo = false })
     }
 
     Column {
-        // UPDATED: Headers use explicit dark grey or onSurfaceVariant for readability
         Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("SET", modifier = Modifier.weight(0.5f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             Text("LBS", modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -299,14 +299,20 @@ fun SetsTable(sets: List<WorkoutSetEntity>, equipment: String?, viewModel: Activ
                 Text("RPE", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.width(4.dp))
                 IconButton(onClick = { showRpeInfo = true }, modifier = Modifier.size(16.dp)) {
-                    Icon(Icons.Default.Help, "RPE Guide", tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.AutoMirrored.Filled.Help, "RPE Guide", tint = MaterialTheme.colorScheme.primary)
                 }
             }
 
             Text("DONE", modifier = Modifier.weight(0.5f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
         sets.forEachIndexed { index, set ->
-            SetRow(setNumber = index + 1, set = set, isBarbell = isBarbell, viewModel = viewModel)
+            // Inline "isBarbell" check
+            SetRow(
+                setNumber = index + 1,
+                set = set,
+                isBarbell = equipment?.contains("Barbell", ignoreCase = true) == true,
+                viewModel = viewModel
+            )
         }
     }
 }
@@ -337,16 +343,14 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Set Number
         Text(
             text = "$setNumber",
             modifier = Modifier.weight(0.5f),
-            color = MaterialTheme.colorScheme.onSurface, // Dark for visibility
+            color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center
         )
 
-        // WEIGHT INPUT
         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
             TextField(
                 value = weightText,
@@ -357,14 +361,13 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
                 placeholder = {
                     Text(
                         text = set.suggestedLbs.toString(),
-                        // Darker placeholder for light background
                         color = Color.Gray
                     )
                 },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
                 colors = TextFieldDefaults.colors(
-                    focusedTextColor = MaterialTheme.colorScheme.onSurface,   // Black text
-                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface, // Black text
+                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
                     unfocusedContainerColor = Color.Transparent,
                     focusedContainerColor = Color.Transparent,
                     unfocusedIndicatorColor = MaterialTheme.colorScheme.outline,
@@ -381,7 +384,6 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
             }
         }
 
-        // REPS INPUT
         TextField(
             value = repsText,
             onValueChange = { repsText = it },
@@ -400,7 +402,6 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
             )
         )
 
-        // RPE INPUT
         TextField(
             value = rpeText,
             onValueChange = { rpeText = it },
@@ -436,17 +437,20 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
 @Composable
 fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
     val timerState = exerciseState.timerState
-    val minutes = timerState.remainingTime / 60
-    val seconds = timerState.remainingTime % 60
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
     ) {
-        // UPDATED: High contrast digits using the "Monospace" display style we added earlier
+        // Inline minutes/seconds calculation
         Text(
-            text = String.format(Locale.US, "%02d:%02d", minutes, seconds),
-            style = MaterialTheme.typography.displayMedium, // Uses your new Monospace definition
+            text = String.format(
+                Locale.US,
+                "%02d:%02d",
+                timerState.remainingTime / 60,
+                timerState.remainingTime % 60
+            ),
+            style = MaterialTheme.typography.displayMedium,
             color = if (timerState.isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
         )
 
@@ -465,7 +469,6 @@ fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
 @Composable
 fun CoachBriefingCard(briefing: String) {
     if (briefing.isBlank()) return
-    // UPDATED: Use SurfaceVariant (Light Grey) with Dark Text for readability
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -482,7 +485,6 @@ fun CoachBriefingCard(briefing: String) {
     }
 }
 
-// ... (Rest of Dialogs - WorkoutSummaryDialog, RpeInfoDialog, SwapExerciseDialog - generally adapt automatically to theme, ensure text is not hardcoded White inside them)
 @Composable
 fun WorkoutSummaryDialog(report: List<String>, onDismiss: () -> Unit) {
     AlertDialog(

@@ -22,6 +22,7 @@ import com.example.myapplication.ui.plan.ManualPlanScreen
 import com.example.myapplication.ui.plan.PlanViewModel
 import com.example.myapplication.ui.profile.ProfileScreen
 import com.example.myapplication.ui.settings.SettingsScreen
+import com.example.myapplication.ui.summary.WorkoutSummaryScreen
 import com.example.myapplication.ui.warmup.WarmUpScreen
 import com.example.myapplication.ui.workout.ActiveSessionViewModel
 import com.example.myapplication.ui.workout.ActiveWorkoutScreen
@@ -37,92 +38,66 @@ fun NavGraph(
         startDestination = "login",
         modifier = modifier
     ) {
-        // --- 1. AUTH ROUTES ---
+        // ... (Auth, Home, Settings, Plan, Nutrition, Insights, Profile, WarmUp routes remain the same) ...
+
+        // --- AUTH ROUTES ---
         composable("login") {
             LoginScreen(
-                onLoginSuccess = {
-                    navController.navigate("home") {
-                        popUpTo("login") { inclusive = true }
-                    }
-                },
+                onLoginSuccess = { navController.navigate("home") { popUpTo("login") { inclusive = true } } },
                 onNavigateToSignUp = { navController.navigate("signup") }
             )
         }
-
         composable("signup") {
             SignUpScreen(
-                onSignUpSuccess = {
-                    navController.navigate("login") {
-                        popUpTo("signup") { inclusive = true }
-                    }
-                },
+                onSignUpSuccess = { navController.navigate("login") { popUpTo("signup") { inclusive = true } } },
                 onBackToLogin = { navController.popBackStack() }
             )
         }
-
-        // --- 2. HOME ROUTE ---
         composable("home") {
             HomeScreen(
-                onNavigateToWorkout = { workoutId ->
-                    navController.navigate("active_workout/$workoutId")
-                },
+                onNavigateToWorkout = { workoutId -> navController.navigate("active_workout/$workoutId") },
                 onNavigateToExerciseList = { navController.navigate("exercise_list") },
-                onManualLogClick = { navController.navigate("manual_plan") }, // Changed from manual_creator
+                onManualLogClick = { navController.navigate("manual_plan") },
                 onWarmUpClick = { navController.navigate("warm_up") },
                 onSettingsClick = { navController.navigate("settings") }
             )
         }
-
-        // --- 3. APP WORKFLOWS ---
         composable("settings") {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
-                onLogoutSuccess = {
-                    navController.navigate("login") {
-                        popUpTo(0) { inclusive = true }
-                    }
-                }
+                onLogoutSuccess = { navController.navigate("login") { popUpTo(0) { inclusive = true } } }
             )
         }
-
         composable("plan") {
             GeneratePlanScreen(
                 viewModel = planViewModel,
-                onManualCreateClick = { navController.navigate("manual_plan") }, // Changed from manual_creator
-                onPlanGenerated = {
-                    navController.navigate("home") {
-                        popUpTo("home") { inclusive = true }
-                    }
-                }
+                onManualCreateClick = { navController.navigate("manual_plan") },
+                onPlanGenerated = { navController.navigate("home") { popUpTo("home") { inclusive = true } } }
             )
         }
-
         composable("manual_plan") {
             ManualPlanScreen(
                 onNavigateToActiveWorkout = { workoutId ->
-                    navController.navigate("active_workout/$workoutId") {
-                        popUpTo("home")
-                    }
+                    navController.navigate("active_workout/$workoutId") { popUpTo("home") }
                 }
             )
         }
-
-        // --- 2. ADD NUTRITION ROUTE ---
-        composable("nutrition") {
-            NutritionScreen()
+        composable("nutrition") { NutritionScreen() }
+        composable("insights") { InsightsScreen() }
+        composable("profile") { ProfileScreen() }
+        composable("warm_up") { WarmUpScreen(onBack = { navController.popBackStack() }) }
+        composable("exercise_list") {
+            ExerciseListScreen(
+                onBack = { navController.popBackStack() },
+                onNavigateToExerciseHistory = { exerciseId -> navController.navigate("exercise_history/$exerciseId") }
+            )
         }
+        composable(
+            route = "exercise_history/{exerciseId}",
+            arguments = listOf(navArgument("exerciseId") { type = NavType.LongType })
+        ) { ExerciseHistoryScreen(navController = navController) }
 
-        composable("insights") {
-            InsightsScreen()
-        }
-
-        composable("profile") {
-            ProfileScreen()
-        }
-
-        composable("warm_up") {
-            WarmUpScreen(onBack = { navController.popBackStack() })
-        }
+        // --- UPDATED WORKOUT ROUTES ---
 
         composable(
             route = "active_workout/{workoutId}",
@@ -130,30 +105,39 @@ fun NavGraph(
         ) { backStackEntry ->
             val workoutId = backStackEntry.arguments?.getLong("workoutId") ?: return@composable
             val viewModel: ActiveSessionViewModel = hiltViewModel()
+
             ActiveWorkoutScreen(
                 workoutId = workoutId,
                 viewModel = viewModel,
                 onBack = {
-                    viewModel.finishWorkout(workoutId)
+                    // Optional: You might want to confirm before exiting
                     navController.popBackStack()
+                },
+                // FIX: Add the missing onWorkoutComplete parameter
+                onWorkoutComplete = { completedId ->
+                    // Navigate to summary and clear the active workout from backstack
+                    navController.navigate("workout_summary/$completedId") {
+                        popUpTo("home") { inclusive = false }
+                    }
                 }
             )
         }
 
-        composable("exercise_list") {
-            ExerciseListScreen(
-                onBack = { navController.popBackStack() },
-                onNavigateToExerciseHistory = { exerciseId ->
-                    navController.navigate("exercise_history/$exerciseId")
-                }
-            )
-        }
-
+        // NEW: Workout Summary Screen
         composable(
-            route = "exercise_history/{exerciseId}",
-            arguments = listOf(navArgument("exerciseId") { type = NavType.LongType })
-        ) {
-            ExerciseHistoryScreen(navController = navController)
+            route = "workout_summary/{workoutId}",
+            arguments = listOf(navArgument("workoutId") { type = NavType.LongType })
+        ) { backStackEntry ->
+            val workoutId = backStackEntry.arguments?.getLong("workoutId") ?: return@composable
+
+            WorkoutSummaryScreen(
+                workoutId = workoutId,
+                onNavigateHome = {
+                    navController.navigate("home") {
+                        popUpTo("home") { inclusive = true }
+                    }
+                }
+            )
         }
     }
 }

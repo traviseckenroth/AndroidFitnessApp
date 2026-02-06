@@ -8,6 +8,7 @@ import aws.sdk.kotlin.services.bedrockruntime.model.InvokeModelRequest
 import aws.smithy.kotlin.runtime.http.engine.okhttp.OkHttpEngine
 import com.example.myapplication.BuildConfig
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
+import org.json.JSONObject
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.repository.AuthRepository
 import javax.inject.Inject
@@ -277,14 +278,19 @@ class BedrockClient @Inject constructor(
                 3. ${tierDefinitions}
                 4. Generate a workout for *each* selected day: ${days.joinToString()}.
                 5. A week is from Monday to Sunday.
-                6. *** TIME CALCULATION FORMULA ***:
-                   'estimatedTimeMinutes' is the total time for all sets of an exercise, including rest.
-                   Use these estimates based on the user's rest requirements:
-                   - TIER 1: 4.0 minutes per set (Heavy load, long rest).
-                   - TIER 2: 3 minutes per set (Moderate load, medium rest).
-                   - TIER 3: 2 minutes per set (Light load, short rest).
+                6. *** CRITICAL TIME REQUIREMENT ***:
+                   You MUST fill the entire ${'$'}{totalMinutes} minute session.
+                   Use this strict formula to calculate duration (includes setup + rest + work):
+                   - TIER 1: 5.0 minutes per set.
+                   - TIER 2: 4.0 minutes per set.
+                   - TIER 3: 3.0 minutes per set.
                    
-                   *Adjust volume (sets) to ensure the total minutes sum up to exactly ${totalMinutes}.*
+                   *CALCULATION:* Sum(sets * minutes_per_set) for all exercises must equal ${'$'}{totalMinutes}.
+                   
+                   *MANDATORY:* If your selected exercises do not fill the time:
+                   a) INCREASE the number of sets for TIER 2 and TIER 3 exercises.
+                   b) ADD an extra "Core" or "Mobility" exercise (Tier 3) at the end to fill the gap.
+                   c) Do NOT output a session that is less than ${'$'}{totalMinutes - 5} minutes.
                 7. Total duration per day must equal ${totalMinutes} minutes.
                 8. If the user is older (>40), prefer lower fatigue exercises and higher rep ranges for joint health unless specified otherwise.
 
@@ -304,7 +310,51 @@ class BedrockClient @Inject constructor(
             GeneratedPlanResponse(explanation = "Error: ${e.localizedMessage}")
         }
     }
+    suspend fun generateCoachingCue(
+        exerciseName: String,
+        issue: String,
+        repCount: Int
+    ): String = withContext(Dispatchers.IO) { // <--- FIX: Switch to IO Thread
+        val prompt = """
+        You are a high-energy fitness coach. The user is doing $exerciseName.
+        They just did rep #$repCount but had this issue: "$issue".
+        Give them a SHORT, spoken correction (max 5 words).
+        Examples: "Chest up!", "Drive the knees!", "Squeeze at the top!".
+        Output ONLY the text to speak. No quotes.
+    """.trimIndent()
 
+        val jsonBody = JSONObject().apply {
+            put("inputText", prompt)
+            put("textGenerationConfig", JSONObject().apply {
+                put("maxTokenCount", 20)
+                put("temperature", 1.0)
+                put("topP", 0.9)
+            })
+        }
+
+        try {
+            Log.d("BedrockClient", "Sending request for: $issue") // <--- debug log
+
+            val request = InvokeModelRequest {
+                modelId = "amazon.titan-text-express-v1"
+                body = jsonBody.toString().toByteArray()
+                contentType = "application/json"
+                accept = "application/json"
+            }
+
+            val response = client.invokeModel(request)
+            val bodyBytes = response.body ?: throw Exception("Empty body")
+            val responseBody = JSONObject(String(bodyBytes))
+
+            val output = responseBody.getJSONArray("results").getJSONObject(0).getString("outputText").trim()
+            Log.d("BedrockClient", "AI Response: $output") // <--- debug log
+            return@withContext output
+
+        } catch (e: Exception) {
+            Log.e("BedrockClient", "AI Generation failed", e)
+            return@withContext "" // Return empty string to trigger fallback
+        }
+    }
     // --- 2. GENERATE NUTRITION PLAN (Separate Call) ---
     suspend fun generateNutritionPlan(
         userAge: Int,
@@ -325,8 +375,8 @@ class BedrockClient @Inject constructor(
                 
                 TASK:
                 1. Calculate TDEE based on the WORKOUT LOAD provided above.
-                2. Set Protein high enough to support muscle repair (${'$'}weeklyWorkoutDays sessions/week).
-                3. Set Carbs to fuel the ${'$'}avgWorkoutDurationMins minute duration.
+                2. Set Protein high enough to support muscle repair (${weeklyWorkoutDays} sessions/week).
+                3. Set Carbs to fuel the ${avgWorkoutDurationMins} minute duration.
                 
                 OUTPUT FORMAT (RAW JSON ONLY):
                 {
@@ -335,7 +385,7 @@ class BedrockClient @Inject constructor(
                   "carbs": "250g", 
                   "fats": "80g",
                   "timing": "Advice on pre/post workout nutrition.",
-                  "explanation": "CRITICAL: Explain specifically how these numbers support training ${'$'}weeklyWorkoutDays days a week. Mention the workout volume and how the protein/carbs fuel that specific load."
+                  "explanation": "CRITICAL: Explain specifically how these numbers support training ${weeklyWorkoutDays} days a week. Mention the workout volume and how the protein/carbs fuel that specific load."
                 }
             """.trimIndent()
 

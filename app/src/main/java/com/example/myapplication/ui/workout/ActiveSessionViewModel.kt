@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
+import com.example.myapplication.data.remote.BedrockClient
 import com.example.myapplication.data.repository.HealthConnectManager
 import com.example.myapplication.data.repository.WorkoutRepository
 import com.example.myapplication.service.WorkoutTimerService
@@ -37,7 +38,8 @@ data class ExerciseState(
 class ActiveSessionViewModel @Inject constructor(
     private val repository: WorkoutRepository,
     private val application: Application,
-    private val healthConnectManager: HealthConnectManager
+    private val healthConnectManager: HealthConnectManager,
+    val bedrockClient: BedrockClient
 ) : ViewModel() {
 
     private val _workoutId = MutableStateFlow<Long>(-1)
@@ -146,7 +148,11 @@ class ActiveSessionViewModel @Inject constructor(
         val repsInt = newReps.toIntOrNull() ?: return
         viewModelScope.launch { repository.updateSet(set.copy(actualReps = repsInt)) }
     }
-
+    fun getAiCoachingCue(exercise: String, issue: String): String {
+        // This needs to be a suspend function or launch a coroutine,
+        // but for the UI callback signature, we can expose a suspend function.
+        return "" // Placeholder, see logic below
+    }
     fun updateSetWeight(set: WorkoutSetEntity, newLbs: String) {
         val lbsFloat = newLbs.toFloatOrNull() ?: return
         viewModelScope.launch { repository.updateSet(set.copy(actualLbs = lbsFloat)) }

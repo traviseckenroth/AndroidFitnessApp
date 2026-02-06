@@ -1,13 +1,18 @@
 package com.example.myapplication.data.local
 
 import androidx.room.*
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Transaction
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface WorkoutDao {
 
-    // --- FOOD LOGGING (NEW) ---
-
+    // --- FOOD LOGGING ---
     @Insert
     suspend fun insertFoodLog(log: FoodLogEntity): Long
 
@@ -17,11 +22,10 @@ interface WorkoutDao {
     @Query("SELECT * FROM food_logs ORDER BY date DESC LIMIT 50")
     fun getRecentFoodLogs(): Flow<List<FoodLogEntity>>
 
-    // --- EXERCISE READS ---
-
-    // NEW: Get distinct food names for autocomplete history
     @Query("SELECT DISTINCT inputQuery FROM food_logs ORDER BY date DESC LIMIT 20")
     fun getRecentFoodQueries(): Flow<List<String>>
+
+    // --- EXERCISE READS ---
     @Query("SELECT * FROM exercises")
     fun getAllExercises(): Flow<List<ExerciseEntity>>
 
@@ -31,9 +35,19 @@ interface WorkoutDao {
     @Query("SELECT * FROM exercises")
     suspend fun getAllExercisesOneShot(): List<ExerciseEntity>
 
-    // Updated Swap Logic: Enforce Same Tier
     @Query("SELECT * FROM exercises WHERE majorMuscle = :majorMuscle AND tier = :targetTier AND exerciseId != :currentId")
     suspend fun getAlternativesByMajorMuscleAndTier(majorMuscle: String, targetTier: Int, currentId: Long): List<ExerciseEntity>
+
+    @Query("""
+        SELECT DISTINCT e.* FROM exercises e
+        INNER JOIN workout_sets s ON e.exerciseId = s.exerciseId
+        WHERE s.workoutId = :workoutId
+    """)
+    suspend fun getExercisesForWorkoutOneShot(workoutId: Long): List<ExerciseEntity>
+
+    // --- FIX: Renamed to avoid conflict ---
+    @Query("SELECT * FROM workout_sets WHERE workoutId = :workoutId")
+    suspend fun getSetsForWorkoutOneShot(workoutId: Long): List<WorkoutSetEntity>
 
     // --- WORKOUT READS ---
     @Query("SELECT * FROM daily_workouts WHERE workoutId = :workoutId")
@@ -45,6 +59,7 @@ interface WorkoutDao {
     @Query("SELECT DISTINCT scheduledDate FROM daily_workouts")
     fun getAllWorkoutDates(): Flow<List<Long>>
 
+    // This is the Flow version (Keep this name)
     @Query("SELECT * FROM workout_sets WHERE workoutId = :workoutId ORDER BY exerciseId, setNumber")
     fun getSetsForWorkout(workoutId: Long): Flow<List<WorkoutSetEntity>>
 
@@ -73,7 +88,7 @@ interface WorkoutDao {
     @Query("SELECT * FROM workout_plans WHERE planId = :planId")
     suspend fun getPlanById(planId: Long): WorkoutPlanEntity?
 
-    // --- WRITES (Suspend functions returning Long/Int/List<Long>) ---
+    // --- WRITES ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPlan(plan: WorkoutPlanEntity): Long
 

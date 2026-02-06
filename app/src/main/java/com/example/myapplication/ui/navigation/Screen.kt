@@ -8,10 +8,20 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.ui.graphics.vector.ImageVector
 
-sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
+sealed class Screen(val route: String, val title: String? = null, val icon: ImageVector? = null) {
+    // Bottom Navigation Items
     object Home : Screen("home", "Home", Icons.Default.Home)
     object Plan : Screen("plan", "Plan", Icons.Default.DateRange)
     object Nutrition : Screen("nutrition", "Nutrition", Icons.Default.Fastfood)
     object Insights : Screen("insights", "Insights", Icons.Default.BarChart)
     object Profile : Screen("profile", "Profile", Icons.Default.Person)
+
+    // Full Screen Features (No Bottom Nav Icon)
+    object ActiveWorkout : Screen("active_workout/{workoutId}") {
+        fun createRoute(workoutId: Long) = "active_workout/$workoutId"
+    }
+
+    object WorkoutSummary : Screen("workout_summary/{workoutId}") {
+        fun createRoute(workoutId: Long) = "workout_summary/$workoutId"
+    }
 }
