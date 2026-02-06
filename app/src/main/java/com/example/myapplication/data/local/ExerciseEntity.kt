@@ -44,7 +44,8 @@ data class WorkoutPlanEntity(
     val startDate: Long,
     val goal: String,
     val programType: String,
-    val nutritionJson: String? = null
+    val nutritionJson: String? = null,
+    val isActive: Boolean = false
 )
 
 @Entity(

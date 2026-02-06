@@ -357,7 +357,10 @@ class WorkoutRepository @Inject constructor(
     suspend fun insertSets(sets: List<WorkoutSetEntity>) {
         workoutDao.insertSets(sets)
     }
-
+    suspend fun activatePlan(planId: Long) {
+        workoutDao.deactivateAllPlans()
+        workoutDao.activatePlan(planId)
+    }
     // --- PASSTHROUGHS ---
     fun getAllWorkoutDates(): Flow<List<Long>> = workoutDao.getAllWorkoutDates()
     fun getWorkoutForDate(date: Long): Flow<DailyWorkoutEntity?> { // This was the missing one!
@@ -429,4 +432,5 @@ class WorkoutRepository @Inject constructor(
     suspend fun swapExercise(workoutId: Long, oldExerciseId: Long, newExerciseId: Long) {
         workoutDao.swapExerciseInSets(workoutId, oldExerciseId, newExerciseId)
     }
+
 }

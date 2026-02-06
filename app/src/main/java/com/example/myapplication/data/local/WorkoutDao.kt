@@ -122,6 +122,16 @@ interface WorkoutDao {
     @Query("DELETE FROM daily_workouts WHERE scheduledDate >= :currentTime AND isCompleted = 0")
     suspend fun deleteFutureUncompletedWorkouts(currentTime: Long): Int
 
+    @Query("UPDATE workout_plans SET isActive = 0")
+    suspend fun deactivateAllPlans(): Int
+
+    // FIX: Add ": Int" return type
+    @Query("UPDATE workout_plans SET isActive = 1 WHERE planId = :planId")
+    suspend fun activatePlan(planId: Long): Int
+
+    @Query("SELECT * FROM workout_plans WHERE isActive = 1 LIMIT 1")
+    suspend fun getActivePlan(): WorkoutPlanEntity?
+
     @Query("DELETE FROM exercises")
     suspend fun deleteAllExercises(): Int
 

@@ -32,7 +32,7 @@ class PlanViewModel @Inject constructor(
     // New: Track acceptance in ViewModel so it survives navigation
     private val _isPlanAccepted = MutableStateFlow(false)
     val isPlanAccepted = _isPlanAccepted.asStateFlow()
-
+    private var currentPlanId: Long = -1L
     fun generatePlan(goal: String, program: String, duration: Float, days: List<String>) {
         if (goal.isBlank()) {
             _uiState.value = PlanUiState.Error("Please enter a goal.")
@@ -52,6 +52,7 @@ class PlanViewModel @Inject constructor(
                         programType = program
                     )
                 }
+                currentPlanId = planId
                 // 2. Fetch Full Details
                 val fullPlan = withContext(Dispatchers.IO) {
                     repository.getPlanDetails(planId)
@@ -66,11 +67,18 @@ class PlanViewModel @Inject constructor(
     }
 
     fun acceptCurrentPlan() {
-        _isPlanAccepted.value = true
-    }
+        if (currentPlanId != -1L) {
+            viewModelScope.launch {
+                // Activate in DB
+                repository.activatePlan(currentPlanId)
+                // Update UI
+                _isPlanAccepted.value = true
+            }
+        }
 
-    fun resetState() {
-        _uiState.value = PlanUiState.Empty
-        _isPlanAccepted.value = false
+        fun resetState() {
+            _uiState.value = PlanUiState.Empty
+            _isPlanAccepted.value = false
+        }
     }
 }
