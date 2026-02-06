@@ -40,21 +40,21 @@ fun InsightsScreen(
     val state by viewModel.uiState.collectAsState()
     var showExerciseDropdown by remember { mutableStateOf(false) }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background
-    ) { padding ->
+// Removed Scaffold to be flush with the top like other main screens
+    Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp),
+                .padding(16.dp), // Standardized padding
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             // --- HEADER ---
             item {
                 Text(
                     "Performance Insights",
-                    style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Bold
+                )
             }
 
             // --- AI STATUS (Moved from Profile) ---

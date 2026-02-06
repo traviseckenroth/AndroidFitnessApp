@@ -53,12 +53,19 @@ fun ProfileScreen(viewModel: ProfileViewModel = hiltViewModel()) {
     // Only showing the Form content now
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp), // Changed horizontal-only to all-side 16.dp to match other screens
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
-                Spacer(modifier = Modifier.height(24.dp))
-                Text("Your Profile", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                // REMOVED: Spacer(modifier = Modifier.height(24.dp))
+                // This makes the header flush with the top padding, matching the other screens.
+                Text(
+                    text = "Your Profile",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Bold
+                )
             }
 
             // 1. Biometrics Row
