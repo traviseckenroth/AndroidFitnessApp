@@ -4,7 +4,6 @@ package com.example.myapplication.ui.camera
 
 import android.Manifest
 import android.content.pm.PackageManager
-import com.example.myapplication.ui.camera.FormFeedback
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -47,23 +46,23 @@ fun CameraFormCheckScreen(
     onClose: () -> Unit,
     targetWeight: Int,
     targetReps: Int,
-    // NEW: Function to call AI
     fetchAiCue: suspend (String) -> String
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
 
-    // Fallbacks if AI fails or network is slow
-    val fallbackPhrases = listOf("Focus!", "Stay tight!", "Control the weight!")
-
+    val fallbackPhrases = listOf("Good depth!", "Explode up!", "Stay tight!", "Nice rep!")
     val coach = remember { VoiceCoach(context) }
+
+    // Track AI state to prevent overlapping requests
+    var isAiThinking by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         onDispose { coach.shutdown() }
     }
 
-    var feedbackText by remember { mutableStateOf("Align your full body in frame...") }
+    var feedbackText by remember { mutableStateOf("Align full body...") }
     var currentPose by remember { mutableStateOf<Pose?>(null) }
     var sourceWidth by remember { mutableIntStateOf(640) }
     var sourceHeight by remember { mutableIntStateOf(480) }
@@ -101,7 +100,6 @@ fun CameraFormCheckScreen(
                     cameraProviderFuture.addListener({
                         val cameraProvider = cameraProviderFuture.get()
 
-                        // Setup Analyzer
                         val analyzer = FormAnalyzer(
                             exerciseName = exerciseName,
                             coach = coach,
@@ -111,17 +109,26 @@ fun CameraFormCheckScreen(
                                 sourceWidth = w
                                 sourceHeight = h
                             },
-                            onFormIssueDetected = { issue: FormFeedback -> // FIX: Use 'FormFeedback'
-                                scope.launch {
-                                    // Fetch AI Personality
-                                    val aiComment = try {
-                                        val result = fetchAiCue(issue.name)
-                                        if (result.isNotBlank()) result else fallbackPhrases.random()
-                                    } catch (e: Exception) {
-                                        fallbackPhrases.random()
+                            onFormIssueDetected = { issue: FormFeedback ->
+                                if (!isAiThinking) {
+                                    scope.launch {
+                                        try {
+                                            isAiThinking = true
+                                            Log.d("CameraScreen", "Calling AI for issue: $issue")
+
+                                            // Call API
+                                            val aiComment = fetchAiCue(issue.name)
+                                            val textToSpeak = if (aiComment.isNotBlank()) aiComment else fallbackPhrases.random()
+
+                                            Log.d("CameraScreen", "Coach Speaking: $textToSpeak")
+                                            coach.speak(textToSpeak, force = true, flush = false)
+                                        } catch (e: Exception) {
+                                            Log.e("CameraScreen", "AI Failed", e)
+                                            coach.speak(fallbackPhrases.random(), force = true)
+                                        } finally {
+                                            isAiThinking = false
+                                        }
                                     }
-                                    // Speak the AI result
-                                    coach.speak(aiComment, force = true)
                                 }
                             }
                         )
@@ -141,12 +148,7 @@ fun CameraFormCheckScreen(
 
                         try {
                             cameraProvider.unbindAll()
-                            cameraProvider.bindToLifecycle(
-                                lifecycleOwner,
-                                cameraSelector,
-                                preview,
-                                imageAnalysis
-                            )
+                            cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, imageAnalysis)
                         } catch (exc: Exception) {
                             Log.e("CameraFormCheck", "Binding failed", exc)
                         }
@@ -164,7 +166,9 @@ fun CameraFormCheckScreen(
                 )
             }
 
-            FeedbackOverlay(text = feedbackText)
+            FeedbackOverlay(
+                text = if (isAiThinking) "AI Thinking..." else feedbackText
+            )
 
             // CONTROLS
             Row(
@@ -205,37 +209,25 @@ fun SkeletonOverlay(
     isFrontCamera: Boolean
 ) {
     Canvas(modifier = Modifier.fillMaxSize()) {
-        // Screen dimensions (e.g., 1080 x 2400)
         val screenWidth = size.width
         val screenHeight = size.height
 
-        // Source dimensions from ML Kit (e.g., 480 x 640 after rotation fix)
-        // Calculate scale to FILL CENTER (zoom to fill)
         val scaleX = screenWidth / sourceWidth
         val scaleY = screenHeight / sourceHeight
         val scale = maxOf(scaleX, scaleY)
 
-        // Calculate offset to center the scaled image
         val offsetX = (screenWidth - sourceWidth * scale) / 2
         val offsetY = (screenHeight - sourceHeight * scale) / 2
 
         fun translate(landmark: PoseLandmark): Offset {
             val x = landmark.position.x * scale + offsetX
             val y = landmark.position.y * scale + offsetY
-
-            // Mirror logic for front camera:
-            // If front camera, the preview is mirrored, so we must flip X across the screen width
             val finalX = if (isFrontCamera) screenWidth - x else x
-
             return Offset(finalX, y)
         }
 
         val connections = listOf(
             Pair(PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_SHOULDER),
-            Pair(PoseLandmark.LEFT_SHOULDER, PoseLandmark.LEFT_ELBOW),
-            Pair(PoseLandmark.LEFT_ELBOW, PoseLandmark.LEFT_WRIST),
-            Pair(PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_ELBOW),
-            Pair(PoseLandmark.RIGHT_ELBOW, PoseLandmark.RIGHT_WRIST),
             Pair(PoseLandmark.LEFT_SHOULDER, PoseLandmark.LEFT_HIP),
             Pair(PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_HIP),
             Pair(PoseLandmark.LEFT_HIP, PoseLandmark.RIGHT_HIP),
@@ -245,35 +237,16 @@ fun SkeletonOverlay(
             Pair(PoseLandmark.RIGHT_KNEE, PoseLandmark.RIGHT_ANKLE)
         )
 
-        // Draw Lines
         connections.forEach { (startType, endType) ->
             val start = pose.getPoseLandmark(startType)
             val end = pose.getPoseLandmark(endType)
-
-            // Add a confidence check for drawing lines too
-            if (start != null && end != null &&
-                start.inFrameLikelihood > 0.5f && end.inFrameLikelihood > 0.5f) {
-                drawLine(
-                    color = Color.Green,
-                    start = translate(start),
-                    end = translate(end),
-                    strokeWidth = 8f
-                )
-            }
-        }
-
-        // Draw Joints
-        pose.allPoseLandmarks.forEach { landmark ->
-            if (landmark.inFrameLikelihood > 0.5f) {
-                drawCircle(
-                    color = Color.White,
-                    radius = 10f,
-                    center = translate(landmark)
-                )
+            if (start != null && end != null && start.inFrameLikelihood > 0.5f && end.inFrameLikelihood > 0.5f) {
+                drawLine(Color.Green, translate(start), translate(end), 8f)
             }
         }
     }
 }
+
 @Composable
 fun FeedbackOverlay(text: String) {
     Box(

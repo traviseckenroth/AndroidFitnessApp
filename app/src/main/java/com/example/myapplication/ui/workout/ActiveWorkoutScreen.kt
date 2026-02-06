@@ -15,6 +15,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
@@ -438,30 +439,87 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
 fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
     val timerState = exerciseState.timerState
 
+    // 1. STATE SNAPSHOT: Identify which set index the timer is currently responsible for.
+    // Use rememberSaveable to persist across configuration changes.
+    // Initialize to the first incomplete set index (or 0 if all done/none started)
+    var timerTargetIndex by rememberSaveable(exerciseState.exercise.exerciseId) {
+        mutableIntStateOf(exerciseState.sets.indexOfFirst { !it.isCompleted }.takeIf { it != -1 } ?: 0)
+    }
+
+    // Safety check: Ensure target index is within bounds of current sets
+    val safeTargetIndex = timerTargetIndex.coerceIn(0, (exerciseState.sets.size - 1).coerceAtLeast(0))
+    val allSetsDone = exerciseState.sets.all { it.isCompleted }
+
+    // Logic to cycle the timer: Mark done -> Move Index -> Reset Timer -> Start Timer
+    fun cycleTimer() {
+        // A. Mark current target done (if not already done manually)
+        val currentTargetSet = exerciseState.sets.getOrNull(safeTargetIndex)
+        if (currentTargetSet != null && !currentTargetSet.isCompleted) {
+            viewModel.updateSetCompletion(currentTargetSet, true)
+        }
+
+        // B. Advance Index immediately (don't wait for DB update)
+        // This ensures the next cycle targets the next set, even if DB is slow
+        if (safeTargetIndex < exerciseState.sets.size - 1) {
+            timerTargetIndex = safeTargetIndex + 1
+        }
+
+        // C. Restart Loop
+        // 1. Reset (Skip) guarantees we go back to the top (e.g., 60s)
+        viewModel.skipSetTimer(exerciseState.exercise.exerciseId)
+        // 2. Start ensures it begins counting down immediately
+        viewModel.startSetTimer(exerciseState.exercise.exerciseId)
+    }
+
+    // 2. Auto-Completion when Timer hits 0:00
+    var previousTime by remember { mutableLongStateOf(timerState.remainingTime) }
+
+    LaunchedEffect(timerState.remainingTime) {
+        if (previousTime > 0 && timerState.remainingTime == 0L) {
+            cycleTimer()
+        }
+        previousTime = timerState.remainingTime
+    }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
     ) {
-        // Inline minutes/seconds calculation
-        Text(
-            text = String.format(
-                Locale.US,
-                "%02d:%02d",
-                timerState.remainingTime / 60,
-                timerState.remainingTime % 60
-            ),
-            style = MaterialTheme.typography.displayMedium,
-            color = if (timerState.isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-        )
+        if (allSetsDone) {
+            Text(
+                text = "Complete",
+                style = MaterialTheme.typography.displayMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        } else {
+            // Display Timer
+            Text(
+                text = String.format(
+                    Locale.US,
+                    "%02d:%02d",
+                    timerState.remainingTime / 60,
+                    timerState.remainingTime % 60
+                ),
+                style = MaterialTheme.typography.displayMedium,
+                color = if (timerState.isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+            )
 
-        Button(onClick = {
-            if (timerState.isRunning) {
-                viewModel.skipSetTimer(exerciseState.exercise.exerciseId)
-            } else {
-                viewModel.startSetTimer(exerciseState.exercise.exerciseId)
+            Button(onClick = {
+                if (timerState.isRunning) {
+                    // SKIP REST: Stop timer, Mark Done, Restart for next
+                    cycleTimer()
+                } else {
+                    // START TIMER (Initial start)
+                    // Sync target index to the first incomplete set just in case the user
+                    // manually checked off boxes while the timer was stopped.
+                    val nextIndex = exerciseState.sets.indexOfFirst { !it.isCompleted }
+                    if (nextIndex != -1) timerTargetIndex = nextIndex
+
+                    viewModel.startSetTimer(exerciseState.exercise.exerciseId)
+                }
+            }) {
+                Text(if (timerState.isRunning) "Skip Rest" else "Start Timer")
             }
-        }) {
-            Text(if (timerState.isRunning) "Skip Rest" else "Start Timer")
         }
     }
 }

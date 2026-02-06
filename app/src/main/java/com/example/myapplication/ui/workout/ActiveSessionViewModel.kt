@@ -63,6 +63,19 @@ class ActiveSessionViewModel @Inject constructor(
         // --- LISTEN TO TIMER SERVICE ---
         viewModelScope.launch {
             WorkoutTimerService.timerState.collect { serviceState ->
+                // FIX: Trigger strictly on 'hasFinished' state to avoid race conditions
+                if (serviceState.hasFinished && serviceState.activeExerciseId != null) {
+                    val exerciseId = serviceState.activeExerciseId!!
+                    val currentState = _exerciseStates.value.find { it.exercise.exerciseId == exerciseId }
+                    val currentSet = currentState?.sets?.firstOrNull { !it.isCompleted }
+
+                    if (currentSet != null) {
+                        updateSetCompletion(currentSet, true)
+                        // Immediate restart - no delay needed as Service is still alive
+                        startSetTimer(exerciseId)
+                    }
+                }
+
                 updateLocalTimerState(
                     activeExerciseId = serviceState.activeExerciseId,
                     remainingTime = serviceState.remainingTime.toLong(),
@@ -148,11 +161,7 @@ class ActiveSessionViewModel @Inject constructor(
         val repsInt = newReps.toIntOrNull() ?: return
         viewModelScope.launch { repository.updateSet(set.copy(actualReps = repsInt)) }
     }
-    fun getAiCoachingCue(exercise: String, issue: String): String {
-        // This needs to be a suspend function or launch a coroutine,
-        // but for the UI callback signature, we can expose a suspend function.
-        return "" // Placeholder, see logic below
-    }
+
     fun updateSetWeight(set: WorkoutSetEntity, newLbs: String) {
         val lbsFloat = newLbs.toFloatOrNull() ?: return
         viewModelScope.launch { repository.updateSet(set.copy(actualLbs = lbsFloat)) }
@@ -201,10 +210,15 @@ class ActiveSessionViewModel @Inject constructor(
     }
 
     fun skipSetTimer(exerciseId: Long) {
-        val intent = Intent(application, WorkoutTimerService::class.java).apply {
-            action = WorkoutTimerService.ACTION_STOP
+        // 1. Mark current set as Done
+        val currentState = _exerciseStates.value.find { it.exercise.exerciseId == exerciseId }
+        val currentSet = currentState?.sets?.firstOrNull { !it.isCompleted }
+        if (currentSet != null) {
+            updateSetCompletion(currentSet, true)
         }
-        application.startService(intent)
+
+        // 2. Restart the timer immediately (Skip Rest)
+        startSetTimer(exerciseId)
     }
 
     private fun updateLocalTimerState(activeExerciseId: Long?, remainingTime: Long, isRunning: Boolean) {

@@ -21,7 +21,8 @@ import kotlinx.coroutines.flow.update
 data class TimerState(
     val isRunning: Boolean = false,
     val remainingTime: Int = 0,
-    val activeExerciseId: Long? = null
+    val activeExerciseId: Long? = null,
+    val hasFinished: Boolean = false // Added field
 )
 
 class WorkoutTimerService : Service() {
@@ -57,36 +58,36 @@ class WorkoutTimerService : Service() {
     }
 
     private fun startTimer(durationSeconds: Int, exerciseId: Long) {
-        // Cancel existing timer if any
         timerJob?.cancel()
-
         createNotificationChannel()
 
         timerJob = serviceScope.launch {
             var timeLeft = durationSeconds
 
             // 1. Set Initial State
-            _timerState.update { TimerState(true, timeLeft, exerciseId) }
+            _timerState.update { TimerState(true, timeLeft, exerciseId, false) }
             startForeground(NOTIFICATION_ID, buildNotification(timeLeft))
 
             // 2. Countdown Loop
             while (timeLeft > 0) {
-                delay(1000L) // Wait 1 second
+                delay(1000L)
                 timeLeft--
                 _timerState.update { it.copy(remainingTime = timeLeft) }
                 updateNotification(timeLeft)
             }
 
-            // 3. Timer Finished
-            stopTimer()
+            // 3. Timer Finished - Don't kill service, just mark finished
+            _timerState.update { it.copy(isRunning = false, hasFinished = true) }
+            updateNotification(0)
+            // stopTimer() -> REMOVED to prevent killing service before restart
         }
     }
 
     private fun stopTimer() {
         timerJob?.cancel()
-        _timerState.update { TimerState(false, 0, null) }
+        _timerState.update { TimerState(false, 0, null, false) }
         stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf() // Kill service to save battery
+        stopSelf()
     }
 
     // --- NOTIFICATION HELPERS ---

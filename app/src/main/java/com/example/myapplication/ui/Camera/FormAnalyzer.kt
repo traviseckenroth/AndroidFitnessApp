@@ -1,5 +1,8 @@
+// app/src/main/java/com/example/myapplication/ui/camera/FormAnalyzer.kt
+
 package com.example.myapplication.ui.camera
 
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageProxy
@@ -23,6 +26,13 @@ class FormAnalyzer(
     private var hasHitDepth = false
     private val profile = getProfileForExercise(exerciseName)
 
+    // Stability Vars
+    private var lastHipX = 0f
+    private var lastKneeX = 0f
+    private var framesStable = 0
+    private val STABILITY_THRESHOLD = 20f
+    private var lastTriggerTime = 0L
+
     private val detector = PoseDetection.getClient(
         AccuratePoseDetectorOptions.Builder()
             .setDetectorMode(AccuratePoseDetectorOptions.STREAM_MODE)
@@ -35,8 +45,6 @@ class FormAnalyzer(
         if (mediaImage != null) {
             val rotation = imageProxy.imageInfo.rotationDegrees
 
-            // FIX 1: Handle Rotation for UI Scaling
-            // If portrait (90 or 270), swap width/height so the UI scales correctly
             val (rotatedWidth, rotatedHeight) = if (rotation == 90 || rotation == 270) {
                 imageProxy.height to imageProxy.width
             } else {
@@ -47,13 +55,17 @@ class FormAnalyzer(
 
             detector.process(inputImage)
                 .addOnSuccessListener { pose ->
-                    // FIX 2: Check Confidence to prevent "ghost" reps
                     if (isPoseHighConfidence(pose)) {
-                        processPose(pose)
                         onPoseUpdated(pose, rotatedWidth, rotatedHeight)
+
+                        // FIX: Logic now depends strictly on stability
+                        if (isStable(pose)) {
+                            processPose(pose)
+                        } else {
+                            onVisualFeedback("Stabilizing...")
+                        }
                     } else {
-                        // Clear skeleton if confidence is low
-                        onVisualFeedback("Align full body in frame")
+                        onVisualFeedback("Align full body")
                     }
                 }
                 .addOnCompleteListener { imageProxy.close() }
@@ -62,56 +74,67 @@ class FormAnalyzer(
         }
     }
 
-    // Check if critical landmarks (Shoulders, Hips, Knees) are actually visible
+    private fun isStable(pose: Pose): Boolean {
+        // FIX: Check BOTH Hip and Knee to ensure entire body isn't drifting
+        val hip = pose.getPoseLandmark(PoseLandmark.RIGHT_HIP) ?: return false
+        val knee = pose.getPoseLandmark(PoseLandmark.RIGHT_KNEE) ?: return false
+
+        val deltaHip = abs(hip.position.x - lastHipX)
+        val deltaKnee = abs(knee.position.x - lastKneeX)
+
+        lastHipX = hip.position.x
+        lastKneeX = knee.position.x
+
+        // Must be stable (movement < 20px) for 10 frames (~300ms)
+        return if (deltaHip < STABILITY_THRESHOLD && deltaKnee < STABILITY_THRESHOLD) {
+            framesStable++
+            framesStable > 10
+        } else {
+            framesStable = 0
+            false
+        }
+    }
+
     private fun isPoseHighConfidence(pose: Pose): Boolean {
-        val criticalLandmarks = listOf(
-            PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_SHOULDER,
-            PoseLandmark.LEFT_HIP, PoseLandmark.RIGHT_HIP,
-            PoseLandmark.LEFT_KNEE, PoseLandmark.RIGHT_KNEE
-        )
-
-        val validLandmarks = criticalLandmarks.mapNotNull { pose.getPoseLandmark(it) }
-        if (validLandmarks.size < criticalLandmarks.size) return false
-
-        // Require at least 60% probability that these points are in frame
-        return validLandmarks.all { it.inFrameLikelihood > 0.6f }
+        val criticalLandmarks = listOf(PoseLandmark.RIGHT_HIP, PoseLandmark.RIGHT_KNEE)
+        return criticalLandmarks.all {
+            val lm = pose.getPoseLandmark(it)
+            lm != null && lm.inFrameLikelihood > 0.7f
+        }
     }
 
     private fun processPose(pose: Pose) {
         val landMarks = profile.landmarks.map { pose.getPoseLandmark(it) }
-
-        if (landMarks.any { it == null }) {
-            return
-        }
+        if (landMarks.any { it == null }) return
 
         val angle = calculateAngle(landMarks[0]!!, landMarks[1]!!, landMarks[2]!!)
-        trackRepProgress(angle)
 
-        onVisualFeedback("REPS: $repCount  |  ANGLE: ${angle}°")
+        onVisualFeedback("Reps: $repCount | Angle: ${angle}°")
+        trackRepProgress(angle)
     }
 
     private fun trackRepProgress(angle: Int) {
+        val now = System.currentTimeMillis()
+        if (now - lastTriggerTime < 2000) return
+
         if (angle >= profile.extensionThreshold) {
             if (isInRep && hasHitDepth) {
                 repCount++
                 coach.onGoodRep(repCount)
-                onFormIssueDetected(FormFeedback.NEUTRAL)
                 isInRep = false
                 hasHitDepth = false
-            } else if (isInRep && !hasHitDepth) {
-                coach.onFormIssue(FormFeedback.TOO_HIGH)
-                onFormIssueDetected(FormFeedback.TOO_HIGH)
-                isInRep = false
+                lastTriggerTime = now
             }
-        } else if (angle <= profile.flexionThreshold) {
+        }
+        else if (angle <= profile.flexionThreshold) {
             if (!isInRep) isInRep = true
+
             if (!hasHitDepth) {
                 hasHitDepth = true
-                coach.onFormIssue(FormFeedback.GOOD_DEPTH)
+                Log.d("FormAnalyzer", "Depth Hit: Triggering AI") // Debug Log
                 onFormIssueDetected(FormFeedback.GOOD_DEPTH)
+                lastTriggerTime = now
             }
-        } else {
-            if (!isInRep && angle < profile.extensionThreshold - 10) isInRep = true
         }
     }
 
@@ -119,18 +142,14 @@ class FormAnalyzer(
         return when {
             name.contains("Squat", true) -> MotionProfile(
                 landmarks = listOf(PoseLandmark.RIGHT_HIP, PoseLandmark.RIGHT_KNEE, PoseLandmark.RIGHT_ANKLE),
-                flexionThreshold = 85,
+                // FIX: Relaxed depth to 95 degrees to ensure it triggers easier
+                flexionThreshold = 95,
                 extensionThreshold = 160
             )
             name.contains("Push-Up", true) || name.contains("Bench", true) -> MotionProfile(
                 landmarks = listOf(PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_ELBOW, PoseLandmark.RIGHT_WRIST),
                 flexionThreshold = 90,
                 extensionThreshold = 160
-            )
-            name.contains("Press", true) -> MotionProfile(
-                landmarks = listOf(PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_ELBOW, PoseLandmark.RIGHT_WRIST),
-                flexionThreshold = 80,
-                extensionThreshold = 165
             )
             else -> MotionProfile(
                 landmarks = listOf(PoseLandmark.RIGHT_HIP, PoseLandmark.RIGHT_KNEE, PoseLandmark.RIGHT_ANKLE),
@@ -151,17 +170,9 @@ class FormAnalyzer(
     }
 
     companion object {
-        fun isSupported(name: String): Boolean {
-            return name.contains("Squat", true) ||
-                    name.contains("Push-Up", true) ||
-                    name.contains("Press", true) ||
-                    name.contains("Bench", true)
-        }
+        fun isSupported(name: String): Boolean =
+            name.contains("Squat", true) || name.contains("Push-Up", true) || name.contains("Press", true)
     }
 }
 
-data class MotionProfile(
-    val landmarks: List<Int>,
-    val flexionThreshold: Int,
-    val extensionThreshold: Int
-)
+data class MotionProfile(val landmarks: List<Int>, val flexionThreshold: Int, val extensionThreshold: Int)
