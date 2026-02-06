@@ -4,10 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.NutritionPlan
 import com.example.myapplication.data.local.FoodLogEntity
+import com.example.myapplication.data.remote.MacroSummary // <--- IMPORT ADDED
 import com.example.myapplication.data.repository.WorkoutRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted // <--- IMPORT ADDED
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map // <--- IMPORT ADDED
+import kotlinx.coroutines.flow.stateIn // <--- IMPORT ADDED
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -28,6 +32,15 @@ class NutritionViewModel @Inject constructor(
 
     private val _foodLogs = MutableStateFlow<List<FoodLogEntity>>(emptyList())
     val foodLogs = _foodLogs.asStateFlow()
+
+    val consumedMacros = _foodLogs.map { logs ->
+        MacroSummary(
+            calories = logs.sumOf { it.totalCalories },
+            protein = logs.sumOf { it.totalProtein },
+            carbs = logs.sumOf { it.totalCarbs },
+            fats = logs.sumOf { it.totalFats }
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MacroSummary(0,0,0,0))
 
     private val _isLogging = MutableStateFlow(false)
     val isLogging = _isLogging.asStateFlow()

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <capability android:name="actions.intent.CREATE_NUTRITION_OBSERVATION">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.example.myapplication"
+            android:targetClass="com.example.myapplication.MainActivity">
+            <url-template android:value="myfitness://log_food{?text}" />
+            <parameter
+                android:name="nutritionObservation.text"
+                android:key="text" />
+        </intent>
+    </capability>
+</shortcuts>

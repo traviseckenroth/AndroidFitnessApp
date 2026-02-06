@@ -14,7 +14,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.NutritionPlan
 import com.example.myapplication.data.local.FoodLogEntity
+import com.example.myapplication.data.remote.MacroSummary
 import java.util.Locale
 
 @Composable
@@ -34,22 +34,19 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsState()
     val foodLogs by viewModel.foodLogs.collectAsState()
     val isLogging by viewModel.isLogging.collectAsState()
+    val consumed by viewModel.consumedMacros.collectAsState()
+
     val scrollState = rememberScrollState()
     val context = LocalContext.current
 
     var showLogDialog by remember { mutableStateOf(false) }
 
-    // --- VOICE RECOGNITION LAUNCHER ---
     val speechLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val spokenText = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
             if (!spokenText.isNullOrBlank()) {
-                // Auto-log or just populate? Let's populate the dialog state
-                // Since we can't easily pass state back into the open dialog from here without a shared state holder,
-                // We will close the dialog and instantly log, OR re-open it.
-                // Better UX: Just log it immediately.
                 viewModel.logFood(spokenText)
                 Toast.makeText(context, "Analyzing: $spokenText", Toast.LENGTH_SHORT).show()
                 showLogDialog = false
@@ -88,36 +85,17 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            Text(
-                "Nutrition Guide",
-                style = MaterialTheme.typography.headlineLarge
-            )
+            Text("Nutrition Guide", style = MaterialTheme.typography.headlineLarge)
 
-            // 1. TARGETS SECTION
             when (val state = uiState) {
                 is NutritionUiState.Loading -> Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 is NutritionUiState.Empty -> EmptyNutritionCard(onGenerateClick = { viewModel.generateNutrition() })
-                is NutritionUiState.Success -> NutritionDetailCard(state.plan)
-                is NutritionUiState.Error -> {
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Setup Required", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onErrorContainer)
-                            Text("Please create a Workout Plan first so we can calculate your caloric needs.", color = MaterialTheme.colorScheme.onErrorContainer)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Button(onClick = { viewModel.generateNutrition() }) { Text("Retry") }
-                        }
-                    }
-                }
+                is NutritionUiState.Success -> NutritionDetailCard(state.plan, consumed)
+                is NutritionUiState.Error -> Text("Error loading plan")
             }
 
-            // 2. LOGGING SECTION
-            Text(
-                "Today's Logs",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold
-            )
+            Text("Today's Logs", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
 
-            // "Voice" Button
             Button(
                 onClick = { showLogDialog = true },
                 modifier = Modifier.fillMaxWidth(),
@@ -136,25 +114,72 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
             if (foodLogs.isEmpty()) {
                 Text("No food logged yet today.", color = Color.Gray)
             } else {
-                foodLogs.forEach { log ->
-                    FoodLogCard(log)
-                }
+                foodLogs.forEach { log -> FoodLogCard(log) }
             }
-
             Spacer(modifier = Modifier.height(80.dp))
         }
     }
 }
 
 @Composable
-fun VoiceLogDialog(
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit,
-    onMicClick: () -> Unit,
-    isLoading: Boolean
-) {
-    var text by remember { mutableStateOf("") }
+fun NutritionDetailCard(plan: NutritionPlan, consumed: MacroSummary) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(24.dp)) {
+            Text("Daily Progress", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 
+            val targetCals = plan.calories.filter { it.isDigit() }.toIntOrNull() ?: 2000
+            val targetPro = plan.protein.filter { it.isDigit() }.toIntOrNull() ?: 150
+            val targetCarb = plan.carbs.filter { it.isDigit() }.toIntOrNull() ?: 200
+            val targetFat = plan.fats.filter { it.isDigit() }.toIntOrNull() ?: 60
+
+            ProgressMacroRow("Calories", consumed.calories, targetCals, MaterialTheme.colorScheme.primary)
+            ProgressMacroRow("Protein", consumed.protein, targetPro, Color(0xFFE57373))
+            ProgressMacroRow("Carbs", consumed.carbs, targetCarb, Color(0xFF64B5F6))
+            ProgressMacroRow("Fats", consumed.fats, targetFat, Color(0xFFFFD54F))
+
+            Spacer(modifier = Modifier.height(16.dp))
+            val remaining = targetCals - consumed.calories
+            Text(
+                text = if(remaining >= 0) "$remaining kcal remaining" else "${-remaining} kcal over",
+                style = MaterialTheme.typography.labelLarge,
+                color = if (remaining < 0) Color.Red else Color.Gray,
+                modifier = Modifier.align(Alignment.End)
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+            Text("Why this plan?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                text = plan.explanation.ifBlank { "Based on your biometrics and calculated activity level." },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun ProgressMacroRow(label: String, current: Int, target: Int, color: Color) {
+    val progress = (current.toFloat() / target.toFloat()).coerceIn(0f, 1f)
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            Text("$current / $target", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape),
+            color = color,
+            trackColor = color.copy(alpha = 0.2f),
+        )
+    }
+}
+
+@Composable
+fun VoiceLogDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit, onMicClick: () -> Unit, isLoading: Boolean) {
+    var text by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Log Food") },
@@ -164,38 +189,23 @@ fun VoiceLogDialog(
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(
-                        value = text,
-                        onValueChange = { text = it },
-                        label = { Text("What did you eat?") },
-                        modifier = Modifier.weight(1f)
+                        value = text, onValueChange = { text = it }, label = { Text("What did you eat?") }, modifier = Modifier.weight(1f)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    IconButton(
-                        onClick = onMicClick,
-                        modifier = Modifier.background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
-                    ) {
+                    IconButton(onClick = onMicClick, modifier = Modifier.background(MaterialTheme.colorScheme.primaryContainer, CircleShape)) {
                         Icon(Icons.Default.Mic, contentDescription = "Speak", tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
         },
-        confirmButton = {
-            Button(onClick = { onConfirm(text) }, enabled = text.isNotBlank() && !isLoading) {
-                Text("Log It")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
+        confirmButton = { Button(onClick = { onConfirm(text) }, enabled = text.isNotBlank() && !isLoading) { Text("Log It") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
 @Composable
 fun FoodLogCard(log: FoodLogEntity) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-    ) {
+    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(log.inputQuery, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(log.aiAnalysis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
@@ -212,69 +222,13 @@ fun FoodLogCard(log: FoodLogEntity) {
 
 @Composable
 fun EmptyNutritionCard(onGenerateClick: () -> Unit) {
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Column(
-            modifier = Modifier.padding(32.dp).fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Box(
-                modifier = Modifier.size(64.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center
-            ) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Column(modifier = Modifier.padding(32.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Box(modifier = Modifier.size(64.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.Bolt, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
             }
             Text("Generate Nutrition Plan", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Button(onClick = onGenerateClick, modifier = Modifier.fillMaxWidth()) {
-                Text("Generate Plan")
-            }
+            Button(onClick = onGenerateClick, modifier = Modifier.fillMaxWidth()) { Text("Generate Plan") }
         }
-    }
-}
-
-@Composable
-fun NutritionDetailCard(plan: NutritionPlan) {
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(24.dp)) {
-            Text("Daily Targets", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
-            MacroRow("Calories", plan.calories, MaterialTheme.colorScheme.primary)
-            MacroRow("Protein", plan.protein, Color(0xFFE57373))
-            MacroRow("Carbs", plan.carbs, Color(0xFF64B5F6))
-            MacroRow("Fats", plan.fats, Color(0xFFFFD54F))
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // NEW: Explanation Section
-            Text("Why this plan?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(
-                text = plan.explanation.ifBlank { "Based on your biometrics and calculated activity level." },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
-            )
-
-            Text("Timing Strategy", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(plan.timing, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
-        }
-    }
-}
-
-@Composable
-fun MacroRow(label: String, value: String, color: Color) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(color))
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(label, style = MaterialTheme.typography.bodyLarge)
-        }
-        Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
     }
 }
