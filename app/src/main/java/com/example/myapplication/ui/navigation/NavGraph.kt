@@ -10,21 +10,21 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.example.myapplication.ui.auth.LoginScreen
+import com.example.myapplication.ui.auth.SignUpScreen
 import com.example.myapplication.ui.exercise.ExerciseListScreen
 import com.example.myapplication.ui.exercise_history.ExerciseHistoryScreen
 import com.example.myapplication.ui.home.HomeScreen
 import com.example.myapplication.ui.insights.InsightsScreen
-import com.example.myapplication.ui.nutrition.NutritionScreen // --- 1. IMPORT ---
-import com.example.myapplication.ui.settings.SettingsScreen
+import com.example.myapplication.ui.nutrition.NutritionScreen
 import com.example.myapplication.ui.plan.GeneratePlanScreen
 import com.example.myapplication.ui.plan.ManualPlanScreen
 import com.example.myapplication.ui.plan.PlanViewModel
 import com.example.myapplication.ui.profile.ProfileScreen
+import com.example.myapplication.ui.settings.SettingsScreen
 import com.example.myapplication.ui.warmup.WarmUpScreen
 import com.example.myapplication.ui.workout.ActiveSessionViewModel
 import com.example.myapplication.ui.workout.ActiveWorkoutScreen
-import com.example.myapplication.ui.auth.LoginScreen
-import com.example.myapplication.ui.auth.SignUpScreen
 
 @Composable
 fun NavGraph(
@@ -67,7 +67,7 @@ fun NavGraph(
                     navController.navigate("active_workout/$workoutId")
                 },
                 onNavigateToExerciseList = { navController.navigate("exercise_list") },
-                onManualLogClick = { navController.navigate("manual_creator") },
+                onManualLogClick = { navController.navigate("manual_plan") }, // Changed from manual_creator
                 onWarmUpClick = { navController.navigate("warm_up") },
                 onSettingsClick = { navController.navigate("settings") }
             )
@@ -88,10 +88,20 @@ fun NavGraph(
         composable("plan") {
             GeneratePlanScreen(
                 viewModel = planViewModel,
-                onManualCreateClick = { navController.navigate("manual_creator") },
+                onManualCreateClick = { navController.navigate("manual_plan") }, // Changed from manual_creator
                 onPlanGenerated = {
                     navController.navigate("home") {
                         popUpTo("home") { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable("manual_plan") {
+            ManualPlanScreen(
+                onNavigateToActiveWorkout = { workoutId ->
+                    navController.navigate("active_workout/$workoutId") {
+                        popUpTo("home")
                     }
                 }
             )
@@ -112,13 +122,6 @@ fun NavGraph(
 
         composable("warm_up") {
             WarmUpScreen(onBack = { navController.popBackStack() })
-        }
-
-        composable("manual_creator") {
-            ManualPlanScreen(
-                planViewModel = planViewModel,
-                onSavePlan = { navController.popBackStack() }
-            )
         }
 
         composable(

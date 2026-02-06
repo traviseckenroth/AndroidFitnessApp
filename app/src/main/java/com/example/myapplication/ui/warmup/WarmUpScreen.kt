@@ -1,5 +1,3 @@
-// app/src/main/java/com/example/myapplication/ui/warmup/WarmUpScreen.kt
-
 package com.example.myapplication.ui.warmup
 
 import androidx.compose.foundation.layout.*
@@ -10,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Timer // Added for Endurance
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -18,7 +17,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.myapplication.ui.theme.PrimaryIndigo
 import com.example.myapplication.ui.theme.SecondaryIndigo
 
@@ -27,7 +25,6 @@ import com.example.myapplication.ui.theme.SecondaryIndigo
 fun WarmUpScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
-            // Using CenterAlignedTopAppBar for the balanced "Studio" look
             CenterAlignedTopAppBar(
                 title = {
                     Text(
@@ -54,47 +51,57 @@ fun WarmUpScreen(onBack: () -> Unit) {
         Column(
             modifier = Modifier
                 .padding(padding)
-                .padding(horizontal = 24.dp) // Increased horizontal margin
+                .padding(horizontal = 24.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(32.dp) // Generous vertical rhythm (was 24.dp)
+            verticalArrangement = Arrangement.spacedBy(32.dp)
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            Text(
-                "PRE-SESSION PRIMERS",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            // OPTION 1: HYPERTROPHY (Monochromatic: Indigo)
+            // OPTION 1: STRENGTH (Power)
             WarmUpCard(
-                title = "Hypertrophy Primer",
-                subtitle = "For Bodybuilding & Volume Days",
-                accentColor = PrimaryIndigo,
-                icon = Icons.Default.FitnessCenter,
-                goal = "Raise core temp & lubricate joints.",
-                steps = listOf(
-                    "5-10 mins Low Intensity Cardio (Bike/Elliptical)",
-                    "Arm Circles (15 reps forward/back)",
-                    "Leg Swings (15 reps side/front)",
-                    "Torso Twists (20 reps)",
-                    "World's Greatest Stretch (5 per side)"
-                )
-            )
-
-            // OPTION 2: STRENGTH (Monochromatic: Secondary Indigo)
-            WarmUpCard(
-                title = "CNS Potentiation",
-                subtitle = "For Heavy Strength & Power Days",
-                accentColor = SecondaryIndigo,
+                title = "Strength",
+                subtitle = "CNS Potentiation & Power",
+                accentColor = SecondaryIndigo, // Or use a distinct color like Gold/Yellow
                 icon = Icons.Default.Bolt,
-                goal = "Wake up the Central Nervous System (CNS).",
+                goal = "Wake up the Central Nervous System (CNS) for heavy loads.",
                 steps = listOf(
                     "5 mins General Cardio (Brisk Walk)",
-                    "Dynamic Stretching (same as above)",
+                    "Dynamic Stretching (Arm/Leg Swings)",
                     "3-5 Box Jumps (Max Height) OR",
                     "3-5 Medicine Ball Slams (Max Power)",
                     "Rest 2 mins before first heavy lift"
+                )
+            )
+
+            // OPTION 2: PHYSIQUE (Hypertrophy)
+            WarmUpCard(
+                title = "Physique",
+                subtitle = "Hypertrophy & Blood Flow",
+                accentColor = PrimaryIndigo,
+                icon = Icons.Default.FitnessCenter,
+                goal = "Raise core temp, lubricate joints, and drive blood to muscles.",
+                steps = listOf(
+                    "5-10 mins Low Intensity Cardio (Bike/Elliptical)",
+                    "Arm Circles (15 reps forward/back)",
+                    "Torso Twists (20 reps)",
+                    "World's Greatest Stretch (5 per side)",
+                    "1-2 Light Feeder Sets on first exercise"
+                )
+            )
+
+            // OPTION 3: ENDURANCE (Mobility/Cardio)
+            WarmUpCard(
+                title = "Endurance",
+                subtitle = "Mobility & Sustained Effort",
+                accentColor = MaterialTheme.colorScheme.tertiary, // Uses theme Tertiary (Teal/Green usually)
+                icon = Icons.Default.Timer,
+                goal = "Mobilize joints and progressively elevate heart rate.",
+                steps = listOf(
+                    "5 mins Zone 2 Cardio (Jog/Row)",
+                    "High Knees (30 seconds)",
+                    "Butt Kicks (30 seconds)",
+                    "Walking Lunges with Twist (10 per side)",
+                    "Ankle Mobility Drills"
                 )
             )
 
@@ -113,7 +120,7 @@ fun WarmUpCard(
     steps: List<String>
 ) {
     ElevatedCard(
-        shape = MaterialTheme.shapes.medium, // Uses the global 16.dp shape
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
@@ -122,7 +129,7 @@ fun WarmUpCard(
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Icon Container: Uses brand color with low opacity for a clean look
+                // Icon Container
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = accentColor.copy(alpha = 0.1f),
@@ -139,7 +146,8 @@ fun WarmUpCard(
                     Text(
                         text = title,
                         style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = subtitle,

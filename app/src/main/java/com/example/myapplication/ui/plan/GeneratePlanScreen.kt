@@ -59,11 +59,9 @@ fun GeneratePlanScreen(
             // Dynamic Header
             Text(
                 text = if (uiState is PlanUiState.Success) "Your 4-Week Plan" else "Plan Generator",
-                style = MaterialTheme.typography.headlineLarge // Unified Font
-            )
+                style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) // Unified Font
             Spacer(modifier = Modifier.height(16.dp))
-            Text("Plan Generator", style = MaterialTheme.typography.headlineMedium)
-            Spacer(modifier = Modifier.height(16.dp))
+
 
             // 1. INPUT FORM (Always Visible)
             PlanInputForm(

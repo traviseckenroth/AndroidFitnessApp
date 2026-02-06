@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -85,12 +86,12 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            Text("Nutrition Guide", style = MaterialTheme.typography.headlineLarge)
+            Text("Nutrition Guide", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
 
             when (val state = uiState) {
                 is NutritionUiState.Loading -> Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 is NutritionUiState.Empty -> EmptyNutritionCard(onGenerateClick = { viewModel.generateNutrition() })
-                is NutritionUiState.Success -> NutritionDetailCard(state.plan, consumed)
+                is NutritionUiState.Success -> NutritionDetailCard(state.plan, consumed, onRegenerateClick = { viewModel.generateNutrition() })
                 is NutritionUiState.Error -> Text("Error loading plan")
             }
 
@@ -122,10 +123,25 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
 }
 
 @Composable
-fun NutritionDetailCard(plan: NutritionPlan, consumed: MacroSummary) {
+fun NutritionDetailCard(
+    plan: NutritionPlan,
+    consumed: MacroSummary,
+    onRegenerateClick: () -> Unit // New Parameter
+) {
     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(24.dp)) {
-            Text("Daily Progress", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            // Header with Refresh Icon
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Daily Progress", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                IconButton(onClick = onRegenerateClick) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Regenerate")
+                }
+            }
+
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 
             val targetCals = plan.calories.filter { it.isDigit() }.toIntOrNull() ?: 2000
@@ -148,13 +164,23 @@ fun NutritionDetailCard(plan: NutritionPlan, consumed: MacroSummary) {
             )
 
             Spacer(modifier = Modifier.height(24.dp))
-            Text("Why this plan?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Strategy", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
                 text = plan.explanation.ifBlank { "Based on your biometrics and calculated activity level." },
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
             )
+
+            // Explicit Button at bottom for better UX
+            OutlinedButton(
+                onClick = onRegenerateClick,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Recalculate Plan")
+            }
         }
     }
 }

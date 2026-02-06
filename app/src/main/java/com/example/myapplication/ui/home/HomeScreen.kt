@@ -52,9 +52,8 @@ fun HomeScreen(
                 title = {
                     Text(
                         "My Fitness",
-                        style = MaterialTheme.typography.headlineLarge, // Unified Font
+                        style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) // Unified Font
                         // Removed fontWeight = Bold to allow headlineLarge's ExtraBold to shine
-                    )
                 },
                 actions = {
                     IconButton(onClick = onSettingsClick) {

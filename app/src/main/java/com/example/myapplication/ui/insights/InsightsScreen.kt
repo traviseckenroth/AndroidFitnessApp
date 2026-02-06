@@ -54,10 +54,7 @@ fun InsightsScreen(
             item {
                 Text(
                     "Performance Insights",
-                    style = MaterialTheme.typography.headlineLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
+                    style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
             }
 
             // --- AI STATUS (Moved from Profile) ---

@@ -78,6 +78,9 @@ interface WorkoutDao {
     suspend fun insertDailyWorkout(workout: DailyWorkoutEntity): Long
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertWorkout(workout: WorkoutEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertExercise(exercise: ExerciseEntity): Long
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

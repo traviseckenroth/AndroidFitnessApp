@@ -319,11 +319,19 @@ class BedrockClient @Inject constructor(
                 2. TDEE (Activity: $weeklyWorkoutDays days/wk, $avgWorkoutDurationMins min/session).
                 3. Apply Goal: $goalPace.
                 
-                OUTPUT JSON ONLY:
+                TASK:
+                1. Calculate TDEE based on the WORKOUT LOAD provided above.
+                2. Set Protein high enough to support muscle repair (${'$'}weeklyWorkoutDays sessions/week).
+                3. Set Carbs to fuel the ${'$'}avgWorkoutDurationMins minute duration.
+                
+                OUTPUT FORMAT (RAW JSON ONLY):
                 {
-                  "calories": "2500", "protein": "180g", "carbs": "250g", "fats": "80g",
-                  "timing": "Advice",
-                  "explanation": "Math used."
+                  "calories": "2500", 
+                  "protein": "180g", 
+                  "carbs": "250g", 
+                  "fats": "80g",
+                  "timing": "Advice on pre/post workout nutrition.",
+                  "explanation": "CRITICAL: Explain specifically how these numbers support training ${'$'}weeklyWorkoutDays days a week. Mention the workout volume and how the protein/carbs fuel that specific load."
                 }
             """.trimIndent()
 

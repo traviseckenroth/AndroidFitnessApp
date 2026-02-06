@@ -225,7 +225,8 @@ fun ExerciseHeader(
                     text = exercise.name,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
                 // MOVED: Help Icon is now here, next to the name
                 IconButton(onClick = { showDescriptionDialog = true }) {

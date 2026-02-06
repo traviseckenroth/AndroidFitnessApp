@@ -333,6 +333,14 @@ class WorkoutRepository @Inject constructor(
         return cal.timeInMillis
     }
 
+    suspend fun insertWorkout(workout: com.example.myapplication.data.local.WorkoutEntity): Long {
+        return workoutDao.insertWorkout(workout)
+    }
+
+    suspend fun insertSets(sets: List<WorkoutSetEntity>) {
+        workoutDao.insertSets(sets)
+    }
+
     // --- PASSTHROUGHS ---
     fun getAllWorkoutDates(): Flow<List<Long>> = workoutDao.getAllWorkoutDates()
     fun getWorkoutForDate(date: Long): Flow<DailyWorkoutEntity?> { // This was the missing one!
