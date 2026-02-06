@@ -180,11 +180,6 @@ fun WorkoutHeader(title: String) {
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
         )
-        Text(
-            text = "Focus: Progressive Overload",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }
 
@@ -292,11 +287,11 @@ fun SetsTable(sets: List<WorkoutSetEntity>, equipment: String?, viewModel: Activ
 
     Column {
         Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("SET", modifier = Modifier.weight(0.5f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Text("LBS", modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Text("REPS", modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text("SET", modifier = Modifier.weight(0.5f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+            Text("LBS", modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+            Text("REPS", modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
 
-            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                 Text("RPE", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.width(4.dp))
                 IconButton(onClick = { showRpeInfo = true }, modifier = Modifier.size(16.dp)) {
@@ -352,19 +347,34 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
             textAlign = TextAlign.Center
         )
 
-        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             TextField(
                 value = weightText,
                 onValueChange = { weightText = it },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .onFocusChanged { if (!it.isFocused) viewModel.updateSetWeight(set, weightText) },
+                    .onFocusChanged {
+                        if (it.isFocused) {
+                            // Clear text on focus for easier entry
+                            weightText = ""
+                        } else {
+                            if (weightText.isBlank()) {
+                                // Restore original if left empty
+                                weightText = set.actualLbs?.toInt()?.toString() ?: ""
+                            } else {
+                                viewModel.updateSetWeight(set, weightText)
+                            }
+                        }
+                    },
                 placeholder = {
                     Text(
                         text = set.suggestedLbs.toString(),
-                        color = Color.Gray
+                        color = Color.Gray,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 },
+                textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
                 colors = TextFieldDefaults.colors(
                     focusedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -378,7 +388,7 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
             if (isBarbell) {
                 IconButton(
                     onClick = { showPlateDialog = true },
-                    modifier = Modifier.size(24.dp).padding(end = 4.dp)
+                    modifier = Modifier.size(24.dp).padding(start = 4.dp)
                 ) {
                     Icon(Icons.Default.Album, contentDescription = "Plates", tint = Color.Gray)
                 }
@@ -390,8 +400,26 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
             onValueChange = { repsText = it },
             modifier = Modifier
                 .weight(1f)
-                .onFocusChanged { if (!it.isFocused) viewModel.updateSetReps(set, repsText) },
-            placeholder = { Text(set.suggestedReps.toString(), color = Color.Gray) },
+                .onFocusChanged {
+                    if (it.isFocused) {
+                        repsText = ""
+                    } else {
+                        if (repsText.isBlank()) {
+                            repsText = set.actualReps?.toString() ?: ""
+                        } else {
+                            viewModel.updateSetReps(set, repsText)
+                        }
+                    }
+                },
+            placeholder = {
+                Text(
+                    set.suggestedReps.toString(),
+                    color = Color.Gray,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
             colors = TextFieldDefaults.colors(
                 focusedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -408,8 +436,26 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
             onValueChange = { rpeText = it },
             modifier = Modifier
                 .weight(1f)
-                .onFocusChanged { if (!it.isFocused) viewModel.updateSetRpe(set, rpeText) },
-            placeholder = { Text(set.suggestedRpe.toString(), color = Color.Gray) },
+                .onFocusChanged {
+                    if (it.isFocused) {
+                        rpeText = ""
+                    } else {
+                        if (rpeText.isBlank()) {
+                            rpeText = set.actualRpe?.toInt()?.toString() ?: ""
+                        } else {
+                            viewModel.updateSetRpe(set, rpeText)
+                        }
+                    }
+                },
+            placeholder = {
+                Text(
+                    set.suggestedRpe.toString(),
+                    color = Color.Gray,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
             colors = TextFieldDefaults.colors(
@@ -422,16 +468,17 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
             )
         )
 
-        Checkbox(
-            checked = set.isCompleted,
-            onCheckedChange = { viewModel.updateSetCompletion(set, it) },
-            modifier = Modifier.weight(0.5f),
-            colors = CheckboxDefaults.colors(
-                checkedColor = MaterialTheme.colorScheme.primary,
-                checkmarkColor = MaterialTheme.colorScheme.onPrimary,
-                uncheckedColor = Color.Gray
+        Box(modifier = Modifier.weight(0.5f), contentAlignment = Alignment.Center) {
+            Checkbox(
+                checked = set.isCompleted,
+                onCheckedChange = { viewModel.updateSetCompletion(set, it) },
+                colors = CheckboxDefaults.colors(
+                    checkedColor = MaterialTheme.colorScheme.primary,
+                    checkmarkColor = MaterialTheme.colorScheme.onPrimary,
+                    uncheckedColor = Color.Gray
+                )
             )
-        )
+         }
     }
 }
 
