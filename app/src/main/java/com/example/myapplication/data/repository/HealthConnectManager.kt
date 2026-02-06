@@ -1,5 +1,6 @@
 package com.example.myapplication.data.repository
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
@@ -9,7 +10,6 @@ import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.records.metadata.Metadata
 import androidx.health.connect.client.units.Energy
-import com.example.myapplication.data.local.CompletedWorkoutEntity
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.Instant
 import java.time.ZoneOffset
@@ -39,6 +39,7 @@ class HealthConnectManager @Inject constructor(
         return healthConnectClient?.permissionController?.getGrantedPermissions()?.containsAll(permissions) == true
     }
 
+    @SuppressLint("RestrictedApi")
     suspend fun writeWorkout(
         workoutId: Long,
         startTime: Instant,

@@ -180,4 +180,6 @@ suspend fun populateDatabase(dao: WorkoutDao) {
     ex("Hammer Strength Row", "Back", "Lats", "Rhomboids", "Machine", "T2", "High", "Low", "Plate-loaded unilateral row. Allows for extreme contraction and safe failure.", "Sit in machine. Grip handle. Pull back hard, driving elbow to hip. Squeeze the lat. Use one arm at a time for better focus.")
     ex("Lateral Raise Machine", "Shoulders", "Side Delts", null, "Machine", "T3", "Med", "Low", "Stable side delt isolation. Constant tension through the whole arc.", "Adjust seat so pads touch outer arms. Raise elbows out to sides until parallel to floor. Squeeze side delts. Lower under control.")
     ex("Step-Up", "Legs", "Quads", "Glutes", "Dumbbell", "T2", "Med", "High", "Functional unilateral strength. High carryover to running and hiking.", "Step one foot onto box. Drive through that heel to stand tall. Lower back down slowly. Do not push off the floor with bottom foot.")
+// NEW ENTRY
+    ex("Running", "Cardio", "Quads", "Cardio", "Bodyweight", "T2", "Low", "High", "Primary cardiovascular endurance training.", "Maintain an upright posture with gaze forward. Land mid-foot under your center of mass. Keep a consistent rhythm.")
 }

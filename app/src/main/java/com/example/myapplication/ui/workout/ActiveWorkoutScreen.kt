@@ -3,6 +3,7 @@ package com.example.myapplication.ui.workout
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import java.util.Locale
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -444,7 +445,7 @@ fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
     ) {
         // UPDATED: High contrast digits using the "Monospace" display style we added earlier
         Text(
-            text = String.format("%02d:%02d", minutes, seconds),
+            text = String.format(Locale.US, "%02d:%02d", minutes, seconds),
             style = MaterialTheme.typography.displayMedium, // Uses your new Monospace definition
             color = if (timerState.isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
         )

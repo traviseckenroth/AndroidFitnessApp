@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import java.util.Locale
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -93,7 +94,7 @@ class WorkoutTimerService : Service() {
     private fun buildNotification(timeLeft: Int): android.app.Notification {
         val minutes = timeLeft / 60
         val seconds = timeLeft % 60
-        val timeString = String.format("%02d:%02d", minutes, seconds)
+        val timeString = String.format(Locale.US, "%02d:%02d", minutes, seconds)
 
         val openAppIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP

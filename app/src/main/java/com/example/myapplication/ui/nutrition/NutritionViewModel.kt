@@ -46,7 +46,7 @@ class NutritionViewModel @Inject constructor(
     private val _isLogging = MutableStateFlow(false)
     val isLogging = _isLogging.asStateFlow()
 
-    private val _recentFoods = MutableStateFlow<List<String>>(emptyList())
+    private val _recentFoods = MutableStateFlow<List<FoodLogEntity>>(emptyList())
     val recentFoods = _recentFoods.asStateFlow()
 
     init {
@@ -57,7 +57,7 @@ class NutritionViewModel @Inject constructor(
 
     private fun loadHistory() {
         viewModelScope.launch {
-            repository.getRecentFoodHistory().collect { _recentFoods.value = it }
+            repository.getRecentFoodLogs().collect { _recentFoods.value = it }
         }
     }
 

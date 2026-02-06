@@ -201,7 +201,7 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
 
 @Composable
 fun ManualFoodDialog(
-    recentFoods: List<String>,
+    recentFoods: List<FoodLogEntity>, // Updated to accept Entity List
     onDismiss: () -> Unit,
     onConfirm: (String, String, String, String, String, String) -> Unit
 ) {
@@ -213,7 +213,10 @@ fun ManualFoodDialog(
     var mealType by remember { mutableStateOf("Snack") }
     var showDropdown by remember { mutableStateOf(false) }
 
-    val filteredHistory = recentFoods.filter { it.contains(name, ignoreCase = true) && it != name }.take(3)
+    // Filter based on inputQuery (Name)
+    val filteredHistory = recentFoods.filter {
+        it.inputQuery.contains(name, ignoreCase = true) && it.inputQuery != name
+    }.take(3)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -236,9 +239,15 @@ fun ManualFoodDialog(
                     ) {
                         filteredHistory.forEach { historyItem ->
                             DropdownMenuItem(
-                                text = { Text(historyItem) },
+                                text = { Text(historyItem.inputQuery) },
                                 onClick = {
-                                    name = historyItem
+                                    // Populate Name and Macros
+                                    name = historyItem.inputQuery
+                                    calories = historyItem.totalCalories.toString()
+                                    protein = historyItem.totalProtein.toString()
+                                    carbs = historyItem.totalCarbs.toString()
+                                    fats = historyItem.totalFats.toString()
+                                    mealType = historyItem.mealType
                                     showDropdown = false
                                 }
                             )

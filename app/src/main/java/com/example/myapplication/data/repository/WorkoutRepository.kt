@@ -62,6 +62,8 @@ class WorkoutRepository @Inject constructor(
     }
     fun getRecentFoodHistory(): Flow<List<String>> = workoutDao.getRecentFoodQueries()
 
+    fun getRecentFoodLogs(): Flow<List<FoodLogEntity>> = workoutDao.getRecentFoodLogs()
+
     fun getTodayFoodLogs(): Flow<List<FoodLogEntity>> {
         val cal = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0)
