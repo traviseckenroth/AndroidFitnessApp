@@ -4,7 +4,7 @@ package com.example.myapplication.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.DailyWorkoutEntity
-import com.example.myapplication.data.repository.WorkoutRepository
+import com.example.myapplication.data.repository.PlanRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    private val repository: WorkoutRepository
+    private val repository: PlanRepository
 ) : ViewModel() {
 
     // UI State: The currently selected date (Defaults to Today)

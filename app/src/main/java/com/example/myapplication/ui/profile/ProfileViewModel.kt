@@ -5,10 +5,12 @@ import android.app.Application
 import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.myapplication.data.local.CompletedWorkoutWithExercise
 // FIX: Added missing imports
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.repository.HealthConnectManager
-import com.example.myapplication.data.repository.WorkoutRepository
+import com.example.myapplication.data.repository.NutritionRepository
+import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,7 +38,8 @@ private data class Lifestyle(
 
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
-    private val repository: WorkoutRepository,
+    private val nutritionRepository: NutritionRepository,
+    private val executionRepository: WorkoutExecutionRepository,
     private val userPrefs: UserPreferencesRepository,
     private val healthConnectManager: HealthConnectManager,
     private val application: Application
@@ -47,29 +50,28 @@ class ProfileViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            // FIX: Access properties directly (removed parentheses)
             val biometricsFlow = combine(
-                repository.getUserHeight(),
-                repository.getUserWeight(),
-                repository.getUserAge(),
-                repository.getUserGender(),
-                repository.getUserActivity()
-            ) { h, w, a, g, act ->
-                Biometrics(h, w, a, g, act)
-            }
+                userPrefs.userHeight,
+                userPrefs.userWeight,
+                userPrefs.userAge,
+                userPrefs.userGender,
+                userPrefs.userActivity
+            ) { h, w, a, g, act -> Biometrics(h, w, a, g, act) }
 
+            // FIX: Access properties directly (removed parentheses)
             val lifestyleFlow = combine(
-                repository.getUserBodyFat(),
-                repository.getUserDiet(),
-                repository.getUserGoalPace()
-            ) { bf, d, p ->
-                Lifestyle(bf, d, p)
-            }
+                userPrefs.userBodyFat,
+                userPrefs.userDiet,
+                userPrefs.userGoalPace
+            ) { bf, d, p -> Lifestyle(bf, d, p) }
 
+            // Combine all data sources
             combine(
-                repository.getAllCompletedWorkouts(),
+                executionRepository.getAllCompletedWorkouts(),
                 biometricsFlow,
                 lifestyleFlow
-            ) { completed, bio, life ->
+            ) { completed: List<CompletedWorkoutWithExercise>, bio: Biometrics, life: Lifestyle ->
                 val items = completed.map {
                     CompletedWorkoutItem(
                         completedWorkout = it.completedWorkout,
@@ -97,24 +99,19 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    fun saveProfile(
-        height: Int, weight: Double, age: Int,
-        gender: String, activity: String, bodyFat: Double?,
-        diet: String, pace: String
-    ) {
+    fun saveProfile(h: Int, w: Double, a: Int, g: String, act: String, bf: Double?, d: String, p: String) {
         viewModelScope.launch {
-            repository.saveProfile(height, weight, age, gender, activity, bodyFat, diet, pace)
+            // FIX: Use userPrefs directly
+            userPrefs.saveProfile(h, w, a, g, act, bf, d, p)
         }
     }
 
     fun syncHealthConnect() {
         viewModelScope.launch {
-            // FIX: Changed hasAllPermissions() to hasPermissions()
             if (!healthConnectManager.hasPermissions()) {
-                Toast.makeText(application, "Permissions required for Health Connect", Toast.LENGTH_SHORT).show()
+                Toast.makeText(application, "Permissions required", Toast.LENGTH_SHORT).show()
                 return@launch
             }
-
             _uiState.update { it.copy(isHealthConnectSyncing = true) }
             try {
                 delay(2000)
@@ -131,25 +128,13 @@ class ProfileViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isGarminSyncing = true) }
             try {
-                // Simulate Garmin Sync
                 delay(2000)
-
-                // MOCK DATA: Simulate a "Bad Day" or "Good Day"
-                // In real app, this comes from Garmin API (Body Battery)
                 val simulatedRecovery = (30..100).random()
                 userPrefs.saveRecoveryScore(simulatedRecovery)
-
                 _uiState.update { it.copy(isGarminConnected = !it.isGarminConnected) }
-                val status = if (_uiState.value.isGarminConnected) "Connected" else "Disconnected"
-
-                val msg = if (simulatedRecovery < 50)
-                    "Synced. Recovery Low ($simulatedRecovery%). Workouts will be easier."
-                else
-                    "Synced. Recovery Good ($simulatedRecovery%)."
-
-                Toast.makeText(application, msg, Toast.LENGTH_LONG).show()
+                Toast.makeText(application, "Garmin Synced: $simulatedRecovery%", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
-                Toast.makeText(application, "Garmin Connection Failed", Toast.LENGTH_SHORT).show()
+                Toast.makeText(application, "Connection Failed", Toast.LENGTH_SHORT).show()
             } finally {
                 _uiState.update { it.copy(isGarminSyncing = false) }
             }

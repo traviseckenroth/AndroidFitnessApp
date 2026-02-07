@@ -5,7 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.NutritionPlan
 import com.example.myapplication.data.local.FoodLogEntity
 import com.example.myapplication.data.remote.MacroSummary // <--- IMPORT ADDED
-import com.example.myapplication.data.repository.WorkoutRepository
+import com.example.myapplication.data.repository.NutritionRepository
+import com.example.myapplication.data.repository.PlanRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted // <--- IMPORT ADDED
@@ -25,7 +26,8 @@ sealed interface NutritionUiState {
 
 @HiltViewModel
 class NutritionViewModel @Inject constructor(
-    private val repository: WorkoutRepository
+    private val nutritionRepository: NutritionRepository,
+    private val planRepository: PlanRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<NutritionUiState>(NutritionUiState.Loading)
@@ -57,13 +59,13 @@ class NutritionViewModel @Inject constructor(
 
     private fun loadHistory() {
         viewModelScope.launch {
-            repository.getRecentFoodLogs().collect { _recentFoods.value = it }
+            nutritionRepository.getRecentFoodLogs().collect { _recentFoods.value = it }
         }
     }
 
     private fun loadFoodLogs() {
         viewModelScope.launch {
-            repository.getTodayFoodLogs().collect {
+            nutritionRepository.getTodayFoodLogs().collect {
                 _foodLogs.value = it
             }
         }
@@ -73,7 +75,7 @@ class NutritionViewModel @Inject constructor(
             _uiState.value = NutritionUiState.Loading
             try {
                 // Fetch the plan. We check if an exercise plan exists at all.
-                val plan = repository.getPlanDetails(0)
+                val plan = planRepository.getPlanDetails(0)
 
                 // Logic: If the plan object itself is empty/null (no exercise plan),
                 // show NoExercisePlan. If it exists but has no nutrition, show Empty.
@@ -97,7 +99,7 @@ class NutritionViewModel @Inject constructor(
         viewModelScope.launch {
             _isLogging.value = true
             try {
-                repository.logFood(query)
+                nutritionRepository.logFood(query)
             } catch (e: Exception) {
                 // handle error
             } finally {
@@ -107,7 +109,7 @@ class NutritionViewModel @Inject constructor(
     }
     fun logManual(name: String, cals: String, pro: String, carb: String, fat: String, meal: String) {
         viewModelScope.launch {
-            repository.logManualFood(
+            nutritionRepository.logManualFood(
                 name,
                 cals.toIntOrNull() ?: 0,
                 pro.toIntOrNull() ?: 0,
@@ -121,7 +123,7 @@ class NutritionViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = NutritionUiState.Loading
             try {
-                val newPlan = repository.generateAndSaveNutrition()
+                val newPlan = nutritionRepository.generateAndSaveNutrition()
                 _uiState.value = NutritionUiState.Success(newPlan)
             } catch (e: Exception) {
                 _uiState.value = NutritionUiState.Error(e.message ?: "Failed")

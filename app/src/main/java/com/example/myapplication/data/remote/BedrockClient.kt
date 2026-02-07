@@ -11,6 +11,8 @@ import com.example.myapplication.data.local.CompletedWorkoutWithExercise
 import org.json.JSONObject
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.repository.AuthRepository
+// 1. ADD IMPORT
+import com.example.myapplication.data.repository.PromptRepository
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration.Companion.seconds
@@ -18,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import java.util.Date
 
 // --- AI RESPONSE DATA MODELS ---
 // --- 1. NEW DATA MODELS FOR FOOD LOGGING ---
@@ -67,7 +70,7 @@ data class GeneratedPlanResponse(
 data class GeneratedDay(
     val week: Int = 1,
     val day: String,
-    val title: String,
+    val title: String = "Workout",
     val exercises: List<GeneratedExercise> = emptyList()
 )
 
@@ -117,7 +120,8 @@ private val jsonConfig = Json {
 // --- CLIENT CLASS ---
 @Singleton
 class BedrockClient @Inject constructor(
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val promptRepository: PromptRepository
 ) {
 
     // Initialize client using your Custom Cognito Provider
@@ -137,30 +141,53 @@ class BedrockClient @Inject constructor(
             }
         }
     }
+
+    suspend fun generateCoachingCue(
+        exerciseName: String,
+        issue: String,
+        repCount: Int
+    ): String = withContext(Dispatchers.IO) {
+        val rawTemplate = promptRepository.getCoachingCueTemplate()
+
+        val prompt = rawTemplate
+            .replace("{exerciseName}", exerciseName)
+            .replace("{repCount}", repCount.toString())
+            .replace("{issue}", issue)
+
+        val jsonBody = JSONObject().apply {
+            put("inputText", prompt)
+            put("textGenerationConfig", JSONObject().apply {
+                put("maxTokenCount", 20)
+                put("temperature", 1.0)
+                put("topP", 0.9)
+            })
+        }
+
+        try {
+            val request = InvokeModelRequest {
+                modelId = "amazon.titan-text-express-v1"
+                body = jsonBody.toString().toByteArray()
+                contentType = "application/json"
+                accept = "application/json"
+            }
+
+            val response = client.invokeModel(request)
+            val bodyBytes = response.body ?: throw Exception("Empty body")
+            val responseBody = JSONObject(String(bodyBytes))
+
+            responseBody.getJSONArray("results").getJSONObject(0).getString("outputText").trim()
+
+        } catch (e: Exception) {
+            Log.e("BedrockClient", "AI Generation failed", e)
+            "Keep pushing!" // Fallback
+        }
+    }
+
     // --- NEW FUNCTION: PARSE NATURAL LANGUAGE FOOD ---
     suspend fun parseFoodLog(userQuery: String): FoodLogResponse = withContext(Dispatchers.Default) {
         try {
-            val systemPrompt = """
-                You are an expert AI Nutritionist.
-                TASK: Analyze the user's natural language food log.
-                
-                CRITICAL RULES:
-                1. If quantity is vague (e.g., "a chicken breast", "an egg", "a bowl of rice"), YOU MUST ESTIMATE using standard serving sizes (e.g., Breast=6oz, Egg=Large, Rice=1 cup).
-                2. NEVER return 0 for calories/macros unless the item is water or diet soda.
-                3. DETERMINE MEAL TYPE: Based on the text (e.g., "For breakfast I had...") or typical consumption time (if vague, default to "Snack").
-                   Categories: "Breakfast", "Lunch", "Dinner", "Snack".
-                4. Calculate totals accurately.
-                
-                OUTPUT FORMAT (RAW JSON ONLY):
-                {
-                  "foodItems": [
-                    { "name": "Chicken Breast", "quantity": "6oz (Est)", "calories": 280, "protein": 52, "carbs": 0, "fats": 6 }
-                  ],
-                  "totalMacros": { "calories": 280, "protein": 52, "carbs": 0, "fats": 6 },
-                  "analysis": "Brief comment on quality."
-                  "mealType": "Dinner"
-                }
-            """.trimIndent()
+            // 3. FETCH PROMPT (No variables to replace in this one)
+            val systemPrompt = promptRepository.getFoodLogSystemPrompt()
 
             val cleanJson = invokeClaude(systemPrompt, userQuery)
             jsonConfig.decodeFromString<FoodLogResponse>(cleanJson)
@@ -183,126 +210,48 @@ class BedrockClient @Inject constructor(
     ): GeneratedPlanResponse = withContext(Dispatchers.Default) {
 
         try {
-            val tierDefinitions = when (programType) {
-                "Strength" -> """
-                    - Tier 1: Reps: Low (1-5). Sets: High (5-8). Load: Very Heavy (85-95% 1RM). RPE: 8-9 (1-2 RIR). PROGRESSION: Linear Load.
-                    - Tier 2: Reps: Low (3-6). Sets: Moderate (3-5). Load: Heavy (75-85% 1RM). RPE: 8-9 (1-2 RIR). PROGRESSION: Volume Accumulation.
-                    - Tier 3: Reps: Moderate/High (8-15). Sets: Moderate (3-4). Load: Moderate (muscle failure). RPE: 9-10 (0-1 RIR). PROGRESSION: Density.
-                """.trimIndent()
+            val tierDefinitions = """
+                - Tier 1: Compound movements, fundamental for strength.
+                - Tier 2: Accessory exercises, supplement Tier 1.
+                - Tier 3: Isolation or machine-based exercises.
+            """.trimIndent()
 
-                "Physique" -> """
-                    - Tier 1: Reps: Low (5–8). Sets: High (3–5). Load: Heavy (75-90% 1RM). RPE: 8 (2 RIR). PROGRESSION: Add Weight.
-                    - Tier 2: Reps: Moderate (8–12). Sets: Moderate (3–4). Load: Moderate (60-75% 1RM). RPE: 9 (1 RIR). PROGRESSION: Add Reps/Form.
-                    - Tier 3: Reps: High (12–20). Sets: Moderate (2–3). Load: Light (40-60% 1RM). RPE: 10 (Failure). PROGRESSION: Add Reps/Form.
-                """.trimIndent()
-
-                "Endurance" -> """
-                - Tier 1 (Sport-Specific): Aerobic Base (Zone 1) or HIIT (Zone 3) intervals. Focus: VO2 Max/Mitochondrial Mass. Rest: Variable.
-                - Tier 2 (Stability Strength): 8-12 reps. Focus: Unilateral stability & posterior chain resilience. Rest: 60s.
-                - Tier 3 (Joint Integrity): High-rep isolation or Isometrics. Focus: Injury Prevention (TKEs, 90/90, Copenhagen Planks). Rest: 30-60s.
-                """.trimIndent()
-
-                else -> "Use standard progressive overload across 3 tiers (Primary, Secondary, Accessory)."
-            }
-
+            // FIX 1: Group flat history list by Date -> then by Exercise Name
             val historySummary = workoutHistory
-                .groupBy { it.exercise.name }
-                .map { (name, sessions) ->
-                    val sorted = sessions.sortedBy { it.completedWorkout.date }
-                    val first = sorted.first().completedWorkout
-                    val last = sorted.last().completedWorkout
-                    "- $name: Started at ${first.weight}lbs, currently at ${last.weight}lbs (Avg RPE: ${
-                        sessions.map { it.completedWorkout.rpe }.average().toInt()
-                    })"
-                }.joinToString("\n")
+                .groupBy { it.completedWorkout.date }
+                .entries.joinToString("\n") { (date, sessionSets) ->
+                    val sessionDetails = sessionSets
+                        .groupBy { it.exercise.name }
+                        .entries.joinToString(", ") { (name, sets) ->
+                            "$name (${sets.size} sets)"
+                        }
+                    "On ${Date(date)}, you did: $sessionDetails."
+                }
 
-            val exerciseListString = availableExercises.joinToString("\n") { ex ->
-                "- ${ex.name} (Tier ${ex.tier}, ${ex.estimatedTimePerSet} mins/set)"
+            // FIX 2: Use correct property '.name' instead of '.exerciseName'
+            val exerciseListString = availableExercises.joinToString("\n") {
+                "- ${it.name} (Muscle: ${it.muscleGroup ?: "General"}, Equipment: ${it.equipment ?: "None"}, Tier: ${it.tier})"
             }
 
             val totalMinutes = (duration * 60).toInt()
 
-            val systemPrompt = """
-                You are an expert strength and endurance coach. Generate a 1-week template based on these scientific principles:                USER CONTEXT:
-                
-                PROGRAM RULES:
-                - STRENGTH: Focus on 'Big Four' (Squat, Deadlift, Bench, OHP). Structure: Explosive -> Primary (1-5 reps, 85-100% 1RM) -> Secondary -> Accessory. Rest: 2-5 mins.
-                - PHYSIQUE: 6-12 reps, 75-85% 1RM. Min 10 sets/muscle/week. Use 'fractional sets' (indirect work = 0.5 sets). Rest: 60-90s.
-                - ENDURANCE: Polarized Model (80% Zone 1, 20% Zone 3). Include 2-3x weekly injury prevention (Single-leg squats, RDLs, Copenhagen planks).
-               
-                USER CONTEXT:
-                - Age: ${userAge} years old (Adjust volume/intensity for recovery capacity).
-                - Height: ${userHeight} cm.
-                - Weight: ${userWeight} kg.
-                - Goal: ${goal}
-                - Schedule: ${days.joinToString()}
-                - Duration: ${totalMinutes} minutes per session.
-                
-                TRAINING HISTORY:
-                ${if (historySummary.isBlank()) "No previous history." else historySummary}
-                                
-                AVAILABLE EXERCISES (Use these when possible):
-                ${exerciseListString}
-               
-                STRICT OUTPUT FORMAT: 
-                Return a valid JSON object with two root keys: "explanation" and "schedule".
-                - "explanation": A string explaining the reasoning for the chosen exercises, progressions, and overall structure of the plan in less than 500 characters.
-                - "schedule": A list of daily sessions for **WEEK 1 ONLY**.
+            val rawPrompt = promptRepository.getWorkoutSystemPrompt()
 
-                   JSON EXAMPLE:
-                {
-                    "explanation": "Given your age of 45 and goal of Physique, we are prioritizing joint-friendly movements...", 
-                    "schedule": [
-                    {
-                      "week": 1,
-                      "day": "Monday",
-                      "title": "Upper Body Power",
-                      "exercises": [ 
-                        { 
-                          "name": "Barbell Bench Press", 
-                          "tier": 1, 
-                          "sets": 5, 
-                          "suggestedReps": 5, 
-                          "suggestedLbs": 50.0, 
-                          "suggestedRpe": 8, 
-                          "estimatedTimeMinutes": 15.0 
-                        } 
-                      ]
-                    }
-                  ]
-                }
-
-                RULES:
-                1. **Generate ONLY Week 1.**
-                2. "sets", "suggestedRpe", and "suggestedReps" must be Integers. "suggestedLbs" must be Float.
-                3. ${tierDefinitions}
-                4. Generate a workout for *each* selected day: ${days.joinToString()}.
-                5. A week is from Monday to Sunday.
-                6. *** CRITICAL TIME REQUIREMENT ***:
-                   You MUST fill the entire ${'$'}{totalMinutes} minute session.
-                   Use this strict formula to calculate duration (includes setup + rest + work):
-                   - TIER 1: 5.0 minutes per set.
-                   - TIER 2: 4.0 minutes per set.
-                   - TIER 3: 3.0 minutes per set.
-                   
-                   *CALCULATION:* Sum(sets * minutes_per_set) for all exercises must equal ${'$'}{totalMinutes}.
-                   
-                   *MANDATORY:* If your selected exercises do not fill the time:
-                   a) INCREASE the number of sets for TIER 2 and TIER 3 exercises.
-                   b) ADD an extra "Core" or "Mobility" exercise (Tier 3) at the end to fill the gap.
-                   c) Do NOT output a session that is less than ${'$'}{totalMinutes - 5} minutes.
-                7. Total duration per day must equal ${totalMinutes} minutes.
-                8. If the user is older (>40), prefer lower fatigue exercises and higher rep ranges for joint health unless specified otherwise.
-
-                Do not include preamble or markdown formatting.
-            """.trimIndent()
+            val systemPrompt = rawPrompt
+                .replace("{userAge}", userAge.toString())
+                .replace("{userHeight}", userHeight.toString())
+                .replace("{userWeight}", userWeight.toString())
+                .replace("{goal}", goal)
+                .replace("{days}", days.joinToString())
+                .replace("{totalMinutes}", totalMinutes.toString())
+                .replace("{historySummary}", if (historySummary.isBlank()) "No previous history." else historySummary)
+                .replace("{exerciseListString}", exerciseListString)
+                .replace("{tierDefinitions}", tierDefinitions)
+                .replace("{totalMinutesMinus5}", (totalMinutes - 5).toString())
 
             val userPrompt = "Generate plan for ${userAge}year old, ${userWeight}kg, Goal: ${goal}."
 
-            // Use the shared helper to invoke Claude
             val cleanJson = invokeClaude(systemPrompt, userPrompt)
-
-            // Decode the Workout Response
             jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
 
         } catch (e: Exception) {
@@ -310,51 +259,7 @@ class BedrockClient @Inject constructor(
             GeneratedPlanResponse(explanation = "Error: ${e.localizedMessage}")
         }
     }
-    suspend fun generateCoachingCue(
-        exerciseName: String,
-        issue: String,
-        repCount: Int
-    ): String = withContext(Dispatchers.IO) { // <--- FIX: Switch to IO Thread
-        val prompt = """
-        You are a high-energy fitness coach. The user is doing $exerciseName.
-        They just did rep #$repCount but had this issue: "$issue".
-        Give them a SHORT, spoken correction (max 5 words).
-        Examples: "Chest up!", "Drive the knees!", "Squeeze at the top!".
-        Output ONLY the text to speak. No quotes.
-    """.trimIndent()
 
-        val jsonBody = JSONObject().apply {
-            put("inputText", prompt)
-            put("textGenerationConfig", JSONObject().apply {
-                put("maxTokenCount", 20)
-                put("temperature", 1.0)
-                put("topP", 0.9)
-            })
-        }
-
-        try {
-            Log.d("BedrockClient", "Sending request for: $issue") // <--- debug log
-
-            val request = InvokeModelRequest {
-                modelId = "amazon.titan-text-express-v1"
-                body = jsonBody.toString().toByteArray()
-                contentType = "application/json"
-                accept = "application/json"
-            }
-
-            val response = client.invokeModel(request)
-            val bodyBytes = response.body ?: throw Exception("Empty body")
-            val responseBody = JSONObject(String(bodyBytes))
-
-            val output = responseBody.getJSONArray("results").getJSONObject(0).getString("outputText").trim()
-            Log.d("BedrockClient", "AI Response: $output") // <--- debug log
-            return@withContext output
-
-        } catch (e: Exception) {
-            Log.e("BedrockClient", "AI Generation failed", e)
-            return@withContext "" // Return empty string to trigger fallback
-        }
-    }
     // --- 2. GENERATE NUTRITION PLAN (Separate Call) ---
     suspend fun generateNutritionPlan(
         userAge: Int,
@@ -367,27 +272,17 @@ class BedrockClient @Inject constructor(
         avgWorkoutDurationMins: Int
     ): RemoteNutritionPlan = withContext(Dispatchers.Default) {
         try {
-            val systemPrompt = """
-                You are a metabolic nutritionist. Calculate daily macros.
-                1. BMR ($userAge yr, $gender, ${userHeight}cm, ${userWeight}kg).
-                2. TDEE (Activity: $weeklyWorkoutDays days/wk, $avgWorkoutDurationMins min/session).
-                3. Apply Goal: $goalPace.
-                
-                TASK:
-                1. Calculate TDEE based on the WORKOUT LOAD provided above.
-                2. Set Protein high enough to support muscle repair (${weeklyWorkoutDays} sessions/week).
-                3. Set Carbs to fuel the ${avgWorkoutDurationMins} minute duration.
-                
-                OUTPUT FORMAT (RAW JSON ONLY):
-                {
-                  "calories": "2500", 
-                  "protein": "180g", 
-                  "carbs": "250g", 
-                  "fats": "80g",
-                  "timing": "Advice on pre/post workout nutrition.",
-                  "explanation": "CRITICAL: Explain specifically how these numbers support training ${weeklyWorkoutDays} days a week. Mention the workout volume and how the protein/carbs fuel that specific load."
-                }
-            """.trimIndent()
+            // 6. FETCH AND REPLACE VARIABLES FOR NUTRITION
+            val rawPrompt = promptRepository.getNutritionSystemPrompt()
+
+            val systemPrompt = rawPrompt
+                .replace("{userAge}", userAge.toString())
+                .replace("{gender}", gender)
+                .replace("{userHeight}", userHeight.toString())
+                .replace("{userWeight}", userWeight.toString())
+                .replace("{weeklyWorkoutDays}", weeklyWorkoutDays.toString())
+                .replace("{avgWorkoutDurationMins}", avgWorkoutDurationMins.toString())
+                .replace("{goalPace}", goalPace)
 
             val cleanJson = invokeClaude(systemPrompt, "Generate Nutrition")
             jsonConfig.decodeFromString<RemoteNutritionPlan>(cleanJson)

@@ -10,7 +10,7 @@ import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.remote.BedrockClient
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.repository.HealthConnectManager
-import com.example.myapplication.data.repository.WorkoutRepository
+import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import com.example.myapplication.service.WorkoutTimerService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,7 +38,7 @@ data class ExerciseState(
 
 @HiltViewModel
 class ActiveSessionViewModel @Inject constructor(
-    private val repository: WorkoutRepository,
+    private val repository: WorkoutExecutionRepository,
     private val application: Application,
     private val userPrefs: UserPreferencesRepository,
     private val healthConnectManager: HealthConnectManager,
@@ -320,6 +320,11 @@ class ActiveSessionViewModel @Inject constructor(
 
     fun clearSummary() {
         _workoutSummary.value = null
+    }
+
+    // NEW: Wrapper function for the UI to call
+    suspend fun generateCoachingCue(exerciseName: String, issue: String): String {
+        return bedrockClient.generateCoachingCue(exerciseName, issue, 0)
     }
 }
 

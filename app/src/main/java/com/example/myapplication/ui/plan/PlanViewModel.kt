@@ -3,7 +3,7 @@ package com.example.myapplication.ui.plan
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.WorkoutPlan
-import com.example.myapplication.data.repository.WorkoutRepository
+import com.example.myapplication.data.repository.PlanRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,7 +23,7 @@ sealed interface PlanUiState {
 
 @HiltViewModel
 class PlanViewModel @Inject constructor(
-    private val repository: WorkoutRepository
+    private val repository: PlanRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<PlanUiState>(PlanUiState.Empty)

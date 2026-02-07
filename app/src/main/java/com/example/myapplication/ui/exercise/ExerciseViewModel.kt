@@ -3,7 +3,7 @@ package com.example.myapplication.ui.exercise
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.ExerciseEntity
-import com.example.myapplication.data.repository.WorkoutRepository
+import com.example.myapplication.data.repository.PlanRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -12,7 +12,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ExerciseViewModel @Inject constructor(
-    private val repository: WorkoutRepository
+    private val repository: PlanRepository
 ) : ViewModel() {
 
     val exercises: StateFlow<List<ExerciseEntity>> = repository.getAllExercises()

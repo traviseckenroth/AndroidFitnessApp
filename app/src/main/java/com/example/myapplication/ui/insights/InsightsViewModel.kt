@@ -3,7 +3,8 @@ package com.example.myapplication.ui.insights
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.ExerciseEntity
-import com.example.myapplication.data.repository.WorkoutRepository
+import com.example.myapplication.data.repository.PlanRepository
+import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,7 +14,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class InsightsViewModel @Inject constructor(
-    private val repository: WorkoutRepository
+    private val planRepository: PlanRepository,
+    private val executionRepository: WorkoutExecutionRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(InsightsUiState())
@@ -26,7 +28,7 @@ class InsightsViewModel @Inject constructor(
     private fun loadInitialData() {
         // 1. Load Exercises
         viewModelScope.launch {
-            repository.getAllExercises().collect { exercises ->
+            planRepository.getAllExercises().collect { exercises ->
                 val currentSelected = _uiState.value.selectedExercise
                 _uiState.value = _uiState.value.copy(
                     availableExercises = exercises,
@@ -43,7 +45,7 @@ class InsightsViewModel @Inject constructor(
 
         // 2. Load History & Volume Stats
         viewModelScope.launch {
-            repository.getAllCompletedWorkouts().collect { completedWorkouts ->
+            executionRepository.getAllCompletedWorkouts().collect { completedWorkouts ->
                 // Calculate Volume by Muscle Group
                 val volumeByMuscle = completedWorkouts
                     .filter { it.exercise.muscleGroup != null }
@@ -68,7 +70,7 @@ class InsightsViewModel @Inject constructor(
     fun selectExercise(exercise: ExerciseEntity) {
         _uiState.value = _uiState.value.copy(selectedExercise = exercise)
         viewModelScope.launch {
-            repository.getCompletedWorkoutsForExercise(exercise.exerciseId).collect { completed ->
+            executionRepository.getCompletedWorkoutsForExercise(exercise.exerciseId).collect { completed ->
                 val oneRepMaxHistory = completed.sortedBy { it.completedWorkout.date }.map {
                     // Epley Formula: Weight * (1 + Reps/30)
                     val estimated1RM = it.completedWorkout.totalVolume * (1 + (it.completedWorkout.totalReps / 30.0f))

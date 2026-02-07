@@ -4,7 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
-import com.example.myapplication.data.repository.WorkoutRepository
+import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -13,7 +13,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ExerciseHistoryViewModel @Inject constructor(
-    private val repository: WorkoutRepository,
+    private val repository: WorkoutExecutionRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 

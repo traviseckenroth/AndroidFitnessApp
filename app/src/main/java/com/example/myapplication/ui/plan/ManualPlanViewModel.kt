@@ -5,7 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
-import com.example.myapplication.data.repository.WorkoutRepository
+import com.example.myapplication.data.repository.PlanRepository
+import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -18,10 +19,11 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ManualPlanViewModel @Inject constructor(
-    private val repository: WorkoutRepository
+    private val planRepository: PlanRepository,
+    private val executionRepository: WorkoutExecutionRepository
 ) : ViewModel() {
 
-    private val _allExercises = repository.getAllExercises()
+    private val _allExercises = planRepository.getAllExercises()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _searchQuery = MutableStateFlow("")
@@ -59,7 +61,7 @@ class ManualPlanViewModel @Inject constructor(
                 duration = 60f,
                 notes = "Manual Session"
             )
-            val workoutId = repository.insertWorkout(newWorkout)
+            val workoutId = executionRepository.insertWorkout(newWorkout)
 
             val setsToInsert = mutableListOf<WorkoutSetEntity>()
 
@@ -79,7 +81,7 @@ class ManualPlanViewModel @Inject constructor(
                 }
             }
 
-            repository.insertSets(setsToInsert)
+            executionRepository.insertSets(setsToInsert)
 
             onSuccess(workoutId)
         }

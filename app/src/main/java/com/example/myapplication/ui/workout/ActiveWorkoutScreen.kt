@@ -66,12 +66,12 @@ fun ActiveWorkoutScreen(
                 targetWeight = nextSet?.suggestedLbs?.toInt() ?: 0,
                 targetReps = nextSet?.suggestedReps ?: 0,
                 onClose = { activeCameraExerciseState = null },
-                // NEW: Connect the UI to the Bedrock Client in the ViewModel
+
+                // UPDATED CALL
                 fetchAiCue = { issue ->
-                    viewModel.bedrockClient.generateCoachingCue(
+                    viewModel.generateCoachingCue(
                         activeCameraExerciseState!!.exercise.name,
-                        issue,
-                        0 // You can pass actual rep count if available
+                        issue
                     )
                 }
             )

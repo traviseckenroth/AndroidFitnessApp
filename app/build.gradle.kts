@@ -70,7 +70,6 @@ android {
 
 dependencies {
     // --- Core Android ---
-    // --- Core Android ---
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
@@ -116,15 +115,21 @@ dependencies {
     // 3. HTTP Client Engine
     implementation(libs.http.client.engine.okhttp)
 
-    // REMOVE THIS LINE IF IT EXISTS:
-    // implementation("aws.sdk.kotlin:auth") <--- CAUSING THE ERROR
-
     // --- Serialization ---
     implementation(libs.kotlinx.serialization.json)
 
     // --- Preferences ---
     implementation(libs.androidx.datastore.preferences)
     implementation("com.google.guava:guava:31.1-android")
+
+    // --- Firebase ---
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.analytics)
+    implementation(libs.firebase.common.ktx)
+    implementation(libs.firebase.config)
+    implementation("com.google.firebase:firebase-config-ktx")
+
+
     // --- CameraX ---
     val cameraxVersion = "1.3.1"
     implementation("androidx.camera:camera-core:$cameraxVersion")
