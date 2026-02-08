@@ -2,6 +2,8 @@ package com.example.myapplication.data.local
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.myapplication.data.local.FoodLogEntity
 
 @Database(
@@ -14,9 +16,21 @@ import com.example.myapplication.data.local.FoodLogEntity
         FoodLogEntity::class,
         WorkoutEntity::class
     ],
-    version = 22,
+    version = 23,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun workoutDao(): WorkoutDao
+
+    companion object {
+        // 2. DEFINE MIGRATION (Example: v22 to v23)
+        val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // If you added a new table or column, write the SQL here.
+                // Example: db.execSQL("ALTER TABLE DailyWorkoutEntity ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
+
+                // If no schema changes, leave empty to preserve data.
+            }
+        }
+    }
 }

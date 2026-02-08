@@ -96,42 +96,6 @@ fun ProfileScreen(
                             }
                         }
 
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-
-                        // Garmin Connect
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Garmin Connect", style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    "Reads recovery scores to scale intensity.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontStyle = FontStyle.Italic
-                                )
-                                Text(
-                                    if (uiState.isGarminConnected) "Status: Connected" else "Status: Not Connected",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (uiState.isGarminConnected) Color(0xFF4CAF50) else Color.Gray,
-                                    modifier = Modifier.padding(top = 4.dp)
-                                )
-                            }
-                            if (uiState.isGarminSyncing) {
-                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                            } else {
-                                Button(
-                                    onClick = { viewModel.syncGarmin() },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (uiState.isGarminConnected) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                                    )
-                                ) {
-                                    Text(if (uiState.isGarminConnected) "Disconnect" else "Connect")
-                                }
-                            }
-                        }
                     }
                 }
             }

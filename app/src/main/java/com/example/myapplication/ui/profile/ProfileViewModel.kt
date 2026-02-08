@@ -99,7 +99,16 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    fun saveProfile(h: Int, w: Double, a: Int, g: String, act: String, bf: Double?, d: String, p: String) {
+    fun saveProfile(
+        h: Int,
+        w: Double,
+        a: Int,
+        g: String,
+        act: String,
+        bf: Double?,
+        d: String,
+        p: String
+    ) {
         viewModelScope.launch {
             // FIX: Use userPrefs directly
             userPrefs.saveProfile(h, w, a, g, act, bf, d, p)
@@ -120,23 +129,6 @@ class ProfileViewModel @Inject constructor(
                 Toast.makeText(application, "Sync Failed: ${e.message}", Toast.LENGTH_SHORT).show()
             } finally {
                 _uiState.update { it.copy(isHealthConnectSyncing = false) }
-            }
-        }
-    }
-
-    fun syncGarmin() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isGarminSyncing = true) }
-            try {
-                delay(2000)
-                val simulatedRecovery = (30..100).random()
-                userPrefs.saveRecoveryScore(simulatedRecovery)
-                _uiState.update { it.copy(isGarminConnected = !it.isGarminConnected) }
-                Toast.makeText(application, "Garmin Synced: $simulatedRecovery%", Toast.LENGTH_SHORT).show()
-            } catch (e: Exception) {
-                Toast.makeText(application, "Connection Failed", Toast.LENGTH_SHORT).show()
-            } finally {
-                _uiState.update { it.copy(isGarminSyncing = false) }
             }
         }
     }

@@ -1,292 +1,231 @@
-// app/src/main/java/com/example/myapplication/ui/summary/WorkoutSummaryScreen.kt
-
 package com.example.myapplication.ui.summary
 
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import com.example.myapplication.data.local.WorkoutDao
-import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import com.example.myapplication.ui.theme.PrimaryIndigo
+import com.example.myapplication.ui.workout.ActiveSessionViewModel
 import kotlinx.coroutines.launch
-import java.time.Instant
-import java.time.ZoneId
+import java.io.File
+import java.io.FileOutputStream
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import javax.inject.Inject
 
-// --- 1. INTERNAL DATA MODELS ---
-sealed class SummaryState {
-    object Loading : SummaryState()
-    object Error : SummaryState()
-    data class Success(
-        val duration: String,
-        val volume: String,
-        val sets: Int,
-        val date: String,
-        val exerciseSummaries: List<ExerciseSummary>
-    ) : SummaryState()
-}
-
-data class ExerciseSummary(val name: String, val bestSet: String)
-
-// --- 2. INTERNAL VIEWMODEL ---
-@HiltViewModel
-class WorkoutSummaryViewModel @Inject constructor(
-    private val dao: WorkoutDao
-) : ViewModel() {
-
-    private val _state = MutableStateFlow<SummaryState>(SummaryState.Loading)
-    val state = _state.asStateFlow()
-
-    fun loadSummary(workoutId: Long) {
-        viewModelScope.launch {
-            // Fetch the workout using the ID passed
-            val workout = dao.getWorkoutById(workoutId)
-
-            if (workout == null) {
-                _state.value = SummaryState.Error
-                return@launch
-            }
-
-            // Fetch exercises and sets using the "OneShot" methods
-            val exercises = dao.getExercisesForWorkoutOneShot(workoutId)
-            val allSets = dao.getSetsForWorkoutOneShot(workoutId)
-
-            // --- FIX 1: DURATION ---
-            // Try to find a duration if the entity has it, otherwise default to 0
-            // We safely assume it might not exist on 'DailyWorkoutEntity'
-            val durationMinutes = 45 // Default placeholder since DailyWorkout doesn't track duration
-
-            // --- FIX 2: STRICT MATH FOR VOLUME ---
-            // Explicitly cast to Double to fix "Overload resolution ambiguity"
-            val totalVolume = allSets
-                .filter { it.isCompleted && it.actualLbs != null && it.actualReps != null }
-                .sumOf {
-                    val weight = (it.actualLbs ?: 0f).toDouble()
-                    val reps = (it.actualReps ?: 0).toDouble()
-                    weight * reps
-                }
-
-            val totalSets = allSets.count { it.isCompleted }
-
-            // --- FIX 3: DATE FIELD ---
-            // Use 'scheduledDate' which is standard in DailyWorkoutEntity
-            val dateMs = workout.scheduledDate
-
-            _state.value = SummaryState.Success(
-                duration = "${durationMinutes}m",
-                volume = "${totalVolume.toInt()} lbs",
-                sets = totalSets,
-                date = DateTimeFormatter.ofPattern("MMM dd, yyyy")
-                    .withZone(ZoneId.systemDefault())
-                    .format(Instant.ofEpochMilli(dateMs)),
-                exerciseSummaries = exercises.map { exercise ->
-                    val exSets = allSets.filter { it.exerciseId == exercise.exerciseId && it.isCompleted }
-
-                    // --- FIX 4: MAX BY OR NULL CASTING ---
-                    // Explicitly tell maxByOrNull we are comparing Floats
-                    val bestSet = exSets.maxByOrNull { (it.actualLbs ?: 0f) }
-
-                    ExerciseSummary(
-                        name = exercise.name,
-                        bestSet = if (bestSet != null && bestSet.actualLbs != null)
-                            "${bestSet.actualLbs!!.toInt()}lbs x ${bestSet.actualReps}"
-                        else "No sets completed"
-                    )
-                }
-            )
-        }
-    }
-}
-
-// --- 3. THE SCREEN UI ---
 @Composable
 fun WorkoutSummaryScreen(
     workoutId: Long,
     onNavigateHome: () -> Unit,
-    viewModel: WorkoutSummaryViewModel = hiltViewModel()
+    viewModel: ActiveSessionViewModel = hiltViewModel()
 ) {
-    LaunchedEffect(workoutId) {
-        viewModel.loadSummary(workoutId)
-    }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val graphicsLayer = rememberGraphicsLayer()
 
-    val state by viewModel.state.collectAsState()
+    // We keep the receipt invisible but ready to capture
+    Box(modifier = Modifier.fillMaxSize()) {
 
-    Scaffold(
-        bottomBar = {
-            Button(
-                onClick = onNavigateHome,
+        // 1. Main UI (What the user sees)
+        Scaffold(
+            bottomBar = {
+                Button(
+                    onClick = onNavigateHome,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Text("DONE")
+                }
+            }
+        ) { padding ->
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    .padding(padding)
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                Icon(Icons.Default.Home, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Return to Dashboard", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = PrimaryIndigo,
+                    modifier = Modifier.size(64.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Workout Complete!", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Text("Great job sticking to the plan.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // The "Share" Button
+                Button(
+                    onClick = {
+                        scope.launch {
+                            // Capture the invisible receipt
+                            val bitmap = graphicsLayer.toImageBitmap()
+                            shareToInstagramStory(context, bitmap.asAndroidBitmap())
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Share to Instagram Story")
+                }
             }
         }
-    ) { padding ->
+
+        // 2. The "Receipt" (Invisible to user, but rendered for capture)
+        // We place it in a Box with zIndex or alpha 0 so it doesn't block interaction but is rendered.
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .background(MaterialTheme.colorScheme.background)
-        ) {
-            when (val s = state) {
-                is SummaryState.Loading -> {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                }
-                is SummaryState.Error -> {
-                    Text(
-                        "Could not load summary.",
-                        modifier = Modifier.align(Alignment.Center),
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-                is SummaryState.Success -> {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        // Header
-                        item {
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = Color(0xFF4CAF50), // Success Green
-                                    modifier = Modifier.size(80.dp)
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Text(
-                                    "Workout Complete!",
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onBackground
-                                )
-                                Text(
-                                    text = s.date,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                .fillMaxWidth()
+                .wrapContentHeight()
+                // The magic: Draw content into the graphics layer for capture
+                .drawWithCache {
+                    onDrawWithContent {
+                        graphicsLayer.record {
+                            this@onDrawWithContent.drawContent()
                         }
-
-                        // Big Stats Row
-                        item {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                StatCard(
-                                    label = "Duration",
-                                    value = s.duration,
-                                    icon = Icons.Default.Timer,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                StatCard(
-                                    label = "Volume",
-                                    value = s.volume,
-                                    icon = null,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                StatCard(
-                                    label = "Sets",
-                                    value = s.sets.toString(),
-                                    icon = null,
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
-
-                        item {
-                            Text(
-                                "Session Highlights",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
-                            )
-                        }
-
-                        // Exercise List
-                        items(s.exerciseSummaries) { ex ->
-                            Card(
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                                ),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .padding(16.dp)
-                                        .fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = ex.name,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        fontWeight = FontWeight.Medium,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    Text(
-                                        text = ex.bestSet,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                        }
+                        // We do NOT draw it to screen, so it remains invisible
+                        // drawLayer(graphicsLayer)
                     }
                 }
-            }
+                .alpha(0f) // Double ensure it's not visible
+        ) {
+            WorkoutReceiptCard()
         }
     }
 }
 
 @Composable
-fun StatCard(label: String, value: String, icon: ImageVector?, modifier: Modifier = Modifier) {
+fun WorkoutReceiptCard() {
+    // A stylized card specifically designed for Instagram's 9:16 aspect ratio roughly
     Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        modifier = Modifier
+            .width(350.dp) // Fixed width for consistent image generation
+            .padding(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White), // White background for clean look
+        elevation = CardDefaults.cardElevation(8.dp)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier
+                .padding(24.dp)
+                .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (icon != null) {
-                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.height(4.dp))
+            // Branding
+            Text("MY APPLICATION", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, letterSpacing = 2.sp, color = Color.Gray)
+            Spacer(modifier = Modifier.height(8.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Stats
+            Text("SESSION COMPLETE", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = PrimaryIndigo)
+            Text(
+                LocalDate.now().format(DateTimeFormatter.ofPattern("MMM dd, yyyy")),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.Gray
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Receipt "Items"
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Volume", fontWeight = FontWeight.Bold)
+                Text("12,450 lbs") // Replace with actual data from ViewModel
             }
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Duration", fontWeight = FontWeight.Bold)
+                Text("45m 20s")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Exercises", fontWeight = FontWeight.Bold)
+                Text("6")
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Barcode visual (Fake)
+            Row(
+                modifier = Modifier.fillMaxWidth().height(40.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                repeat(20) {
+                    Box(modifier = Modifier.width(if (it % 3 == 0) 4.dp else 2.dp).fillMaxHeight().background(Color.Black))
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Powered by AndroidFitnessApp", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
         }
+    }
+}
+
+private fun shareToInstagramStory(context: Context, bitmap: Bitmap) {
+    try {
+        // 1. Save Bitmap to cache directory
+        val cachePath = File(context.cacheDir, "images")
+        cachePath.mkdirs() // make the directory
+        val stream = FileOutputStream("$cachePath/workout_receipt.png") // Overwrites this image every time
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+        stream.close()
+
+        // 2. Get URI via FileProvider
+        val newFile = File(cachePath, "workout_receipt.png")
+        val contentUri: Uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.provider",
+            newFile
+        )
+
+        // 3. Create Intent specifically for Instagram Stories
+        val storiesIntent = Intent("com.instagram.share.ADD_TO_STORY").apply {
+            setDataAndType(contentUri, "image/*")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            putExtra("content_url", "https://www.yourwebsite.com") // Optional: Link back
+        }
+
+        // 4. Verify Instagram is installed
+        if (context.packageManager.resolveActivity(storiesIntent, 0) != null) {
+            context.startActivity(storiesIntent)
+        } else {
+            // Fallback: Standard Share Sheet
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/*"
+                putExtra(Intent.EXTRA_STREAM, contentUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(shareIntent, "Share Workout"))
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
     }
 }

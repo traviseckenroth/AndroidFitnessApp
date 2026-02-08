@@ -26,6 +26,4 @@ data class ProfileUIState(
 
     // Integration States
     val isHealthConnectSyncing: Boolean = false,
-    val isGarminSyncing: Boolean = false,
-    val isGarminConnected: Boolean = false
 )

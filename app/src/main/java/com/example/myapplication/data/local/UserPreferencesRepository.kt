@@ -1,11 +1,9 @@
+// app/src/main/java/com/example/myapplication/data/local/UserPreferenceRespository.kt
 package com.example.myapplication.data.local
 
 import android.content.Context
-import androidx.datastore.preferences.core.doublePreferencesKey
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.intPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.core.MutablePreferences
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
@@ -13,71 +11,71 @@ import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
-// Delegate must be at top level
-private val Context.dataStore by preferencesDataStore(name = "user_prefs")
+val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "user_prefs")
 
 @Singleton
 class UserPreferencesRepository @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
-    // Standard Biometrics
-    private val HEIGHT_KEY = intPreferencesKey("user_height")
-    private val WEIGHT_KEY = doublePreferencesKey("user_weight")
-    private val AGE_KEY = intPreferencesKey("user_age")
+    private val dataStore = context.dataStore
 
-    // New Advanced Fields
-    private val GENDER_KEY = stringPreferencesKey("user_gender")
-    private val ACTIVITY_KEY = stringPreferencesKey("user_activity")
-    private val BODY_FAT_KEY = doublePreferencesKey("user_body_fat")
-    private val DIET_KEY = stringPreferencesKey("user_diet")
-    private val GOAL_PACE_KEY = stringPreferencesKey("user_goal_pace")
-    private val RECOVERY_KEY = intPreferencesKey("user_recovery")
+    private object PreferencesKeys {
+        val USER_HEIGHT = intPreferencesKey("user_height")
+        val USER_WEIGHT = doublePreferencesKey("user_weight")
+        val USER_AGE = intPreferencesKey("user_age")
+        val USER_GENDER = stringPreferencesKey("user_gender")
+        val USER_ACTIVITY = stringPreferencesKey("user_activity")
+        val USER_BODY_FAT = doublePreferencesKey("user_body_fat")
+        val USER_DIET = stringPreferencesKey("user_diet")
+        val USER_GOAL_PACE = stringPreferencesKey("user_goal_pace")
 
-    // Flows
-    val userHeight: Flow<Int> = context.dataStore.data.map { it[HEIGHT_KEY] ?: 180 }
-    val userWeight: Flow<Double> = context.dataStore.data.map { it[WEIGHT_KEY] ?: 75.0 }
-    val userAge: Flow<Int> = context.dataStore.data.map { it[AGE_KEY] ?: 25 }
+        // NEW: Gym Customization Keys
+        val GYM_TYPE = stringPreferencesKey("gym_type") // "Commercial", "Home", "Garage", etc.
+        val EXCLUDED_EQUIPMENT = stringSetPreferencesKey("excluded_equipment") // Set of equipment names to hide
+    }
+    val recoveryScore: Flow<Int> = context.dataStore.data.map { it[PreferencesKeys.RECOVERY_SCORE] ?: 100 }
+    // ... existing flows ...
+    val userHeight: Flow<Int> = dataStore.data.map { it[PreferencesKeys.USER_HEIGHT] ?: 170 }
+    val userWeight: Flow<Double> = dataStore.data.map { it[PreferencesKeys.USER_WEIGHT] ?: 70.0 }
+    val userAge: Flow<Int> = dataStore.data.map { it[PreferencesKeys.USER_AGE] ?: 25 }
+    val userGender: Flow<String> = dataStore.data.map { it[PreferencesKeys.USER_GENDER] ?: "Male" }
+    val userActivity: Flow<String> = dataStore.data.map { it[PreferencesKeys.USER_ACTIVITY] ?: "Moderate" }
+    val userBodyFat: Flow<Double?> = dataStore.data.map { it[PreferencesKeys.USER_BODY_FAT] }
+    val userDiet: Flow<String> = dataStore.data.map { it[PreferencesKeys.USER_DIET] ?: "Standard" }
+    val userGoalPace: Flow<String> = dataStore.data.map { it[PreferencesKeys.USER_GOAL_PACE] ?: "Maintain" }
 
-    val userGender: Flow<String> = context.dataStore.data.map { it[GENDER_KEY] ?: "Male" }
-    val userActivity: Flow<String> = context.dataStore.data.map { it[ACTIVITY_KEY] ?: "Sedentary" }
-    val userBodyFat: Flow<Double?> = context.dataStore.data.map { it[BODY_FAT_KEY] }
-    val userDiet: Flow<String> = context.dataStore.data.map { it[DIET_KEY] ?: "Standard" }
-    val userGoalPace: Flow<String> = context.dataStore.data.map { it[GOAL_PACE_KEY] ?: "Maintain" }
-    val recoveryScore: Flow<Int> = context.dataStore.data.map { it[RECOVERY_KEY] ?: 100 }
-    suspend fun saveProfile(
-        height: Int, weight: Double, age: Int,
-        gender: String, activity: String, bodyFat: Double?,
-        diet: String, pace: String
-    ) {
-        context.dataStore.edit { prefs: MutablePreferences ->
-            prefs[HEIGHT_KEY] = height
-            prefs[WEIGHT_KEY] = weight
-            prefs[AGE_KEY] = age
-            prefs[GENDER_KEY] = gender
-            prefs[ACTIVITY_KEY] = activity
+    // NEW: Gym Settings Flows
+    val gymType: Flow<String> = dataStore.data.map { it[PreferencesKeys.GYM_TYPE] ?: "Commercial" }
+    val excludedEquipment: Flow<Set<String>> = dataStore.data.map { it[PreferencesKeys.EXCLUDED_EQUIPMENT] ?: emptySet() }
 
-            if (bodyFat != null) {
-                prefs[BODY_FAT_KEY] = bodyFat
+    // ... existing save functions ...
+    suspend fun saveProfile(h: Int, w: Double, a: Int, g: String, act: String, bf: Double?, d: String, p: String) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.USER_HEIGHT] = h
+            preferences[PreferencesKeys.USER_WEIGHT] = w
+            preferences[PreferencesKeys.USER_AGE] = a
+            preferences[PreferencesKeys.USER_GENDER] = g
+            preferences[PreferencesKeys.USER_ACTIVITY] = act
+            if (bf != null) preferences[PreferencesKeys.USER_BODY_FAT] = bf
+            preferences[PreferencesKeys.USER_DIET] = d
+            preferences[PreferencesKeys.USER_GOAL_PACE] = p
+        }
+    }
+
+    // NEW: Save Gym Settings
+    suspend fun saveGymType(type: String) {
+        dataStore.edit { it[PreferencesKeys.GYM_TYPE] = type }
+    }
+
+    suspend fun toggleEquipmentExclusion(equipment: String, isExcluded: Boolean) {
+        dataStore.edit { preferences ->
+            val currentSet = preferences[PreferencesKeys.EXCLUDED_EQUIPMENT] ?: emptySet()
+            val newSet = if (isExcluded) {
+                currentSet + equipment
             } else {
-                prefs.remove(BODY_FAT_KEY)
+                currentSet - equipment
             }
-
-            prefs[DIET_KEY] = diet
-            prefs[GOAL_PACE_KEY] = pace
-        }
-    }
-
-    // Legacy support if needed
-    suspend fun saveBiometrics(height: Int, weight: Double, age: Int) {
-        context.dataStore.edit { prefs ->
-            prefs[HEIGHT_KEY] = height
-            prefs[WEIGHT_KEY] = weight
-            prefs[AGE_KEY] = age
-        }
-    }
-    suspend fun saveRecoveryScore(score: Int) {
-        context.dataStore.edit { prefs ->
-            prefs[RECOVERY_KEY] = score
+            preferences[PreferencesKeys.EXCLUDED_EQUIPMENT] = newSet
         }
     }
 }

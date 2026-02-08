@@ -56,7 +56,11 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             // --- SECTION: INTEGRATIONS ---
-            Text("Integrations", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Text(
+                "Integrations",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
 
             Card(
                 colors = CardDefaults.cardColors(
@@ -83,7 +87,11 @@ fun SettingsScreen(
                     }
 
                     if (viewModel.isHealthConnected) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50))
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = Color(0xFF4CAF50)
+                        )
                     } else {
                         Button(onClick = {
                             // Launch System Permission Screen
@@ -98,7 +106,11 @@ fun SettingsScreen(
             HorizontalDivider()
 
             // --- SECTION: ACCOUNT ---
-            Text("Account", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Text(
+                "Account",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
 
             Button(
                 onClick = { viewModel.logout(onLogoutSuccess) },
@@ -108,5 +120,21 @@ fun SettingsScreen(
                 Text("Sign Out")
             }
         }
+    }
+}
+@Composable
+fun SettingsScreen(
+    onNavigateToGymSettings: () -> Unit,
+    onBack: () -> Unit,
+    // ...
+) {
+    // ...
+    item {
+        SettingsTile(
+            title = "Gym Settings",
+            subtitle = "Customize equipment and gym type",
+            icon = Icons.Default.FitnessCenter,
+            onClick = onNavigateToGymSettings
+        )
     }
 }

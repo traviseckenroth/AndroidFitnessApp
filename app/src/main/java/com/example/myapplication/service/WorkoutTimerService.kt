@@ -1,12 +1,12 @@
 package com.example.myapplication.service
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import java.util.Locale
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -17,12 +17,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
-// Simple data class for the timer
+// FIXED: Added hasFinished property
 data class TimerState(
     val isRunning: Boolean = false,
     val remainingTime: Int = 0,
     val activeExerciseId: Long? = null,
-    val hasFinished: Boolean = false // Added field
+    val hasFinished: Boolean = false
 )
 
 class WorkoutTimerService : Service() {
@@ -30,7 +30,6 @@ class WorkoutTimerService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
     private var timerJob: Job? = null
 
-    // Global State exposed to ViewModel
     companion object {
         private val _timerState = MutableStateFlow(TimerState())
         val timerState = _timerState.asStateFlow()
@@ -64,11 +63,17 @@ class WorkoutTimerService : Service() {
         timerJob = serviceScope.launch {
             var timeLeft = durationSeconds
 
-            // 1. Set Initial State
-            _timerState.update { TimerState(true, timeLeft, exerciseId, false) }
+            // Reset state: running = true, hasFinished = false
+            _timerState.update {
+                TimerState(
+                    isRunning = true,
+                    remainingTime = timeLeft,
+                    activeExerciseId = exerciseId,
+                    hasFinished = false
+                )
+            }
             startForeground(NOTIFICATION_ID, buildNotification(timeLeft))
 
-            // 2. Countdown Loop
             while (timeLeft > 0) {
                 delay(1000L)
                 timeLeft--
@@ -76,10 +81,17 @@ class WorkoutTimerService : Service() {
                 updateNotification(timeLeft)
             }
 
-            // 3. Timer Finished - Don't kill service, just mark finished
-            _timerState.update { it.copy(isRunning = false, hasFinished = true) }
-            updateNotification(0)
-            // stopTimer() -> REMOVED to prevent killing service before restart
+            // FIXED: Set hasFinished = true when done, keep activeExerciseId so UI knows what finished
+            _timerState.update {
+                it.copy(
+                    isRunning = false,
+                    remainingTime = 0,
+                    hasFinished = true
+                )
+            }
+
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            // Note: We do not call stopSelf() immediately so the UI has time to react to the state change
         }
     }
 
@@ -90,12 +102,10 @@ class WorkoutTimerService : Service() {
         stopSelf()
     }
 
-    // --- NOTIFICATION HELPERS ---
-
     private fun buildNotification(timeLeft: Int): android.app.Notification {
         val minutes = timeLeft / 60
         val seconds = timeLeft % 60
-        val timeString = String.format(Locale.US, "%02d:%02d", minutes, seconds)
+        val timeString = String.format("%02d:%02d", minutes, seconds)
 
         val openAppIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -108,18 +118,17 @@ class WorkoutTimerService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Rest Timer")
             .setContentText("Time Remaining: $timeString")
-            .setSmallIcon(R.drawable.ic_launcher_foreground) // Ensure you have an icon here
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(pendingIntent)
-            .setOnlyAlertOnce(true) // Prevents sound/vibration on every second update
+            .setOnlyAlertOnce(true)
             .setOngoing(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
     }
 
     private fun updateNotification(timeLeft: Int) {
-        val notification = buildNotification(timeLeft)
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(NOTIFICATION_ID, notification)
+        manager.notify(NOTIFICATION_ID, buildNotification(timeLeft))
     }
 
     private fun createNotificationChannel() {
@@ -127,7 +136,7 @@ class WorkoutTimerService : Service() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Workout Timer",
-                NotificationManager.IMPORTANCE_LOW // Low importance = no sound/popup, just status bar
+                NotificationManager.IMPORTANCE_LOW
             )
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)

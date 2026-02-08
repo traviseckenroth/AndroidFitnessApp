@@ -9,7 +9,6 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import javax.inject.Provider
 import javax.inject.Singleton
 
 @Module
@@ -20,18 +19,16 @@ object AppModule {
     @Provides
     @Singleton
     fun provideDatabase(
-        @ApplicationContext context: Context,
-        daoProvider: Provider<WorkoutDao>
+        @ApplicationContext context: Context
     ): AppDatabase {
         return Room.databaseBuilder(
             context.applicationContext,
             AppDatabase::class.java,
-            // 1. Bump version to force a clean slate (wipes old duplicate data)
-            "workout_db_v22"
+            "workout_database"
         )
+            // FIXED: Removed undefined 'MIGRATION_22_23'.
+            // fallbackToDestructiveMigration handles version mismatches (e.g. 12 vs 22) by resetting the DB.
             .fallbackToDestructiveMigration()
-            // 2. REMOVED the .addCallback block entirely to fix the race condition.
-            // MainActivity handles population now.
             .build()
     }
 

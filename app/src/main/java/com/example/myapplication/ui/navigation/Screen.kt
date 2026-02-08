@@ -6,6 +6,7 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Fastfood
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
 
 sealed class Screen(val route: String, val title: String? = null, val icon: ImageVector? = null) {
@@ -16,7 +17,12 @@ sealed class Screen(val route: String, val title: String? = null, val icon: Imag
     object Insights : Screen("insights", "Insights", Icons.Default.BarChart)
     object Profile : Screen("profile", "Profile", Icons.Default.Person)
 
-    // Full Screen Features (No Bottom Nav Icon)
+    // Feature Screens (Added these)
+    object GeneratePlan : Screen("generate_plan")
+    object ManualPlan : Screen("manual_plan")
+    object Settings : Screen("settings", "Settings", Icons.Default.Settings)
+
+    // Full Screen Features
     object ActiveWorkout : Screen("active_workout/{workoutId}") {
         fun createRoute(workoutId: Long) = "active_workout/$workoutId"
     }

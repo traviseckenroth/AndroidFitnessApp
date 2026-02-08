@@ -35,15 +35,13 @@ fun NavGraph(
 ) {
     NavHost(
         navController = navController,
-        startDestination = "login",
+        startDestination = "login", // Keeping literal as Screen.Login isn't defined yet
         modifier = modifier
     ) {
-        // ... (Auth, Home, Settings, Plan, Nutrition, Insights, Profile, WarmUp routes remain the same) ...
-
         // --- AUTH ROUTES ---
         composable("login") {
             LoginScreen(
-                onLoginSuccess = { navController.navigate("home") { popUpTo("login") { inclusive = true } } },
+                onLoginSuccess = { navController.navigate(Screen.Home.route) { popUpTo("login") { inclusive = true } } },
                 onNavigateToSignUp = { navController.navigate("signup") }
             )
         }
@@ -53,39 +51,70 @@ fun NavGraph(
                 onBackToLogin = { navController.popBackStack() }
             )
         }
-        composable("home") {
+
+        // --- MAIN APP ROUTES ---
+
+        // FIX: Updated HomeScreen call to use generic onNavigate
+        composable(Screen.Home.route) {
             HomeScreen(
-                onNavigateToWorkout = { workoutId -> navController.navigate("active_workout/$workoutId") }
+                onNavigate = { route -> navController.navigate(route) }
             )
         }
+
         composable("settings") {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onLogoutSuccess = { navController.navigate("login") { popUpTo(0) { inclusive = true } } }
             )
         }
-        composable("plan") {
+
+        // Plan Tab (Bottom Nav)
+        composable(Screen.Plan.route) {
             GeneratePlanScreen(
                 viewModel = planViewModel,
-                onManualCreateClick = { navController.navigate("manual_plan") },
-                onPlanGenerated = { navController.navigate("home") { popUpTo("home") { inclusive = true } } }
+                onManualCreateClick = { navController.navigate(Screen.ManualPlan.route) },
+                onPlanGenerated = { navController.navigate(Screen.Home.route) { popUpTo(Screen.Home.route) { inclusive = true } } }
             )
         }
-        composable("manual_plan") {
+
+        // Quick Action Route (Maps to same screen as Plan for now, or you can alias it)
+        composable(Screen.GeneratePlan.route) {
+            GeneratePlanScreen(
+                viewModel = planViewModel,
+                onManualCreateClick = { navController.navigate(Screen.ManualPlan.route) },
+                onPlanGenerated = { navController.navigate(Screen.Home.route) { popUpTo(Screen.Home.route) { inclusive = true } } }
+            )
+        }
+
+        composable(Screen.ManualPlan.route) {
             ManualPlanScreen(
                 onNavigateToActiveWorkout = { workoutId ->
-                    navController.navigate("active_workout/$workoutId") { popUpTo("home") }
+                    navController.navigate(Screen.ActiveWorkout.createRoute(workoutId)) { popUpTo(Screen.Home.route) }
                 }
             )
         }
-        composable("nutrition") { NutritionScreen() }
-        composable("insights") { InsightsScreen() }
-        composable("profile") { ProfileScreen(onBack = { navController.popBackStack() }) }
+
+        composable(Screen.Nutrition.route) { NutritionScreen() }
+        composable(Screen.Insights.route) { InsightsScreen() }
+        composable(Screen.Profile.route) { ProfileScreen(onBack = { navController.popBackStack() }) }
         composable("warm_up") { WarmUpScreen(onBack = { navController.popBackStack() }) }
+
         composable("exercise_list") {
             ExerciseListScreen(
                 onBack = { navController.popBackStack() },
                 onNavigateToExerciseHistory = { exerciseId -> navController.navigate("exercise_history/$exerciseId") }
+            )
+        }
+        composable(Screen.Settings.route) {
+            SettingsScreen(
+                onNavigateToGymSettings = { navController.navigate("gym_settings") }, // Add this param to SettingsScreen
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable("gym_settings") {
+            GymSettingsScreen(
+                onBack = { navController.popBackStack() }
             )
         }
         composable(
@@ -93,10 +122,10 @@ fun NavGraph(
             arguments = listOf(navArgument("exerciseId") { type = NavType.LongType })
         ) { ExerciseHistoryScreen(navController = navController) }
 
-        // --- UPDATED WORKOUT ROUTES ---
+        // --- WORKOUT ROUTES ---
 
         composable(
-            route = "active_workout/{workoutId}",
+            route = Screen.ActiveWorkout.route,
             arguments = listOf(navArgument("workoutId") { type = NavType.LongType })
         ) { backStackEntry ->
             val workoutId = backStackEntry.arguments?.getLong("workoutId") ?: return@composable
@@ -106,22 +135,18 @@ fun NavGraph(
                 workoutId = workoutId,
                 viewModel = viewModel,
                 onBack = {
-                    // Optional: You might want to confirm before exiting
                     navController.popBackStack()
                 },
-                // FIX: Add the missing onWorkoutComplete parameter
                 onWorkoutComplete = { completedId ->
-                    // Navigate to summary and clear the active workout from backstack
-                    navController.navigate("workout_summary/$completedId") {
-                        popUpTo("home") { inclusive = false }
+                    navController.navigate(Screen.WorkoutSummary.createRoute(completedId)) {
+                        popUpTo(Screen.Home.route) { inclusive = false }
                     }
                 }
             )
         }
 
-        // NEW: Workout Summary Screen
         composable(
-            route = "workout_summary/{workoutId}",
+            route = Screen.WorkoutSummary.route,
             arguments = listOf(navArgument("workoutId") { type = NavType.LongType })
         ) { backStackEntry ->
             val workoutId = backStackEntry.arguments?.getLong("workoutId") ?: return@composable
@@ -129,8 +154,8 @@ fun NavGraph(
             WorkoutSummaryScreen(
                 workoutId = workoutId,
                 onNavigateHome = {
-                    navController.navigate("home") {
-                        popUpTo("home") { inclusive = true }
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Home.route) { inclusive = true }
                     }
                 }
             )
