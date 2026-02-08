@@ -1,5 +1,3 @@
-// app/src/main/java/com/example/myapplication/ui/navigation/NavGraph.kt
-
 package com.example.myapplication.ui.navigation
 
 import androidx.compose.runtime.Composable
@@ -16,12 +14,14 @@ import com.example.myapplication.ui.exercise.ExerciseListScreen
 import com.example.myapplication.ui.exercise_history.ExerciseHistoryScreen
 import com.example.myapplication.ui.home.HomeScreen
 import com.example.myapplication.ui.insights.InsightsScreen
+import com.example.myapplication.ui.settings.GymSettingsScreen // FIXED: Added Import
 import com.example.myapplication.ui.nutrition.NutritionScreen
 import com.example.myapplication.ui.plan.GeneratePlanScreen
 import com.example.myapplication.ui.plan.ManualPlanScreen
 import com.example.myapplication.ui.plan.PlanViewModel
 import com.example.myapplication.ui.profile.ProfileScreen
 import com.example.myapplication.ui.settings.SettingsScreen
+import com.example.myapplication.ui.settings.GymSettingsScreen // FIXED: Added missing import
 import com.example.myapplication.ui.summary.WorkoutSummaryScreen
 import com.example.myapplication.ui.warmup.WarmUpScreen
 import com.example.myapplication.ui.workout.ActiveSessionViewModel
@@ -35,7 +35,7 @@ fun NavGraph(
 ) {
     NavHost(
         navController = navController,
-        startDestination = "login", // Keeping literal as Screen.Login isn't defined yet
+        startDestination = "login",
         modifier = modifier
     ) {
         // --- AUTH ROUTES ---
@@ -53,8 +53,6 @@ fun NavGraph(
         }
 
         // --- MAIN APP ROUTES ---
-
-        // FIX: Updated HomeScreen call to use generic onNavigate
         composable(Screen.Home.route) {
             HomeScreen(
                 onNavigate = { route -> navController.navigate(route) }
@@ -64,11 +62,11 @@ fun NavGraph(
         composable("settings") {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
-                onLogoutSuccess = { navController.navigate("login") { popUpTo(0) { inclusive = true } } }
+                onLogoutSuccess = { navController.navigate("login") { popUpTo(0) { inclusive = true } } },
+                onNavigateToGymSettings = { navController.navigate("gym_settings") } // FIXED: Added navigation callback
             )
         }
 
-        // Plan Tab (Bottom Nav)
         composable(Screen.Plan.route) {
             GeneratePlanScreen(
                 viewModel = planViewModel,
@@ -77,7 +75,6 @@ fun NavGraph(
             )
         }
 
-        // Quick Action Route (Maps to same screen as Plan for now, or you can alias it)
         composable(Screen.GeneratePlan.route) {
             GeneratePlanScreen(
                 viewModel = planViewModel,
@@ -105,10 +102,12 @@ fun NavGraph(
                 onNavigateToExerciseHistory = { exerciseId -> navController.navigate("exercise_history/$exerciseId") }
             )
         }
+
         composable(Screen.Settings.route) {
             SettingsScreen(
-                onNavigateToGymSettings = { navController.navigate("gym_settings") }, // Add this param to SettingsScreen
-                onBack = { navController.popBackStack() }
+                onNavigateToGymSettings = { navController.navigate("gym_settings") },
+                onBack = { navController.popBackStack() },
+                onLogoutSuccess = { navController.navigate("login") { popUpTo(0) { inclusive = true } } }
             )
         }
 
@@ -117,13 +116,13 @@ fun NavGraph(
                 onBack = { navController.popBackStack() }
             )
         }
+
         composable(
             route = "exercise_history/{exerciseId}",
             arguments = listOf(navArgument("exerciseId") { type = NavType.LongType })
         ) { ExerciseHistoryScreen(navController = navController) }
 
         // --- WORKOUT ROUTES ---
-
         composable(
             route = Screen.ActiveWorkout.route,
             arguments = listOf(navArgument("workoutId") { type = NavType.LongType })

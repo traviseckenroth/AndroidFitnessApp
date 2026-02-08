@@ -41,7 +41,7 @@ data class ExerciseState(
 class ActiveSessionViewModel @Inject constructor(
     private val repository: WorkoutExecutionRepository,
     private val application: Application,
-    private val userPrefs: UserPreferencesRepository,
+    private val userPrefs: UserPreferencesRepository, // Unique declaration
     private val healthConnectManager: HealthConnectManager,
     val bedrockClient: BedrockClient
 ) : ViewModel() {
@@ -50,7 +50,9 @@ class ActiveSessionViewModel @Inject constructor(
     private val _sets = MutableStateFlow<List<WorkoutSetEntity>>(emptyList())
     private val _exercises = MutableStateFlow<List<ExerciseEntity>>(emptyList())
     private val _exerciseStates = MutableStateFlow<List<ExerciseState>>(emptyList())
-    private val userPrefs: UserPreferencesRepository
+
+    // REMOVED: Conflicting "private val userPrefs" that was here
+
     val exerciseStates: StateFlow<List<ExerciseState>> = _exerciseStates
 
     private val _coachBriefing = MutableStateFlow("Loading briefing...")
@@ -59,7 +61,6 @@ class ActiveSessionViewModel @Inject constructor(
     private val _workoutSummary = MutableStateFlow<List<String>?>(null)
     val workoutSummary: StateFlow<List<String>?> = _workoutSummary
 
-    // Track workout start time for Health Connect
     private var workoutStartTime: Instant = Instant.now()
 
     init {
@@ -68,7 +69,6 @@ class ActiveSessionViewModel @Inject constructor(
         // --- LISTEN TO TIMER SERVICE ---
         viewModelScope.launch {
             WorkoutTimerService.timerState.collect { serviceState ->
-                // FIXED: Now resolves correctly with TimerState import
                 if (serviceState.hasFinished && serviceState.activeExerciseId != null) {
                     val exerciseId = serviceState.activeExerciseId!!
                     val currentState = _exerciseStates.value.find { it.exercise.exerciseId == exerciseId }
@@ -76,7 +76,6 @@ class ActiveSessionViewModel @Inject constructor(
 
                     if (currentSet != null) {
                         updateSetCompletion(currentSet, true)
-                        // Immediate restart - this creates the "Auto-Advance" feature
                         startSetTimer(exerciseId)
                     }
                 }
@@ -88,6 +87,7 @@ class ActiveSessionViewModel @Inject constructor(
                 )
             }
         }
+
         // --- LOAD DATA ---
         viewModelScope.launch {
             _workoutId.collectLatest { id ->
@@ -119,12 +119,13 @@ class ActiveSessionViewModel @Inject constructor(
             }
         }
 
+        // Combine logic with explicit types to resolve inference errors
         viewModelScope.launch {
             combine(
                 _exercises,
                 _sets,
                 userPrefs.recoveryScore
-            ) { allExercises, sessionSets, recovery -> // Explicit types inferred here
+            ) { allExercises: List<ExerciseEntity>, sessionSets: List<WorkoutSetEntity>, recovery: Int ->
 
                 val sessionExerciseIds = sessionSets.map { it.exerciseId }.toSet()
                 val sessionExercises = allExercises
@@ -167,15 +168,13 @@ class ActiveSessionViewModel @Inject constructor(
 
             val rawSets = repository.getSetsForSession(workoutId).first()
 
-            // --- RECOVERY ADJUSTMENT LOGIC ---
             val recoveryScore = userPrefs.recoveryScore.first()
             val rpeReduction = when {
-                recoveryScore < 40 -> 2 // Very Tired
-                recoveryScore < 70 -> 1 // Tired
+                recoveryScore < 40 -> 2
+                recoveryScore < 70 -> 1
                 else -> 0
             }
 
-            // Apply adjustment to the initial sets displayed
             val adjustedSets = rawSets.map { set ->
                 if (rpeReduction > 0) {
                     set.copy(suggestedRpe = (set.suggestedRpe - rpeReduction).coerceAtLeast(1))
@@ -194,16 +193,13 @@ class ActiveSessionViewModel @Inject constructor(
                 )
             }
 
-            // Add recovery note to briefing
-            var briefing = generateCoachBriefing(workoutExercises, adjustedSets)
+            var briefing = generateCoachBriefing(workoutExercises, adjustedSets, recoveryScore)
             if (rpeReduction > 0) {
                 briefing = "⚠️ RECOVERY LOW ($recoveryScore%)\nTargets reduced by $rpeReduction RPE. Take it easy today.\n\n$briefing"
             }
             _coachBriefing.value = briefing
         }
     }
-
-    // --- STANDARD OPERATIONS ---
 
     fun updateSetCompletion(set: WorkoutSetEntity, isCompleted: Boolean) {
         viewModelScope.launch { repository.updateSet(set.copy(isCompleted = isCompleted)) }
@@ -247,8 +243,6 @@ class ActiveSessionViewModel @Inject constructor(
         }
     }
 
-    // --- TIMER LOGIC (Using Foreground Service) ---
-
     fun startSetTimer(exerciseId: Long) {
         val exerciseState = _exerciseStates.value.find { it.exercise.exerciseId == exerciseId } ?: return
         val durationSeconds = (exerciseState.exercise.estimatedTimePerSet * 60).toInt()
@@ -262,14 +256,11 @@ class ActiveSessionViewModel @Inject constructor(
     }
 
     fun skipSetTimer(exerciseId: Long) {
-        // 1. Mark current set as Done
         val currentState = _exerciseStates.value.find { it.exercise.exerciseId == exerciseId }
         val currentSet = currentState?.sets?.firstOrNull { !it.isCompleted }
         if (currentSet != null) {
             updateSetCompletion(currentSet, true)
         }
-
-        // 2. Restart the timer immediately (Skip Rest)
         startSetTimer(exerciseId)
     }
 
@@ -292,20 +283,15 @@ class ActiveSessionViewModel @Inject constructor(
         }
     }
 
-    // --- FINISH WORKOUT (Database + Health Connect) ---
-
     fun finishWorkout(workoutId: Long) {
-        skipSetTimer(-1) // Stop Service
-
+        skipSetTimer(-1)
         viewModelScope.launch {
-            // 1. Save to Local DB & Generate Report
             val report = repository.completeWorkout(workoutId)
             _workoutSummary.value = report
 
-            // 2. Health Connect Sync
             val endTime = Instant.now()
             val durationMin = ChronoUnit.MINUTES.between(workoutStartTime, endTime)
-            val estimatedCalories = (durationMin * 4.5).coerceAtLeast(10.0) // ~4.5 kcal/min estimate
+            val estimatedCalories = (durationMin * 4.5).coerceAtLeast(10.0)
 
             try {
                 if (healthConnectManager.hasPermissions()) {
@@ -316,8 +302,6 @@ class ActiveSessionViewModel @Inject constructor(
                         calories = estimatedCalories,
                         title = "Strength Workout"
                     )
-                } else {
-                    Log.d("Workout", "Health Connect permissions missing. Workout saved locally only.")
                 }
             } catch (e: Exception) {
                 Log.e("Workout", "Failed to sync with Health Connect", e)
@@ -329,31 +313,24 @@ class ActiveSessionViewModel @Inject constructor(
         _workoutSummary.value = null
     }
 
-    // NEW: Wrapper function for the UI to call
     suspend fun generateCoachingCue(exerciseName: String, issue: String): String {
         return bedrockClient.generateCoachingCue(exerciseName, issue, 0)
     }
 }
 
-private fun generateCoachBriefing(exercises: List<ExerciseEntity>, sets: List<WorkoutSetEntity>): String {
+// FIXED: Added recoveryScore parameter
+private fun generateCoachBriefing(exercises: List<ExerciseEntity>, sets: List<WorkoutSetEntity>, recoveryScore: Int): String {
     if (exercises.isEmpty() || sets.isEmpty()) return "Ready to start your workout?"
-    val tier1Count = exercises.count { it.tier == 1 }
-    val avgReps = if (sets.isNotEmpty()) sets.map { it.suggestedReps }.average() else 0.0
-    val totalSets = sets.size
 
     val dominantMuscle = exercises.groupingBy { it.muscleGroup }
         .eachCount()
         .maxByOrNull { it.value }?.key ?: "Full Body"
 
+    val tier1Count = exercises.count { it.tier == 1 }
+    val avgReps = if (sets.isNotEmpty()) sets.map { it.suggestedReps }.average() else 0.0
+
     return when {
-        tier1Count >= 2 && avgReps < 8 -> {
-            "Mission: Heavy $dominantMuscle Day.\nIntensity is key today, not speed."
-        }
-        totalSets > 18 -> {
-            "Mission: High Volume $dominantMuscle.\nFocus on surviving the burn and keeping form strict."
-        }
-        else -> {
-            "Mission: $dominantMuscle Hypertrophy.\nFocus on the mind-muscle connection."
-        }
+        tier1Count >= 2 && avgReps < 8 -> "Mission: Heavy $dominantMuscle Day.\nIntensity is key today."
+        else -> "Mission: $dominantMuscle Hypertrophy.\nFocus on the mind-muscle connection."
     }
 }

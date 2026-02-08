@@ -1,4 +1,3 @@
-// app/src/main/java/com/example/myapplication/data/local/UserPreferenceRespository.kt
 package com.example.myapplication.data.local
 
 import android.content.Context
@@ -29,12 +28,15 @@ class UserPreferencesRepository @Inject constructor(
         val USER_DIET = stringPreferencesKey("user_diet")
         val USER_GOAL_PACE = stringPreferencesKey("user_goal_pace")
 
-        // NEW: Gym Customization Keys
-        val GYM_TYPE = stringPreferencesKey("gym_type") // "Commercial", "Home", "Garage", etc.
-        val EXCLUDED_EQUIPMENT = stringSetPreferencesKey("excluded_equipment") // Set of equipment names to hide
+        // FIXED: Added missing RECOVERY_SCORE key
+        val RECOVERY_SCORE = intPreferencesKey("recovery_score")
+
+        val GYM_TYPE = stringPreferencesKey("gym_type")
+        val EXCLUDED_EQUIPMENT = stringSetPreferencesKey("excluded_equipment")
     }
+
     val recoveryScore: Flow<Int> = context.dataStore.data.map { it[PreferencesKeys.RECOVERY_SCORE] ?: 100 }
-    // ... existing flows ...
+
     val userHeight: Flow<Int> = dataStore.data.map { it[PreferencesKeys.USER_HEIGHT] ?: 170 }
     val userWeight: Flow<Double> = dataStore.data.map { it[PreferencesKeys.USER_WEIGHT] ?: 70.0 }
     val userAge: Flow<Int> = dataStore.data.map { it[PreferencesKeys.USER_AGE] ?: 25 }
@@ -44,11 +46,9 @@ class UserPreferencesRepository @Inject constructor(
     val userDiet: Flow<String> = dataStore.data.map { it[PreferencesKeys.USER_DIET] ?: "Standard" }
     val userGoalPace: Flow<String> = dataStore.data.map { it[PreferencesKeys.USER_GOAL_PACE] ?: "Maintain" }
 
-    // NEW: Gym Settings Flows
     val gymType: Flow<String> = dataStore.data.map { it[PreferencesKeys.GYM_TYPE] ?: "Commercial" }
     val excludedEquipment: Flow<Set<String>> = dataStore.data.map { it[PreferencesKeys.EXCLUDED_EQUIPMENT] ?: emptySet() }
 
-    // ... existing save functions ...
     suspend fun saveProfile(h: Int, w: Double, a: Int, g: String, act: String, bf: Double?, d: String, p: String) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.USER_HEIGHT] = h
@@ -62,7 +62,6 @@ class UserPreferencesRepository @Inject constructor(
         }
     }
 
-    // NEW: Save Gym Settings
     suspend fun saveGymType(type: String) {
         dataStore.edit { it[PreferencesKeys.GYM_TYPE] = type }
     }

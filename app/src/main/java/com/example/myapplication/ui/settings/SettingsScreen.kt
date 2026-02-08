@@ -2,17 +2,20 @@ package com.example.myapplication.ui.settings
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.health.connect.client.PermissionController
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FitnessCenter // FIXED: Import
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 
@@ -21,17 +24,15 @@ import androidx.hilt.navigation.compose.hiltViewModel
 fun SettingsScreen(
     onBack: () -> Unit,
     onLogoutSuccess: () -> Unit,
+    onNavigateToGymSettings: () -> Unit, // FIXED: Added missing parameter
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
-    // 1. Create the Permission Launcher
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract()
     ) { granted ->
-        // When user returns from system dialog, check status again
         viewModel.checkPermissions()
     }
 
-    // 2. Check permissions when screen opens
     LaunchedEffect(Unit) {
         viewModel.checkPermissions()
     }
@@ -55,6 +56,23 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
+            // --- SECTION: PREFERENCES ---
+            Text(
+                "Preferences",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            // FIXED: SettingsTile now works
+            SettingsTile(
+                title = "Gym Settings",
+                subtitle = "Customize equipment and gym type",
+                icon = Icons.Default.FitnessCenter,
+                onClick = onNavigateToGymSettings
+            )
+
+            HorizontalDivider()
+
             // --- SECTION: INTEGRATIONS ---
             Text(
                 "Integrations",
@@ -64,13 +82,11 @@ fun SettingsScreen(
 
             Card(
                 colors = CardDefaults.cardColors(
-                    containerColor = if (viewModel.isHealthConnected) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.surfaceVariant
+                    containerColor = if (viewModel.isHealthConnected.value) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.surfaceVariant
                 )
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -80,22 +96,17 @@ fun SettingsScreen(
                         Column {
                             Text("Health Connect", style = MaterialTheme.typography.titleSmall)
                             Text(
-                                if (viewModel.isHealthConnected) "Connected" else "Sync workouts to Google Fit",
+                                if (viewModel.isHealthConnected.value) "Connected" else "Sync workouts to Google Fit",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
                     }
 
-                    if (viewModel.isHealthConnected) {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = Color(0xFF4CAF50)
-                        )
+                    if (viewModel.isHealthConnected.value) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50))
                     } else {
                         Button(onClick = {
-                            // Launch System Permission Screen
-                            permissionLauncher.launch(viewModel.healthConnectManager.permissions)
+                            permissionLauncher.launch(viewModel.permissions)
                         }) {
                             Text("Connect")
                         }
@@ -105,12 +116,7 @@ fun SettingsScreen(
 
             HorizontalDivider()
 
-            // --- SECTION: ACCOUNT ---
-            Text(
-                "Account",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
+            Text("Account", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
 
             Button(
                 onClick = { viewModel.logout(onLogoutSuccess) },
@@ -122,19 +128,21 @@ fun SettingsScreen(
         }
     }
 }
+
+// FIXED: Added missing Composable
 @Composable
-fun SettingsScreen(
-    onNavigateToGymSettings: () -> Unit,
-    onBack: () -> Unit,
-    // ...
-) {
-    // ...
-    item {
-        SettingsTile(
-            title = "Gym Settings",
-            subtitle = "Customize equipment and gym type",
-            icon = Icons.Default.FitnessCenter,
-            onClick = onNavigateToGymSettings
-        )
+fun SettingsTile(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.width(16.dp))
+            Column {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }

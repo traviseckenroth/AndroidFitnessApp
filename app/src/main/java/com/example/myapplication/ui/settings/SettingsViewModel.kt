@@ -1,13 +1,12 @@
 package com.example.myapplication.ui.settings
 
+import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.repository.AuthRepository
 import com.example.myapplication.data.repository.HealthConnectManager
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -18,43 +17,31 @@ class SettingsViewModel @Inject constructor(
     private val userPrefs: UserPreferencesRepository
 ) : ViewModel() {
 
-    // --- Gym Settings State ---
     val gymType = userPrefs.gymType
     val excludedEquipment = userPrefs.excludedEquipment
 
-    // --- Actions ---
+    val isHealthConnected = mutableStateOf(false)
+    val permissions = healthConnectManager.permissions // FIXED: Exposed permissions
 
     fun logout(onLogoutSuccess: () -> Unit) {
         viewModelScope.launch {
-            authRepository.signOut()
+            authRepository.logout() // FIXED: Use correct method name
             onLogoutSuccess()
         }
     }
 
-    fun syncHealthConnect() {
+    fun checkPermissions() {
         viewModelScope.launch {
-            healthConnectManager.sync()
+            isHealthConnected.value = healthConnectManager.hasPermissions()
         }
     }
 
     fun setGymType(type: String) {
         viewModelScope.launch {
             userPrefs.saveGymType(type)
-
-            // Auto-configure exclusions based on preset
             when(type) {
-                "Commercial" -> {
-                    // Reset all exclusions (assume everything is available)
-                    listOf("Barbell", "Dumbbell", "Cable", "Machine").forEach {
-                        userPrefs.toggleEquipmentExclusion(it, false)
-                    }
-                }
-                "Limited" -> {
-                    // Exclude heavy machinery defaults
-                    listOf("Barbell", "Cable", "Machine", "Smith Machine", "Leg Press").forEach {
-                        userPrefs.toggleEquipmentExclusion(it, true)
-                    }
-                }
+                "Commercial" -> listOf("Barbell", "Dumbbell", "Cable", "Machine").forEach { userPrefs.toggleEquipmentExclusion(it, false) }
+                "Limited" -> listOf("Barbell", "Cable", "Machine", "Smith Machine", "Leg Press").forEach { userPrefs.toggleEquipmentExclusion(it, true) }
             }
         }
     }
