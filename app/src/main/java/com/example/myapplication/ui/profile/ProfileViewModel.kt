@@ -1,4 +1,3 @@
-// app/src/main/java/com/example/myapplication/ui/profile/ProfileViewModel.kt
 package com.example.myapplication.ui.profile
 
 import android.app.Application
@@ -6,7 +5,6 @@ import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
-// FIX: Added missing imports
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.repository.HealthConnectManager
 import com.example.myapplication.data.repository.NutritionRepository
@@ -16,6 +14,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -47,10 +47,10 @@ class ProfileViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ProfileUIState())
     val uiState: StateFlow<ProfileUIState> = _uiState.asStateFlow()
+    val requiredPermissions = healthConnectManager.permissions
 
     init {
         viewModelScope.launch {
-            // FIX: Access properties directly (removed parentheses)
             val biometricsFlow = combine(
                 userPrefs.userHeight,
                 userPrefs.userWeight,
@@ -59,7 +59,6 @@ class ProfileViewModel @Inject constructor(
                 userPrefs.userActivity
             ) { h, w, a, g, act -> Biometrics(h, w, a, g, act) }
 
-            // FIX: Access properties directly (removed parentheses)
             val lifestyleFlow = combine(
                 userPrefs.userBodyFat,
                 userPrefs.userDiet,
@@ -87,7 +86,6 @@ class ProfileViewModel @Inject constructor(
                         height = bio.height.toString(),
                         weight = bio.weight.toString(),
                         age = bio.age.toString(),
-                        // These fields now exist in ProfileUIState
                         gender = bio.gender,
                         activityLevel = bio.activity,
                         bodyFat = life.bodyFat?.toString() ?: "",
@@ -110,25 +108,49 @@ class ProfileViewModel @Inject constructor(
         p: String
     ) {
         viewModelScope.launch {
-            // FIX: Use userPrefs directly
             userPrefs.saveProfile(h, w, a, g, act, bf, d, p)
+        }
+    }
+
+    fun onSyncClicked(onPermissionRequired: (Set<String>) -> Unit) {
+        viewModelScope.launch {
+            if (healthConnectManager.hasPermissions()) {
+                syncHealthConnect()
+            } else {
+                onPermissionRequired(requiredPermissions)
+            }
         }
     }
 
     fun syncHealthConnect() {
         viewModelScope.launch {
-            if (!healthConnectManager.hasPermissions()) {
-                Toast.makeText(application, "Permissions required", Toast.LENGTH_SHORT).show()
-                return@launch
-            }
+            // 1. Start Loading
             _uiState.update { it.copy(isHealthConnectSyncing = true) }
+
             try {
-                delay(2000)
+                // FIX: Define isLinked variable here so it can be used below
+                val isLinked = healthConnectManager.hasPermissions()
+
+                // 2. Perform Sync (Simulated delay or actual fetch)
+                delay(1000)
+
+                // 3. Get Current Time and Update State
+                val formatter = DateTimeFormatter.ofPattern("MMM dd, HH:mm")
+                val currentTimestamp = LocalDateTime.now().format(formatter)
+
+                _uiState.update {
+                    it.copy(
+                        isHealthConnectSyncing = false,
+                        isHealthConnectLinked = isLinked, // <--- Now this reference resolves
+                        lastSyncTime = currentTimestamp
+                    )
+                }
+
                 Toast.makeText(application, "Health Connect Synced", Toast.LENGTH_SHORT).show()
+
             } catch (e: Exception) {
-                Toast.makeText(application, "Sync Failed: ${e.message}", Toast.LENGTH_SHORT).show()
-            } finally {
                 _uiState.update { it.copy(isHealthConnectSyncing = false) }
+                Toast.makeText(application, "Sync Failed: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }

@@ -13,6 +13,7 @@ data class CompletedWorkoutItem(
 // The single, correct State class (Data Class)
 data class ProfileUIState(
     val isLoading: Boolean = false,
+    val userName: String = "User",
     val height: String = "",
     val weight: String = "",
     val age: String = "",
@@ -26,4 +27,6 @@ data class ProfileUIState(
 
     // Integration States
     val isHealthConnectSyncing: Boolean = false,
+    val isHealthConnectLinked: Boolean = false,
+    val lastSyncTime: String? = null
 )

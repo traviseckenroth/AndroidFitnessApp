@@ -1,10 +1,13 @@
 // app/src/main/java/com/example/myapplication/data/repository/WorkoutExecutionRepository.kt
 package com.example.myapplication.data.repository
 
+import android.util.Log
 import com.example.myapplication.data.local.CompletedWorkoutEntity
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutDao
+import java.time.Duration // Added
+import java.time.Instant
 import com.example.myapplication.data.local.WorkoutEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
 import kotlinx.coroutines.flow.Flow
@@ -52,7 +55,24 @@ class WorkoutExecutionRepository @Inject constructor(
         workoutDao.markWorkoutAsComplete(workoutId)
         return emptyList()
     }
+    @Inject lateinit var healthConnectManager: HealthConnectManager // Ensure this is injected
 
+    suspend fun adjustForRecovery(originalTitle: String): String {
+        // 1. Define "Last Night" window (e.g., 8 PM yesterday to 10 AM today)
+        val now = Instant.now()
+        val yesterday = now.minus(java.time.Duration.ofHours(24))
+
+        // 2. Query Sleep
+        val sleepDuration = healthConnectManager.getDailySleepDuration(yesterday, now)
+
+        // 3. Logic: If sleep < 6 hours (21600 seconds), trigger recovery
+        return if (sleepDuration.toMinutes() < 360 && sleepDuration.toMinutes() > 0) {
+            Log.d("BioSync", "Low sleep detected: ${sleepDuration.toHours()}h. Switching to Recovery.")
+            "Recovery: $originalTitle" // Modify title
+        } else {
+            originalTitle
+        }
+    }
     suspend fun injectWarmUpSets(workoutId: Long, exerciseId: Long, workingWeight: Int) {
         val currentSets = workoutDao.getSetsForWorkoutList(workoutId).filter { it.exerciseId == exerciseId }.sortedBy { it.setNumber }
         if (currentSets.isEmpty()) return

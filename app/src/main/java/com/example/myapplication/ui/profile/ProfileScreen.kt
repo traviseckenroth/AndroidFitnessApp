@@ -15,7 +15,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.health.connect.client.PermissionController
 import androidx.compose.ui.text.font.FontStyle
+import androidx.activity.compose.rememberLauncherForActivityResult // Added
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -28,6 +30,13 @@ fun ProfileScreen(
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val permissionsLauncher = rememberLauncherForActivityResult(
+        contract = PermissionController.createRequestPermissionResultContract()
+    ) { granted: Set<String> ->
+        if (granted.containsAll(viewModel.requiredPermissions)) {
+            viewModel.syncHealthConnect()
+        }
+    }
 
     // Form State (Local)
     var height by remember(uiState.height) { mutableStateOf(uiState.height) }
@@ -90,7 +99,12 @@ fun ProfileScreen(
                             if (uiState.isHealthConnectSyncing) {
                                 CircularProgressIndicator(modifier = Modifier.size(24.dp))
                             } else {
-                                IconButton(onClick = { viewModel.syncHealthConnect() }) {
+                                IconButton(onClick = {
+                                    // Use the new ViewModel method that handles the check
+                                    viewModel.onSyncClicked { permissions ->
+                                        permissionsLauncher.launch(permissions)
+                                    }
+                                }) {
                                     Icon(Icons.Default.Sync, contentDescription = "Sync Health Connect")
                                 }
                             }

@@ -7,10 +7,15 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
+import androidx.health.connect.client.records.HeartRateRecord // Added
+import androidx.health.connect.client.records.SleepSessionRecord // Added
 import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.records.metadata.Metadata
 import androidx.health.connect.client.units.Energy
+import androidx.health.connect.client.request.ReadRecordsRequest // Added
+import androidx.health.connect.client.time.TimeRangeFilter // Added
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.time.Duration // Added
 import java.time.Instant
 import java.time.ZoneOffset
 import javax.inject.Inject
@@ -29,14 +34,38 @@ class HealthConnectManager @Inject constructor(
         }
     }
 
+    // Updated permissions for Bio-Syncing
     val permissions = setOf(
         HealthPermission.getWritePermission(ExerciseSessionRecord::class),
         HealthPermission.getWritePermission(ActiveCaloriesBurnedRecord::class),
-        HealthPermission.getReadPermission(ExerciseSessionRecord::class)
+        HealthPermission.getReadPermission(ExerciseSessionRecord::class),
+        HealthPermission.getReadPermission(SleepSessionRecord::class), // Added
+        HealthPermission.getReadPermission(HeartRateRecord::class)     // Added
     )
 
     suspend fun hasPermissions(): Boolean {
         return healthConnectClient?.permissionController?.getGrantedPermissions()?.containsAll(permissions) == true
+    }
+
+    // New Bio-Syncing Feature: Get Sleep
+// New Function: Get Sleep Duration
+    suspend fun getDailySleepDuration(startTime: Instant, endTime: Instant): Duration {
+        if (healthConnectClient == null || !hasPermissions()) {
+            return Duration.ZERO
+        }
+        return try {
+            val request = ReadRecordsRequest(
+                recordType = SleepSessionRecord::class,
+                timeRangeFilter = TimeRangeFilter.between(startTime, endTime)
+            )
+            val response = healthConnectClient?.readRecords(request)
+            response?.records?.fold(Duration.ZERO) { acc, record ->
+                acc.plus(Duration.between(record.startTime, record.endTime))
+            } ?: Duration.ZERO
+        } catch (e: Exception) {
+            Log.e("HealthConnect", "Error reading sleep", e)
+            Duration.ZERO
+        }
     }
 
     @SuppressLint("RestrictedApi")
