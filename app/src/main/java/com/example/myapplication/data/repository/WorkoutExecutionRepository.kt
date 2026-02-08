@@ -16,7 +16,8 @@ import javax.inject.Singleton
 
 @Singleton
 class WorkoutExecutionRepository @Inject constructor(
-    private val workoutDao: WorkoutDao
+    private val workoutDao: WorkoutDao,
+    private val healthConnectManager: HealthConnectManager
 ) {
     // --- READS ---
     fun getSetsForSession(workoutId: Long): Flow<List<WorkoutSetEntity>> = workoutDao.getSetsForWorkout(workoutId)
@@ -55,7 +56,6 @@ class WorkoutExecutionRepository @Inject constructor(
         workoutDao.markWorkoutAsComplete(workoutId)
         return emptyList()
     }
-    @Inject lateinit var healthConnectManager: HealthConnectManager // Ensure this is injected
 
     suspend fun adjustForRecovery(originalTitle: String): String {
         // 1. Define "Last Night" window (e.g., 8 PM yesterday to 10 AM today)
@@ -96,5 +96,25 @@ class WorkoutExecutionRepository @Inject constructor(
 
     suspend fun swapExercise(workoutId: Long, oldExerciseId: Long, newExerciseId: Long) {
         workoutDao.swapExerciseInSets(workoutId, oldExerciseId, newExerciseId)
+    }
+    private suspend fun applyBioSyncLogic(originalWorkout: WorkoutEntity): WorkoutEntity {
+        // 1. Define window: Look at sleep from the last 24 hours (covers last night)
+        val now = Instant.now()
+        val yesterday = now.minus(Duration.ofHours(24))
+
+        // 2. Fetch Data
+        val sleepDuration = healthConnectManager.getDailySleepDuration(yesterday, now)
+
+        // 3. Evaluate: If sleep is less than 6 hours (360 minutes) and we have data (>0)
+        return if (sleepDuration.toMinutes() in 1..359) {
+            Log.d("BioSync", "Recovery Triggered: Sleep was ${sleepDuration.toHours()}h. Adjusting workout.")
+
+            // 4. Modify Title
+            // Note: Volume reduction (sets/reps) would usually happen in 'insertSets',
+            // but changing the title alerts the user immediately.
+            originalWorkout.copy(name = "Recovery: ${originalWorkout.name}")
+        } else {
+            originalWorkout
+        }
     }
 }

@@ -102,7 +102,12 @@ fun NavGraph(
                 onNavigateToExerciseHistory = { exerciseId -> navController.navigate("exercise_history/$exerciseId") }
             )
         }
-
+// FIX: Ensure ProfileScreen is called correctly
+        composable(Screen.Profile.route) {
+            ProfileScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
         composable(Screen.Settings.route) {
             SettingsScreen(
                 onNavigateToGymSettings = { navController.navigate("gym_settings") },

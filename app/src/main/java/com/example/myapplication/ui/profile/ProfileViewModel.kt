@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-// Helper data classes
+// Helper data classes (Defined strictly in this file)
 private data class Biometrics(
     val height: Int,
     val weight: Double,
@@ -50,6 +50,9 @@ class ProfileViewModel @Inject constructor(
     val requiredPermissions = healthConnectManager.permissions
 
     init {
+        // Initial Check
+        checkHealthConnectStatus()
+
         viewModelScope.launch {
             val biometricsFlow = combine(
                 userPrefs.userHeight,
@@ -97,6 +100,13 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
+    fun checkHealthConnectStatus() {
+        viewModelScope.launch {
+            val isLinked = healthConnectManager.hasPermissions()
+            _uiState.update { it.copy(isHealthConnectLinked = isLinked) }
+        }
+    }
+
     fun saveProfile(
         h: Int,
         w: Double,
@@ -124,24 +134,19 @@ class ProfileViewModel @Inject constructor(
 
     fun syncHealthConnect() {
         viewModelScope.launch {
-            // 1. Start Loading
             _uiState.update { it.copy(isHealthConnectSyncing = true) }
 
             try {
-                // FIX: Define isLinked variable here so it can be used below
                 val isLinked = healthConnectManager.hasPermissions()
-
-                // 2. Perform Sync (Simulated delay or actual fetch)
                 delay(1000)
 
-                // 3. Get Current Time and Update State
                 val formatter = DateTimeFormatter.ofPattern("MMM dd, HH:mm")
                 val currentTimestamp = LocalDateTime.now().format(formatter)
 
                 _uiState.update {
                     it.copy(
                         isHealthConnectSyncing = false,
-                        isHealthConnectLinked = isLinked, // <--- Now this reference resolves
+                        isHealthConnectLinked = isLinked,
                         lastSyncTime = currentTimestamp
                     )
                 }
