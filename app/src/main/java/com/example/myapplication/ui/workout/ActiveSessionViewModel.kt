@@ -37,15 +37,6 @@ data class ExerciseState(
     val areSetsVisible: Boolean = true
 )
 
-data class ActiveSessionUIState(
-    val isLoading: Boolean = true,
-    val workout: WorkoutEntity? = null,
-    val sets: List<WorkoutSetEntity> = emptyList(),
-    val exercises: Map<Long, ExerciseEntity> = emptyMap(),
-    // New Flag for UI
-    val showRecoveryDialog: Boolean = false
-)
-
 @HiltViewModel
 class ActiveSessionViewModel @Inject constructor(
     private val repository: WorkoutExecutionRepository,

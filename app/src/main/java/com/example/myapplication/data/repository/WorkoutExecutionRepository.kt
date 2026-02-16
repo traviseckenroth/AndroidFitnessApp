@@ -33,7 +33,8 @@ class WorkoutExecutionRepository @Inject constructor(
     // --- WRITES ---
     suspend fun updateSet(set: WorkoutSetEntity) = workoutDao.updateSet(set)
 
-    // FIX: Bio-Sync Logic Connected Here
+    // FIX 1: Bio-Sync Title Adjustment
+    // Intercepts the workout creation to check recovery status
     suspend fun insertWorkout(workout: WorkoutEntity): Long {
         val isRecovery = checkRecoveryNeeded()
 
@@ -46,7 +47,24 @@ class WorkoutExecutionRepository @Inject constructor(
         return workoutDao.insertWorkout(finalWorkout)
     }
 
-    suspend fun insertSets(sets: List<WorkoutSetEntity>) = workoutDao.insertSets(sets)
+    // FIX 2: Bio-Sync Volume Reduction (30%)
+    // Intercepts the set creation to reduce reps if recovery is needed
+    suspend fun insertSets(sets: List<WorkoutSetEntity>) {
+        val isRecovery = checkRecoveryNeeded()
+
+        val finalSets = if (isRecovery) {
+            Log.d("BioSync", "Reducing workout volume by 30% for recovery.")
+            sets.map { set ->
+                set.copy(
+                    // Reduce suggested reps by 30% (keep at least 1 rep)
+                    suggestedReps = (set.suggestedReps * 0.7).toInt().coerceAtLeast(1)
+                )
+            }
+        } else {
+            sets
+        }
+        workoutDao.insertSets(finalSets)
+    }
 
     suspend fun completeWorkout(workoutId: Long): List<String> {
         val workout = workoutDao.getWorkoutById(workoutId) ?: return emptyList()
@@ -90,8 +108,9 @@ class WorkoutExecutionRepository @Inject constructor(
         workoutDao.swapExerciseInSets(workoutId, oldExerciseId, newExerciseId)
     }
 
-    // --- BIO-SYNC LOGIC ---
-    private suspend fun applyBioSyncLogic(originalWorkout: WorkoutEntity): WorkoutEntity {
+    // --- HELPER FUNCTION ---
+    // Centralized logic to check if sleep was under 6 hours in the last 24h
+    private suspend fun checkRecoveryNeeded(): Boolean {
         // 1. Define window: Look at sleep from the last 24 hours
         val now = Instant.now()
         val yesterday = now.minus(Duration.ofHours(24))
@@ -99,18 +118,7 @@ class WorkoutExecutionRepository @Inject constructor(
         // 2. Fetch Data
         val sleepDuration = healthConnectManager.getDailySleepDuration(yesterday, now)
 
-        // 3. Evaluate: If sleep is less than 6 hours (360 minutes) and we have data (>0)
-        return if (sleepDuration.toMinutes() in 1..359) {
-            Log.d("BioSync", "Recovery Triggered: Sleep was ${sleepDuration.toHours()}h. Adjusting workout.")
-            originalWorkout.copy(name = "Recovery: ${originalWorkout.name}")
-        } else {
-            originalWorkout
-        }
-    }
-    suspend fun insertWorkout(workout: WorkoutEntity): Long {
-        // 1. Run the Bio-Sync Logic first
-        val finalWorkout = applyBioSyncLogic(workout)
-        // 2. Save the modified workout
-        return workoutDao.insertWorkout(finalWorkout)
+        // 3. Evaluate: Sleep is positive but less than 6 hours (360 minutes)
+        return sleepDuration.toMinutes() in 1..359
     }
 }
