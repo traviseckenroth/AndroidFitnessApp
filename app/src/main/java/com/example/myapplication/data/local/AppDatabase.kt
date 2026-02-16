@@ -16,15 +16,15 @@ import com.example.myapplication.data.local.FoodLogEntity
         FoodLogEntity::class,
         WorkoutEntity::class
     ],
-    version = 23,
+    version = 24,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun workoutDao(): WorkoutDao
 
     companion object {
-        // 2. DEFINE MIGRATION (Example: v22 to v23)
-        val MIGRATION_22_23 = object : Migration(22, 23) {
+        // 2. DEFINE MIGRATION (Example: v23 to v24)
+        val MIGRATION_23_24 = object : Migration(23, 24) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // If you added a new table or column, write the SQL here.
                 // Example: db.execSQL("ALTER TABLE DailyWorkoutEntity ADD COLUMN notes TEXT NOT NULL DEFAULT ''")

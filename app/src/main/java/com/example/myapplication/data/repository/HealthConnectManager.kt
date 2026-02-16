@@ -14,6 +14,7 @@ import androidx.health.connect.client.records.metadata.Metadata
 import androidx.health.connect.client.units.Energy
 import androidx.health.connect.client.request.ReadRecordsRequest // Added
 import androidx.health.connect.client.time.TimeRangeFilter // Added
+import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord // Added
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.Duration // Added
 import java.time.Instant
@@ -39,8 +40,9 @@ class HealthConnectManager @Inject constructor(
         HealthPermission.getWritePermission(ExerciseSessionRecord::class),
         HealthPermission.getWritePermission(ActiveCaloriesBurnedRecord::class),
         HealthPermission.getReadPermission(ExerciseSessionRecord::class),
-        HealthPermission.getReadPermission(SleepSessionRecord::class), // Added
-        HealthPermission.getReadPermission(HeartRateRecord::class)     // Added
+        HealthPermission.getReadPermission(SleepSessionRecord::class),
+        HealthPermission.getReadPermission(HeartRateRecord::class),
+        HealthPermission.getReadPermission(HeartRateVariabilityRmssdRecord::class) // Added
     )
 
     suspend fun hasPermissions(): Boolean {
@@ -59,6 +61,7 @@ class HealthConnectManager @Inject constructor(
                 timeRangeFilter = TimeRangeFilter.between(startTime, endTime)
             )
             val response = healthConnectClient?.readRecords(request)
+
             response?.records?.fold(Duration.ZERO) { acc, record ->
                 acc.plus(Duration.between(record.startTime, record.endTime))
             } ?: Duration.ZERO
