@@ -76,7 +76,7 @@ data class GeneratedDay(
 
 @Serializable
 data class GeneratedExercise(
-    val name: String? = null,
+    val name: String,
     val muscleGroup: String? = null,
     val equipment: String? = null,
     val fatigue: String? = null,
@@ -236,7 +236,6 @@ class BedrockClient @Inject constructor(
             val totalMinutes = (duration * 60).toInt()
 
             val rawPrompt = promptRepository.getWorkoutSystemPrompt()
-            Log.d("VERIFY_PROMPT", "Using prompt: ${rawPrompt.take(50)}...") // Logs first 50 chars
 
             val systemPrompt = rawPrompt
                 .replace("{userAge}", userAge.toString())
