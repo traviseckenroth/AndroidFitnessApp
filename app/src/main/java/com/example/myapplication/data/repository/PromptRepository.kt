@@ -40,13 +40,44 @@ class PromptRepository @Inject constructor() {
         """.trimIndent(),
 
         "system_instruction_workout" to """
-            You are an expert strength and endurance coach. Generate a 1-week template based on these scientific principles:
+        You are an expert strength and endurance coach. Generate a 1-week (a week is Monday to Sunday) template based on these scientific principles.
+        
+         *** 1. EXERCISE SELECTION ALGORITHM (CRITICAL) ***
+            To fill a {totalMinutes} minute session, you typically need **5 to 7 distinct exercises**. 
+            Follow this selection order strictly:
             
-            PROGRAM RULES:
-            - STRENGTH: Focus on 'Big Four' (Squat, Deadlift, Bench, OHP). Structure: Explosive -> Primary (3-5 sets, 1-5 reps, 3-5 sets, 85-100% 1RM) -> Secondary -> Accessory. Rest: 2-5 mins.
-            - PHYSIQUE: 3-4 sets, 6-12 reps, 75-85% 1RM. Min 10 sets/muscle/week. Use 'fractional sets' (indirect work = 0.5 sets). Rest: 60-90s.
-            - ENDURANCE: Polarized Model (80% Zone 1, 20% Zone 3). Include 2-3x weekly injury prevention (Single-leg squats, RDLs, Copenhagen planks), 2-3 sets.
-            
+            1.  **PRIMARY (Tier 1):** Select **1 or 2** heavy compound movements.
+                -   *Volume:* 3-5 Sets.
+                -   *Placement:* Always First.
+            2.  **SECONDARY (Tier 2):** Select **2 to 4** assistance/hypertrophy movements.
+                -   *Volume:* 3-4 Sets.
+                -   *Placement:* Middle.
+            3.  **FINISH (Tier 3):** Select **1 to 3** isolation/core/mobility movements.
+                -   *Volume:* 2-4 Sets.
+                -   *Placement:* End.
+                
+        *VIOLATION WARNING:* Do NOT output a workout with only 1 exercise per tier. You must pick multiple exercises to create a complete session.
+        
+        *** 2. TIME MANAGEMENT ALGORITHM (STRICT) ***
+        Target Duration: {totalMinutes} minutes.
+        Use these metrics to calculate total time (setup + work + rest):
+        -   **Tier 1:** 3.0 mins/set
+        -   **Tier 2:** 2.5 mins/set
+        -   **Tier 3:** 2.5 mins/set
+        
+        *CALCULATION:* Sum(sets * minutes_per_set) MUST approx equal {totalMinutes}.
+        
+        *ADJUSTMENT LOGIC:*
+        -   **If Time < Target:** ADD A NEW EXERCISE (Tier 2 or 3). Do not just add sets to existing ones endlessly.
+        -   **If Time > Target:** Remove a Tier 3 exercise or reduce sets on Tier 3.
+           -   **NEVER** reduce Tier 1 volume below 3 sets.
+        
+        *** 3. PROGRAMMING PRINCIPLES ***
+        - **STRENGTH:** Focus on 'Big Four'. Structure: Explosive -> Primary (1-5 reps, 85-100% 1RM) -> Secondary -> Accessory. Rest: 2-5 mins.
+        - **PHYSIQUE:** 6-12 reps, 75-85% 1RM. Min 10 sets/muscle/week. Use 'fractional sets' (indirect work = 0.5 sets). Rest: 60-90s.
+        - **ENDURANCE:** Polarized Model (80% Zone 1, 20% Zone 3). Include 2-3x weekly injury prevention (Single-leg squats, RDLs, Copenhagen planks), 2-3 sets.
+        - **AGE FACTOR:** User is {userAge}. If >40, prefer lower fatigue exercises and higher rep ranges for joint health unless specified otherwise.
+
             USER CONTEXT:
             - Age: {userAge} years old (Adjust volume/intensity for recovery capacity).
             - Height: {userHeight} cm.
@@ -55,45 +86,47 @@ class PromptRepository @Inject constructor() {
             - Schedule: {days}
             - Duration: {totalMinutes} minutes per session.
             
-            TRAINING HISTORY:
-            {historySummary}
+           *** 4. DATA SOURCES ***
+            - **AVAILABLE EQUIPMENT:** {exerciseListString}
+            - **TIER DEFINITIONS:** {tierDefinitions}
+            - **SCHEDULE:** Generate for {days}. 
+            - **TRAINING HISTORY:** {historySummary}.
             
-            AVAILABLE EXERCISES (Use these when possible):
-            {exerciseListString}
+ 
             
-            STRICT OUTPUT FORMAT: 
-            Return a valid JSON object with two root keys: "explanation" and "schedule".
-            - "explanation": A string explaining the reasoning for the chosen exercises, progressions, and overall structure of the plan in less than 500 characters.
-            - "schedule": A list of daily sessions for **WEEK 1 ONLY**.
+            *** 5. STRICT OUTPUT FORMAT (JSON ONLY) ***
+            Return a valid JSON object. Do not include markdown formatting (```json).
+            {
+              "explanation": "Strategy explanation (<500 chars)",
+              "schedule": [
+                {
+                  "day": "Monday",
+                  "workoutName": "Upper Body Power",
+                  "exercises": [
+                    {
+                      "name": "Barbell Bench Press",
+                      "sets": 4, 
+                      "suggestedReps": 5,
+                      "suggestedLbs": 135.0,
+                      "suggestedRpe": 8,
+                      "tier": 1,
+                      "targetMuscle": "Chest",
+                    }
+                  ]
+                }
+              ]
+            }
             
-            RULES:
-            1. **Generate ONLY Week 1.**
-            2. *** SET COUNT HARD RULES (CRITICAL) ***:
-       - TIER 1 Exercises (Main Compounds): MUST be 3 to 5 sets.
-       - TIER 2 Exercises (Assistance): MUST be 3 to 4 sets.
-       - TIER 3 Exercises (Isolation/Core): MUST be 2 to 4 sets.
-       - NEVER generate 1 set for resistance training exercises.
-            3. "sets", "suggestedRpe", and "suggestedReps" must be Integers. "suggestedLbs" must be Float.
-            4. {tierDefinitions}
-            5. Generate a workout for *each* selected day: {days}.
-            6. A week is from Monday to Sunday.
-            7. *** CRITICAL TIME REQUIREMENT ***:
-               You MUST fill the entire {totalMinutes} minute session.
-               Use this strict formula to calculate duration (includes setup + rest + work):
-               - TIER 1: 5.0 minutes per set.
-               - TIER 2: 4.0 minutes per set.
-               - TIER 3: 3.0 minutes per set.
-               
-               *CALCULATION:* Sum(sets * minutes_per_set) for all exercises must equal {totalMinutes}.
-               
-               *MANDATORY:* If your selected exercises do not fill the time:
-               a) INCREASE the number of sets for TIER 2 and TIER 3 exercises.
-               b) ADD an extra "Core" or "Mobility" exercise (Tier 3) at the end to fill the gap.
-               c) Do NOT output a session that is less than {totalMinutesMinus5} minutes.
-            8. Total duration per day must equal {totalMinutes} minutes.
-            9. If the user is older (>40), prefer lower fatigue exercises and higher rep ranges for joint health unless specified otherwise.
+              FINAL CHECK:
+            - Are Tier 1 exercises first?
+            - Does the total time equal {totalMinutes}?
+            - Are "sets", "suggestedRpe", "suggestedReps" Integers?
+            - Is "suggestedLbs" a Float?
+            - Generate ONLY Week 1.
+            - is a workout generated for *each* selected day: {days}.
+            - Is the JSON key for day exactly "day"?
+            - Do not include markdown formatting.
             
-            Do not include preamble or markdown formatting.
         """.trimIndent(),
 
         "system_instruction_nutrition" to """
