@@ -42,13 +42,14 @@ fun ProfileScreen(
     var goalPace by remember(uiState.goalPace) { mutableStateOf(uiState.goalPace) }
 
     LaunchedEffect(Unit) {
-        viewModel.checkHealthConnectStatus()
+        viewModel.syncHealthConnect()
     }
 
     val permissionsLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract()
     ) {
-        viewModel.checkHealthConnectStatus()
+        // The callback fires when the user returns from the permission screen.
+        // We verify the actual status from the manager instead of relying on the 'granted' list.
         viewModel.syncHealthConnect()
     }
 
@@ -112,25 +113,52 @@ fun ProfileScreen(
                                 Spacer(modifier = Modifier.height(4.dp))
 
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Bed, "Sleep", Modifier.size(16.dp), MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Icon(
+                                        Icons.Default.Bed,
+                                        "Sleep",
+                                        Modifier.size(16.dp),
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                     Text(" Sleep  ", style = MaterialTheme.typography.bodySmall)
 
-                                    Icon(Icons.Default.Favorite, "Heart Rate", Modifier.size(16.dp), Color.Red.copy(alpha = 0.7f))
+                                    Icon(
+                                        Icons.Default.Favorite,
+                                        "Heart Rate",
+                                        Modifier.size(16.dp),
+                                        Color.Red.copy(alpha = 0.7f)
+                                    )
                                     Text(" Heart  ", style = MaterialTheme.typography.bodySmall)
 
-                                    Icon(Icons.Default.FitnessCenter, "Workouts", Modifier.size(16.dp), MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Icon(
+                                        Icons.Default.FitnessCenter,
+                                        "Workouts",
+                                        Modifier.size(16.dp),
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                     Text(" Workouts", style = MaterialTheme.typography.bodySmall)
                                 }
 
                                 Spacer(modifier = Modifier.height(4.dp))
 
                                 if (uiState.isHealthConnectLinked) {
-                                    Text("Status: Active & Syncing", style = MaterialTheme.typography.labelSmall, color = Color(0xFF2E7D32))
+                                    Text(
+                                        text = "Status: Active & Synced",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFF2E7D32) // Green Text
+                                    )
                                     if (uiState.lastSyncTime != null) {
-                                        Text("Last synced: ${uiState.lastSyncTime}", style = MaterialTheme.typography.labelSmall)
+                                        Text(
+                                            text = "Last synced: ${uiState.lastSyncTime}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                     }
                                 } else {
-                                    Text("Tap sync to enable bio-tracking", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                                    Text(
+                                        text = "Tap sync to enable bio-tracking",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
                                 }
                             }
 
@@ -143,9 +171,18 @@ fun ProfileScreen(
                                     }
                                 }) {
                                     if (uiState.isHealthConnectLinked) {
-                                        Icon(Icons.Default.CheckCircle, "Connected", tint = Color(0xFF4CAF50), modifier = Modifier.size(32.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.CheckCircle,
+                                            contentDescription = "Connected",
+                                            tint = Color(0xFF4CAF50), // Green Checkmark
+                                            modifier = Modifier.size(32.dp)
+                                        )
                                     } else {
-                                        Icon(Icons.Default.Sync, "Connect", tint = MaterialTheme.colorScheme.primary)
+                                        Icon(
+                                            imageVector = Icons.Default.Sync,
+                                            contentDescription = "Connect",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
                                     }
                                 }
                             }
