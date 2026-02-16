@@ -45,13 +45,17 @@ interface WorkoutDao {
     """)
     suspend fun getExercisesForWorkoutOneShot(workoutId: Long): List<ExerciseEntity>
 
-    // --- FIX: Renamed to avoid conflict ---
     @Query("SELECT * FROM workout_sets WHERE workoutId = :workoutId")
     suspend fun getSetsForWorkoutOneShot(workoutId: Long): List<WorkoutSetEntity>
 
     // --- WORKOUT READS ---
+    // Fetches the SCHEDULED daily workout (DailyWorkoutEntity)
     @Query("SELECT * FROM daily_workouts WHERE workoutId = :workoutId")
     suspend fun getWorkoutById(workoutId: Long): DailyWorkoutEntity?
+
+    // FIX: Added specific query for the ACTIVE workout entity (WorkoutEntity)
+    @Query("SELECT * FROM workouts WHERE workoutId = :workoutId")
+    suspend fun getWorkoutEntityById(workoutId: Long): WorkoutEntity?
 
     @Query("SELECT * FROM daily_workouts WHERE scheduledDate >= :startOfDay AND scheduledDate < :endOfDay LIMIT 1")
     fun getWorkoutByDate(startOfDay: Long, endOfDay: Long): Flow<DailyWorkoutEntity?>
@@ -59,7 +63,6 @@ interface WorkoutDao {
     @Query("SELECT DISTINCT scheduledDate FROM daily_workouts")
     fun getAllWorkoutDates(): Flow<List<Long>>
 
-    // This is the Flow version (Keep this name)
     @Query("SELECT * FROM workout_sets WHERE workoutId = :workoutId ORDER BY exerciseId, setNumber")
     fun getSetsForWorkout(workoutId: Long): Flow<List<WorkoutSetEntity>>
 
@@ -125,7 +128,6 @@ interface WorkoutDao {
     @Query("UPDATE workout_plans SET isActive = 0")
     suspend fun deactivateAllPlans(): Int
 
-    // FIX: Add ": Int" return type
     @Query("UPDATE workout_plans SET isActive = 1 WHERE planId = :planId")
     suspend fun activatePlan(planId: Long): Int
 
