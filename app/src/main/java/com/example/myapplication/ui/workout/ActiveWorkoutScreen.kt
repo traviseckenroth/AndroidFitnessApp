@@ -47,6 +47,9 @@ fun ActiveWorkoutScreen(
     val exerciseStates by viewModel.exerciseStates.collectAsState()
     val coachBriefing by viewModel.coachBriefing.collectAsState()
     val workoutSummary by viewModel.workoutSummary.collectAsState()
+    var showChat by remember { mutableStateOf(false) }
+    var userText by remember { mutableStateOf("") }
+    val chatHistory by viewModel.chatHistory.collectAsState()
 
     val currentView = LocalView.current
     DisposableEffect(Unit) {
@@ -114,8 +117,85 @@ fun ActiveWorkoutScreen(
                     containerColor = MaterialTheme.colorScheme.background
                 )
             )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { showChat = true },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            ) {
+                Icon(Icons.Default.Chat, contentDescription = "AI Negotiator")
+            }
         }
     ) { padding ->
+        // 3. Add Chat Dialog Logic
+        if (showChat) {
+            AlertDialog(
+                onDismissRequest = { showChat = false },
+                title = { Text("Coach Chat") },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .height(300.dp) // Fixed height for scrolling
+                            .fillMaxWidth(),
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // Message History List
+                        LazyColumn(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(bottom = 8.dp)
+                        ) {
+                            items(chatHistory) { msg ->
+                                val isCoach = msg.sender == "Coach"
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = if (isCoach) Arrangement.Start else Arrangement.End
+                                ) {
+                                    Card(
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = if (isCoach) MaterialTheme.colorScheme.surfaceVariant
+                                            else MaterialTheme.colorScheme.primaryContainer
+                                        ),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.padding(vertical = 4.dp, horizontal = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = msg.text,
+                                            modifier = Modifier.padding(8.dp),
+                                            fontSize = 14.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Input Area
+                        OutlinedTextField(
+                            value = userText,
+                            onValueChange = { userText = it },
+                            placeholder = { Text("Type here...") },
+                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = {
+                                IconButton(onClick = {
+                                    if (userText.isNotBlank()) {
+                                        viewModel.negotiateAdjustment(userText)
+                                        userText = ""
+                                    }
+                                }) {
+                                    // FIX: Use Icons.Default.Send instead of Icons.AutoMirrored.Filled.Send
+                                    Icon(Icons.Default.Send, contentDescription = "Send")
+                                }
+                            }
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showChat = false }) { Text("Close") }
+                }
+            )
+        }
+
         if (exerciseStates.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)

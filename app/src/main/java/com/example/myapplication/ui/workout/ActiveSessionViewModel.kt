@@ -36,16 +36,20 @@ data class ExerciseState(
     val timerState: ExerciseTimerState,
     val areSetsVisible: Boolean = true
 )
-
+data class ChatMessage(val sender: String, val text: String)
 @HiltViewModel
 class ActiveSessionViewModel @Inject constructor(
     private val repository: WorkoutExecutionRepository,
     private val application: Application,
     private val userPrefs: UserPreferencesRepository, // Unique declaration
     private val healthConnectManager: HealthConnectManager,
+
     val bedrockClient: BedrockClient
 ) : ViewModel() {
-
+    private val _chatHistory = MutableStateFlow(listOf(
+        ChatMessage("Coach", "Hey! Any pain or discomfort I should know about today?")
+    ))
+    val chatHistory: StateFlow<List<ChatMessage>> = _chatHistory
     private val _workoutId = MutableStateFlow<Long>(-1)
     private val _sets = MutableStateFlow<List<WorkoutSetEntity>>(emptyList())
     private val _exercises = MutableStateFlow<List<ExerciseEntity>>(emptyList())
@@ -242,7 +246,56 @@ class ActiveSessionViewModel @Inject constructor(
             }
         }
     }
+    fun negotiateAdjustment(userText: String) {
+        val currentHistory = _chatHistory.value.toMutableList()
+        currentHistory.add(ChatMessage("User", userText))
+        _chatHistory.value = currentHistory
 
+        viewModelScope.launch {
+            val currentExercises = _exerciseStates.value.filter {
+                it.sets.any { set -> !set.isCompleted } // Only send uncompleted work
+            }.joinToString { it.exercise.name }
+
+            val available = repository.getAllExercises().first()
+
+            // 1. Get AI Response
+            val response = bedrockClient.negotiateWorkout(currentExercises, userText, available)
+
+            // 2. Update Chat UI
+            val newHistory = _chatHistory.value.toMutableList()
+            newHistory.add(ChatMessage("Coach", response.explanation))
+            _chatHistory.value = newHistory
+
+            // 3. Update Database
+            if (response.exercises.isNotEmpty()) {
+                val workoutId = _workoutId.value
+                val incompleteSets = _sets.value.filter { !it.isCompleted }
+
+                // Now works because we added it to the repository
+                repository.deleteSets(incompleteSets)
+
+                val newSets = response.exercises.flatMapIndexed { index, genEx ->
+                    val match = available.find { it.name.equals(genEx.name, ignoreCase = true) }
+                    val exerciseId = match?.exerciseId ?: 0L
+
+                    List(genEx.sets) { setNum ->
+                        WorkoutSetEntity(
+                            workoutId = workoutId,
+                            exerciseId = exerciseId,
+                            setNumber = setNum + 1,
+                            suggestedReps = genEx.suggestedReps,
+                            // FIX: Cast Float to Int
+                            suggestedLbs = genEx.suggestedLbs.toInt(),
+                            // FIX: Use Int (8) instead of Double (8.0)
+                            suggestedRpe = 8
+                        )
+                    }
+                }
+                repository.insertSets(newSets)
+                loadWorkout(workoutId)
+            }
+        }
+    }
     fun startSetTimer(exerciseId: Long) {
         val exerciseState = _exerciseStates.value.find { it.exercise.exerciseId == exerciseId } ?: return
         val durationSeconds = (exerciseState.exercise.estimatedTimePerSet * 60).toInt()

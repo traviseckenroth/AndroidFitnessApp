@@ -259,7 +259,44 @@ class BedrockClient @Inject constructor(
             GeneratedPlanResponse(explanation = "Error: ${e.localizedMessage}")
         }
     }
+    @Serializable
+    data class NegotiationResponse(
+        val explanation: String,
+        val exercises: List<GeneratedExercise>
+    )
 
+    suspend fun negotiateWorkout(
+        currentWorkout: String,
+        userComplaint: String,
+        availableExercises: List<ExerciseEntity>
+    ): NegotiationResponse = withContext(Dispatchers.Default) {
+        val exerciseList = availableExercises.joinToString("\n") { "- ${it.name} (Muscle: ${it.muscleGroup}, Tier: ${it.tier})" }
+
+        val systemPrompt = """
+        You are an adaptive fitness coach. The user is currently doing this workout:
+        $currentWorkout
+        
+        They have a complaint: "$userComplaint"
+        
+        TASK: 
+        1. Empathize with the user briefly.
+        2. Modify the remaining exercises to accommodate the issue.
+        
+        OUTPUT FORMAT (JSON OBJECT ONLY):
+        {
+          "explanation": "I've swapped Bench Press for Floor Press to reduce shoulder strain.",
+          "exercises": [ { "name": "...", "sets": 3, "suggestedReps": 10, "suggestedLbs": 0.0, "tier": 2 } ]
+        }
+    """.trimIndent()
+
+        try {
+            val cleanJson = invokeClaude(systemPrompt, "Adapt my workout based on my complaint.")
+            jsonConfig.decodeFromString<NegotiationResponse>(cleanJson)
+        } catch (e: Exception) {
+            Log.e("BedrockError", "Negotiation failed", e)
+            NegotiationResponse("Couldn't reach the coach. Please try again.", emptyList())
+        }
+    }
     // --- 2. GENERATE NUTRITION PLAN (Separate Call) ---
     suspend fun generateNutritionPlan(
         userAge: Int,

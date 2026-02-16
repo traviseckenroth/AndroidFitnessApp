@@ -124,7 +124,8 @@ interface WorkoutDao {
 
     @Query("UPDATE workout_plans SET isActive = 0")
     suspend fun deactivateAllPlans(): Int
-
+    @Delete
+    suspend fun deleteSets(sets: List<WorkoutSetEntity>): Int
     // FIX: Add ": Int" return type
     @Query("UPDATE workout_plans SET isActive = 1 WHERE planId = :planId")
     suspend fun activatePlan(planId: Long): Int
