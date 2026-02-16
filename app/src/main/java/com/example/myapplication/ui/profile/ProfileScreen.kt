@@ -47,10 +47,9 @@ fun ProfileScreen(
 
     val permissionsLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract()
-    ) { granted: Set<String> ->
-        if (granted.containsAll(viewModel.requiredPermissions)) {
-            viewModel.syncHealthConnect()
-        }
+    ) {
+        viewModel.checkHealthConnectStatus()
+        viewModel.syncHealthConnect()
     }
 
     LaunchedEffect(height, weight, age, gender, activityLevel, bodyFat, dietType, goalPace) {

@@ -43,9 +43,9 @@ class PromptRepository @Inject constructor() {
             You are an expert strength and endurance coach. Generate a 1-week template based on these scientific principles:
             
             PROGRAM RULES:
-            - STRENGTH: Focus on 'Big Four' (Squat, Deadlift, Bench, OHP). Structure: Explosive -> Primary (1-5 reps, 85-100% 1RM) -> Secondary -> Accessory. Rest: 2-5 mins.
-            - PHYSIQUE: 6-12 reps, 75-85% 1RM. Min 10 sets/muscle/week. Use 'fractional sets' (indirect work = 0.5 sets). Rest: 60-90s.
-            - ENDURANCE: Polarized Model (80% Zone 1, 20% Zone 3). Include 2-3x weekly injury prevention (Single-leg squats, RDLs, Copenhagen planks).
+            - STRENGTH: Focus on 'Big Four' (Squat, Deadlift, Bench, OHP). Structure: Explosive -> Primary (3-5 sets, 1-5 reps, 3-5 sets, 85-100% 1RM) -> Secondary -> Accessory. Rest: 2-5 mins.
+            - PHYSIQUE: 3-4 sets, 6-12 reps, 75-85% 1RM. Min 10 sets/muscle/week. Use 'fractional sets' (indirect work = 0.5 sets). Rest: 60-90s.
+            - ENDURANCE: Polarized Model (80% Zone 1, 20% Zone 3). Include 2-3x weekly injury prevention (Single-leg squats, RDLs, Copenhagen planks), 2-3 sets.
             
             USER CONTEXT:
             - Age: {userAge} years old (Adjust volume/intensity for recovery capacity).
@@ -68,11 +68,16 @@ class PromptRepository @Inject constructor() {
             
             RULES:
             1. **Generate ONLY Week 1.**
-            2. "sets", "suggestedRpe", and "suggestedReps" must be Integers. "suggestedLbs" must be Float.
-            3. {tierDefinitions}
-            4. Generate a workout for *each* selected day: {days}.
-            5. A week is from Monday to Sunday.
-            6. *** CRITICAL TIME REQUIREMENT ***:
+            2. *** SET COUNT HARD RULES (CRITICAL) ***:
+       - TIER 1 Exercises (Main Compounds): MUST be 3 to 5 sets.
+       - TIER 2 Exercises (Assistance): MUST be 3 to 4 sets.
+       - TIER 3 Exercises (Isolation/Core): MUST be 2 to 4 sets.
+       - NEVER generate 1 set for resistance training exercises.
+            3. "sets", "suggestedRpe", and "suggestedReps" must be Integers. "suggestedLbs" must be Float.
+            4. {tierDefinitions}
+            5. Generate a workout for *each* selected day: {days}.
+            6. A week is from Monday to Sunday.
+            7. *** CRITICAL TIME REQUIREMENT ***:
                You MUST fill the entire {totalMinutes} minute session.
                Use this strict formula to calculate duration (includes setup + rest + work):
                - TIER 1: 5.0 minutes per set.
@@ -85,8 +90,8 @@ class PromptRepository @Inject constructor() {
                a) INCREASE the number of sets for TIER 2 and TIER 3 exercises.
                b) ADD an extra "Core" or "Mobility" exercise (Tier 3) at the end to fill the gap.
                c) Do NOT output a session that is less than {totalMinutesMinus5} minutes.
-            7. Total duration per day must equal {totalMinutes} minutes.
-            8. If the user is older (>40), prefer lower fatigue exercises and higher rep ranges for joint health unless specified otherwise.
+            8. Total duration per day must equal {totalMinutes} minutes.
+            9. If the user is older (>40), prefer lower fatigue exercises and higher rep ranges for joint health unless specified otherwise.
             
             Do not include preamble or markdown formatting.
         """.trimIndent(),
