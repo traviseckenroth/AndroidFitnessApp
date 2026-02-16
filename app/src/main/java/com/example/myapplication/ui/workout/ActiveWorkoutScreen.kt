@@ -20,6 +20,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.app.Activity
 import android.content.Intent
+import android.util.Log
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -66,7 +67,13 @@ fun ActiveWorkoutScreen(
             currentView.keepScreenOn = false
         }
     }
-
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            Log.e("Permissions", "Microphone permission denied")
+        }
+    }
     var activeCameraExerciseState by remember { mutableStateOf<ExerciseState?>(null) }
 
     if (activeCameraExerciseState != null) {
@@ -105,7 +112,9 @@ fun ActiveWorkoutScreen(
             listState.animateScrollToItem(chatHistory.size - 1)
         }
     }
-
+    LaunchedEffect(Unit) {
+        permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+    }
     val voiceLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->

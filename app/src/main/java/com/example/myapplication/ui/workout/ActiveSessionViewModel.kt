@@ -4,26 +4,25 @@ import android.app.Application
 import android.content.Intent
 import android.util.Log
 import androidx.lifecycle.ViewModel
-import com.example.myapplication.data.remote.LiveTranscribeClient
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.remote.BedrockClient
+import com.example.myapplication.data.remote.LiveTranscribeClient
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.repository.HealthConnectManager
 import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import com.example.myapplication.service.WorkoutTimerService
+import com.example.myapplication.util.AudioRecordingManager
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
-import com.example.myapplication.service.TimerState
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
+
+// --- DATA MODELS ---
 
 data class ExerciseTimerState(
     val remainingTime: Long = 0L,
@@ -37,28 +36,29 @@ data class ExerciseState(
     val timerState: ExerciseTimerState,
     val areSetsVisible: Boolean = true
 )
+
 data class ChatMessage(val sender: String, val text: String)
+
+// --- VIEWMODEL ---
+
 @HiltViewModel
 class ActiveSessionViewModel @Inject constructor(
     private val repository: WorkoutExecutionRepository,
     private val application: Application,
-    private val userPrefs: UserPreferencesRepository, // Unique declaration
+    private val userPrefs: UserPreferencesRepository,
     private val healthConnectManager: HealthConnectManager,
     private val liveTranscribeClient: LiveTranscribeClient,
-
+    private val audioManager: com.example.myapplication.util.AudioRecordingManager,
     val bedrockClient: BedrockClient
 ) : ViewModel() {
-    private val _chatHistory = MutableStateFlow(listOf(
-        ChatMessage("Coach", "Get exercise tips, address muscle or joint pains, etc.")
-    ))
-    val chatHistory: StateFlow<List<ChatMessage>> = _chatHistory
+
+    // --- 1. STATE PROPERTIES ---
+
     private val _workoutId = MutableStateFlow<Long>(-1)
     private val _sets = MutableStateFlow<List<WorkoutSetEntity>>(emptyList())
     private val _exercises = MutableStateFlow<List<ExerciseEntity>>(emptyList())
+
     private val _exerciseStates = MutableStateFlow<List<ExerciseState>>(emptyList())
-
-    // REMOVED: Conflicting "private val userPrefs" that was here
-
     val exerciseStates: StateFlow<List<ExerciseState>> = _exerciseStates
 
     private val _coachBriefing = MutableStateFlow("Loading briefing...")
@@ -67,34 +67,23 @@ class ActiveSessionViewModel @Inject constructor(
     private val _workoutSummary = MutableStateFlow<List<String>?>(null)
     val workoutSummary: StateFlow<List<String>?> = _workoutSummary
 
-    private var workoutStartTime: Instant = Instant.now()
+    private val _chatHistory = MutableStateFlow(listOf(
+        ChatMessage("Coach", "Get exercise tips, address muscle or joint pains, etc.")
+    ))
+    val chatHistory: StateFlow<List<ChatMessage>> = _chatHistory
+
     private val _isListening = MutableStateFlow(false)
     val isListening: StateFlow<Boolean> = _isListening
 
-    fun toggleLiveCoaching() {
-        if (_isListening.value) {
-            _isListening.value = false
-            // Logic to stop microphone stream
-        } else {
-            _isListening.value = true
-            startLiveTranscription()
-        }
-    }
+    private var workoutStartTime: Instant = Instant.now()
+    private var transcribeJob: Job? = null
 
-    private fun startLiveTranscription() {
-        viewModelScope.launch {
-            // Assume an AudioRecordingManager provides a flow of PCM data
-            // audioManager.getPcmStream().collect { transcript ->
-            //    if (transcript.contains("ouch") || transcript.contains("pain")) {
-            //        interactWithCoach("I feel pain: $transcript")
-            //    }
-            // }
-        }
-    }
+    // --- 2. INITIALIZATION ---
+
     init {
         workoutStartTime = Instant.now()
 
-        // --- LISTEN TO TIMER SERVICE ---
+        // Sync with Timer Service
         viewModelScope.launch {
             WorkoutTimerService.timerState.collect { serviceState ->
                 if (serviceState.hasFinished && serviceState.activeExerciseId != null) {
@@ -107,7 +96,6 @@ class ActiveSessionViewModel @Inject constructor(
                         startSetTimer(exerciseId)
                     }
                 }
-
                 updateLocalTimerState(
                     activeExerciseId = serviceState.activeExerciseId,
                     remainingTime = serviceState.remainingTime.toLong(),
@@ -116,7 +104,7 @@ class ActiveSessionViewModel @Inject constructor(
             }
         }
 
-        // --- LOAD DATA ---
+        // Fetch Sets when ID changes
         viewModelScope.launch {
             _workoutId.collectLatest { id ->
                 if (id != -1L) {
@@ -134,6 +122,7 @@ class ActiveSessionViewModel @Inject constructor(
             }
         }
 
+        // Fetch Exercises when Sets change
         viewModelScope.launch {
             _sets.collectLatest { sets ->
                 if (sets.isNotEmpty()) {
@@ -147,14 +136,13 @@ class ActiveSessionViewModel @Inject constructor(
             }
         }
 
-        // Combine logic with explicit types to resolve inference errors
+        // Construct UI State (ExerciseStates)
         viewModelScope.launch {
             combine(
                 _exercises,
                 _sets,
                 userPrefs.recoveryScore
             ) { allExercises: List<ExerciseEntity>, sessionSets: List<WorkoutSetEntity>, recovery: Int ->
-
                 val sessionExerciseIds = sessionSets.map { it.exerciseId }.toSet()
                 val sessionExercises = allExercises
                     .filter { it.exerciseId in sessionExerciseIds }
@@ -165,7 +153,6 @@ class ActiveSessionViewModel @Inject constructor(
                 }
 
                 val setsByExercise = sessionSets.groupBy { it.exerciseId }
-
                 sessionExercises.mapNotNull { exercise ->
                     setsByExercise[exercise.exerciseId]?.let { exerciseSets ->
                         val existingState = _exerciseStates.value.find { it.exercise.exerciseId == exercise.exerciseId }
@@ -186,6 +173,8 @@ class ActiveSessionViewModel @Inject constructor(
             }
         }
     }
+
+    // --- 3. SESSION MANAGEMENT ---
 
     fun loadWorkout(workoutId: Long) {
         viewModelScope.launch {
@@ -211,7 +200,6 @@ class ActiveSessionViewModel @Inject constructor(
             }
 
             val groupedSets = adjustedSets.groupBy { it.exerciseId }
-
             _exerciseStates.value = workoutExercises.map { exercise ->
                 ExerciseState(
                     exercise = exercise,
@@ -227,6 +215,38 @@ class ActiveSessionViewModel @Inject constructor(
             _coachBriefing.value = briefing
         }
     }
+
+    fun finishWorkout(workoutId: Long) {
+        skipSetTimer(-1)
+        viewModelScope.launch {
+            val report = repository.completeWorkout(workoutId)
+            _workoutSummary.value = report
+
+            val endTime = Instant.now()
+            val durationMin = ChronoUnit.MINUTES.between(workoutStartTime, endTime)
+            val estimatedCalories = (durationMin * 4.5).coerceAtLeast(10.0)
+
+            try {
+                if (healthConnectManager.hasPermissions()) {
+                    healthConnectManager.writeWorkout(
+                        workoutId = workoutId,
+                        startTime = workoutStartTime,
+                        endTime = endTime,
+                        calories = estimatedCalories,
+                        title = "Strength Workout"
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e("Workout", "Failed to sync with Health Connect", e)
+            }
+        }
+    }
+
+    fun clearSummary() {
+        _workoutSummary.value = null
+    }
+
+    // --- 4. EXERCISE & SET UPDATES ---
 
     fun updateSetCompletion(set: WorkoutSetEntity, isCompleted: Boolean) {
         viewModelScope.launch { repository.updateSet(set.copy(isCompleted = isCompleted)) }
@@ -247,18 +267,18 @@ class ActiveSessionViewModel @Inject constructor(
         viewModelScope.launch { repository.updateSet(set.copy(actualRpe = rpeFloat)) }
     }
 
+    fun toggleExerciseVisibility(exerciseId: Long) {
+        _exerciseStates.value = _exerciseStates.value.map {
+            if (it.exercise.exerciseId == exerciseId) it.copy(areSetsVisible = !it.areSetsVisible) else it
+        }
+    }
+
     fun swapExercise(oldExerciseId: Long, newExerciseId: Long) {
         viewModelScope.launch { repository.swapExercise(_workoutId.value, oldExerciseId, newExerciseId) }
     }
 
     suspend fun getTopAlternatives(exercise: ExerciseEntity): List<ExerciseEntity> {
         return repository.getBestAlternatives(exercise)
-    }
-
-    fun toggleExerciseVisibility(exerciseId: Long) {
-        _exerciseStates.value = _exerciseStates.value.map {
-            if (it.exercise.exerciseId == exerciseId) it.copy(areSetsVisible = !it.areSetsVisible) else it
-        }
     }
 
     fun addWarmUpSets(exerciseId: Long, workingWeight: Int) {
@@ -269,53 +289,9 @@ class ActiveSessionViewModel @Inject constructor(
             }
         }
     }
-    fun interactWithCoach(userText: String) { // Renamed for clarity
-        val currentHistory = _chatHistory.value.toMutableList()
-        currentHistory.add(ChatMessage("User", userText))
-        _chatHistory.value = currentHistory
 
-        viewModelScope.launch {
-            val currentExercises = _exerciseStates.value.filter {
-                it.sets.any { set -> !set.isCompleted }
-            }.joinToString { it.exercise.name }
+    // --- 5. TIMER LOGIC ---
 
-            val available = repository.getAllExercises().first()
-            val response = bedrockClient.coachInteraction(currentExercises, userText, available)
-
-            val newHistory = _chatHistory.value.toMutableList()
-            newHistory.add(ChatMessage("Coach", response.explanation))
-            _chatHistory.value = newHistory
-
-            // Only modify DB if AI explicitly returns new exercises
-            if (response.exercises.isNotEmpty()) {
-                val workoutId = _workoutId.value
-                val incompleteSets = _sets.value.filter { !it.isCompleted }
-                repository.deleteSets(incompleteSets)
-
-                // FIX: Use mapNotNull + flatten to skip invalid exercises and prevent FK crash
-                val newSets = response.exercises.mapNotNull { genEx ->
-                    val match = available.find { it.name.equals(genEx.name, ignoreCase = true) }
-                    if (match != null) {
-                        List(genEx.sets) { setNum ->
-                            WorkoutSetEntity(
-                                workoutId = workoutId,
-                                exerciseId = match.exerciseId,
-                                setNumber = setNum + 1,
-                                suggestedReps = genEx.suggestedReps,
-                                suggestedLbs = genEx.suggestedLbs.toInt(),
-                                suggestedRpe = 8
-                            )
-                        }
-                    } else null // Safe skip
-                }.flatten()
-
-                if (newSets.isNotEmpty()) {
-                    repository.insertSets(newSets)
-                    loadWorkout(workoutId)
-                }
-            }
-        }
-    }
     fun startSetTimer(exerciseId: Long) {
         val exerciseState = _exerciseStates.value.find { it.exercise.exerciseId == exerciseId } ?: return
         val durationSeconds = (exerciseState.exercise.estimatedTimePerSet * 60).toInt()
@@ -356,42 +332,89 @@ class ActiveSessionViewModel @Inject constructor(
         }
     }
 
-    fun finishWorkout(workoutId: Long) {
-        skipSetTimer(-1)
+    // --- 6. AI & CHAT INTERACTION ---
+
+    fun interactWithCoach(userText: String) {
+        val currentHistory = _chatHistory.value.toMutableList()
+        currentHistory.add(ChatMessage("User", userText))
+        _chatHistory.value = currentHistory
+
         viewModelScope.launch {
-            val report = repository.completeWorkout(workoutId)
-            _workoutSummary.value = report
+            val currentExercises = _exerciseStates.value.filter {
+                it.sets.any { set -> !set.isCompleted }
+            }.joinToString { it.exercise.name }
 
-            val endTime = Instant.now()
-            val durationMin = ChronoUnit.MINUTES.between(workoutStartTime, endTime)
-            val estimatedCalories = (durationMin * 4.5).coerceAtLeast(10.0)
+            val available = repository.getAllExercises().first()
+            val response = bedrockClient.coachInteraction(currentExercises, userText, available)
 
-            try {
-                if (healthConnectManager.hasPermissions()) {
-                    healthConnectManager.writeWorkout(
-                        workoutId = workoutId,
-                        startTime = workoutStartTime,
-                        endTime = endTime,
-                        calories = estimatedCalories,
-                        title = "Strength Workout"
-                    )
+            val newHistory = _chatHistory.value.toMutableList()
+            newHistory.add(ChatMessage("Coach", response.explanation))
+            _chatHistory.value = newHistory
+
+            if (response.exercises.isNotEmpty()) {
+                val workoutId = _workoutId.value
+                val incompleteSets = _sets.value.filter { !it.isCompleted }
+                repository.deleteSets(incompleteSets)
+
+                val newSets = response.exercises.mapNotNull { genEx ->
+                    val match = available.find { it.name.equals(genEx.name, ignoreCase = true) }
+                    if (match != null) {
+                        List(genEx.sets) { setNum ->
+                            WorkoutSetEntity(
+                                workoutId = workoutId,
+                                exerciseId = match.exerciseId,
+                                setNumber = setNum + 1,
+                                suggestedReps = genEx.suggestedReps,
+                                suggestedLbs = genEx.suggestedLbs.toInt(),
+                                suggestedRpe = 8
+                            )
+                        }
+                    } else null
+                }.flatten()
+
+                if (newSets.isNotEmpty()) {
+                    repository.insertSets(newSets)
+                    loadWorkout(workoutId)
                 }
-            } catch (e: Exception) {
-                Log.e("Workout", "Failed to sync with Health Connect", e)
             }
         }
-    }
-
-    fun clearSummary() {
-        _workoutSummary.value = null
     }
 
     suspend fun generateCoachingCue(exerciseName: String, issue: String): String {
         return bedrockClient.generateCoachingCue(exerciseName, issue, 0)
     }
+
+    // --- 7. LIVE VOICE COACHING ---
+
+    fun toggleLiveCoaching() {
+        if (_isListening.value) {
+            stopLiveTranscription()
+        } else {
+            _isListening.value = true
+            startLiveTranscription()
+        }
+    }
+
+    private fun startLiveTranscription() {
+        transcribeJob?.cancel()
+        transcribeJob = viewModelScope.launch {
+            liveTranscribeClient.startStreaming(audioManager.getAudioStream())
+                .collect { transcript ->
+                    android.util.Log.d("LiveCoach", "Voice Command Received: $transcript")
+                    interactWithCoach(transcript)
+                }
+        }
+    }
+
+    private fun stopLiveTranscription() {
+        _isListening.value = false
+        transcribeJob?.cancel()
+        transcribeJob = null
+    }
 }
 
-// FIXED: Added recoveryScore parameter
+// --- PRIVATE HELPERS ---
+
 private fun generateCoachBriefing(exercises: List<ExerciseEntity>, sets: List<WorkoutSetEntity>, recoveryScore: Int): String {
     if (exercises.isEmpty() || sets.isEmpty()) return "Ready to start your workout?"
 
