@@ -57,6 +57,7 @@ fun ActiveWorkoutScreen(
     var userText by remember { mutableStateOf("") }
     val chatHistory by viewModel.chatHistory.collectAsState()
     val listState = rememberLazyListState()
+    val isListening by viewModel.isListening.collectAsState()
 
     val currentView = LocalView.current
     DisposableEffect(Unit) {

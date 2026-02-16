@@ -1,12 +1,12 @@
 // app/src/main/java/com/example/myapplication/data/remote/LiveTranscribeClient.kt
 package com.example.myapplication.data.remote
 
-import aws.sdk.kotlin.credentials.CognitoCredentialsProvider
 import aws.sdk.kotlin.services.transcribestreaming.TranscribeStreamingClient
 import aws.sdk.kotlin.services.transcribestreaming.model.*
 import com.example.myapplication.BuildConfig
 import com.example.myapplication.data.repository.AuthRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import javax.inject.Inject
@@ -26,22 +26,22 @@ class LiveTranscribeClient @Inject constructor(private val authRepository: AuthR
         }
     }
 
-    suspend fun startStreaming(audioStream: Flow<ByteArray>): Flow<String> {
+    suspend fun startStreaming(audioFlow: Flow<ByteArray>): Flow<String> {
         val request = StartStreamTranscriptionRequest {
             languageCode = LanguageCode.EnUs
             mediaEncoding = MediaEncoding.Pcm
             mediaSampleRateHertz = 16000
-            audioStream = audioStream.map { bytes ->
+            audioStream = audioFlow.map { bytes ->
                 AudioStream.AudioEvent(AudioEvent { audioChunk = bytes })
             }
         }
 
         return client.startStreamTranscription(request) { response ->
-            response.transcriptResultStream.mapNotNull { event ->
+            response.transcriptResultStream?.mapNotNull { event ->
                 if (event is TranscriptResultStream.TranscriptEvent) {
                     event.value.transcript?.results?.firstOrNull()?.alternatives?.firstOrNull()?.transcript
                 } else null
-            }
+            } ?: emptyFlow()
         }
     }
 }

@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Intent
 import android.util.Log
 import androidx.lifecycle.ViewModel
+import com.example.myapplication.data.remote.LiveTranscribeClient
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
@@ -43,7 +44,6 @@ class ActiveSessionViewModel @Inject constructor(
     private val application: Application,
     private val userPrefs: UserPreferencesRepository, // Unique declaration
     private val healthConnectManager: HealthConnectManager,
-    private val bedrockClient: BedrockClient,
     private val liveTranscribeClient: LiveTranscribeClient,
 
     val bedrockClient: BedrockClient

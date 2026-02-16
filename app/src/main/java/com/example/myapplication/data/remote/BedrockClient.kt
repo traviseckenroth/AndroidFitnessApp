@@ -3,7 +3,6 @@
 package com.example.myapplication.data.remote
 
 import android.util.Log
-import aws.sdk.kotlin.credentials.CognitoCredentialsProvider
 import aws.sdk.kotlin.services.bedrockruntime.BedrockRuntimeClient
 import aws.sdk.kotlin.services.bedrockruntime.model.InvokeModelRequest
 import aws.smithy.kotlin.runtime.http.engine.okhttp.OkHttpEngine
