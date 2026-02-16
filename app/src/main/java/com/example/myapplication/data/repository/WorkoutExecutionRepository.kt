@@ -30,16 +30,17 @@ class WorkoutExecutionRepository @Inject constructor(
     fun getCompletedWorkoutsForExercise(exerciseId: Long): Flow<List<CompletedWorkoutWithExercise>> =
         workoutDao.getCompletedWorkoutsForExercise(exerciseId)
 
+    // --- ADDED: Missing method needed by ViewModel ---
+    suspend fun getWorkoutById(workoutId: Long): WorkoutEntity? = workoutDao.getWorkoutById(workoutId)
+
     // --- WRITES ---
     suspend fun updateSet(set: WorkoutSetEntity) = workoutDao.updateSet(set)
 
     // FIX 1: Bio-Sync Title Adjustment
-    // Intercepts the workout creation to check recovery status
     suspend fun insertWorkout(workout: WorkoutEntity): Long {
         val isRecovery = checkRecoveryNeeded()
-
         val finalWorkout = if (isRecovery) {
-            Log.d("BioSync", "Recovery Mode Detected. Marking workout as Recovery Session.")
+            Log.d("BioSync", "Sleep < 6h. Tagging workout as Recovery Session.")
             workout.copy(name = "Recovery: ${workout.name}")
         } else {
             workout
@@ -47,23 +48,9 @@ class WorkoutExecutionRepository @Inject constructor(
         return workoutDao.insertWorkout(finalWorkout)
     }
 
-    // FIX 2: Bio-Sync Volume Reduction (30%)
-    // Intercepts the set creation to reduce reps if recovery is needed
+    // 2. Save Sets AS IS (Let the UI handle the reduction dialog)
     suspend fun insertSets(sets: List<WorkoutSetEntity>) {
-        val isRecovery = checkRecoveryNeeded()
-
-        val finalSets = if (isRecovery) {
-            Log.d("BioSync", "Reducing workout volume by 30% for recovery.")
-            sets.map { set ->
-                set.copy(
-                    // Reduce suggested reps by 30% (keep at least 1 rep)
-                    suggestedReps = (set.suggestedReps * 0.7).toInt().coerceAtLeast(1)
-                )
-            }
-        } else {
-            sets
-        }
-        workoutDao.insertSets(finalSets)
+        workoutDao.insertSets(sets)
     }
 
     suspend fun completeWorkout(workoutId: Long): List<String> {
@@ -109,16 +96,10 @@ class WorkoutExecutionRepository @Inject constructor(
     }
 
     // --- HELPER FUNCTION ---
-    // Centralized logic to check if sleep was under 6 hours in the last 24h
     private suspend fun checkRecoveryNeeded(): Boolean {
-        // 1. Define window: Look at sleep from the last 24 hours
         val now = Instant.now()
         val yesterday = now.minus(Duration.ofHours(24))
-
-        // 2. Fetch Data
         val sleepDuration = healthConnectManager.getDailySleepDuration(yesterday, now)
-
-        // 3. Evaluate: Sleep is positive but less than 6 hours (360 minutes)
         return sleepDuration.toMinutes() in 1..359
     }
 }

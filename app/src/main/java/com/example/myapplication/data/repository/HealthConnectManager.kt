@@ -42,26 +42,22 @@ class HealthConnectManager @Inject constructor(
         HealthPermission.getReadPermission(ExerciseSessionRecord::class),
         HealthPermission.getReadPermission(SleepSessionRecord::class),
         HealthPermission.getReadPermission(HeartRateRecord::class),
-        HealthPermission.getReadPermission(HeartRateVariabilityRmssdRecord::class) // Added
+        HealthPermission.getReadPermission(HeartRateVariabilityRmssdRecord::class) // Essential for Bio-Sync
     )
 
     suspend fun hasPermissions(): Boolean {
         return healthConnectClient?.permissionController?.getGrantedPermissions()?.containsAll(permissions) == true
     }
 
-    // New Bio-Syncing Feature: Get Sleep
-// New Function: Get Sleep Duration
     suspend fun getDailySleepDuration(startTime: Instant, endTime: Instant): Duration {
-        if (healthConnectClient == null || !hasPermissions()) {
-            return Duration.ZERO
-        }
+        if (healthConnectClient == null || !hasPermissions()) return Duration.ZERO
+
         return try {
             val request = ReadRecordsRequest(
                 recordType = SleepSessionRecord::class,
                 timeRangeFilter = TimeRangeFilter.between(startTime, endTime)
             )
             val response = healthConnectClient?.readRecords(request)
-
             response?.records?.fold(Duration.ZERO) { acc, record ->
                 acc.plus(Duration.between(record.startTime, record.endTime))
             } ?: Duration.ZERO
