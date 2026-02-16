@@ -43,11 +43,13 @@ class ActiveSessionViewModel @Inject constructor(
     private val application: Application,
     private val userPrefs: UserPreferencesRepository, // Unique declaration
     private val healthConnectManager: HealthConnectManager,
+    private val bedrockClient: BedrockClient,
+    private val liveTranscribeClient: LiveTranscribeClient,
 
     val bedrockClient: BedrockClient
 ) : ViewModel() {
     private val _chatHistory = MutableStateFlow(listOf(
-        ChatMessage("Coach", "Hey! Any pain or discomfort I should know about today?")
+        ChatMessage("Coach", "Get exercise tips, address muscle or joint pains, etc.")
     ))
     val chatHistory: StateFlow<List<ChatMessage>> = _chatHistory
     private val _workoutId = MutableStateFlow<Long>(-1)
@@ -66,7 +68,29 @@ class ActiveSessionViewModel @Inject constructor(
     val workoutSummary: StateFlow<List<String>?> = _workoutSummary
 
     private var workoutStartTime: Instant = Instant.now()
+    private val _isListening = MutableStateFlow(false)
+    val isListening: StateFlow<Boolean> = _isListening
 
+    fun toggleLiveCoaching() {
+        if (_isListening.value) {
+            _isListening.value = false
+            // Logic to stop microphone stream
+        } else {
+            _isListening.value = true
+            startLiveTranscription()
+        }
+    }
+
+    private fun startLiveTranscription() {
+        viewModelScope.launch {
+            // Assume an AudioRecordingManager provides a flow of PCM data
+            // audioManager.getPcmStream().collect { transcript ->
+            //    if (transcript.contains("ouch") || transcript.contains("pain")) {
+            //        interactWithCoach("I feel pain: $transcript")
+            //    }
+            // }
+        }
+    }
     init {
         workoutStartTime = Instant.now()
 
@@ -168,10 +192,9 @@ class ActiveSessionViewModel @Inject constructor(
             _workoutId.value = workoutId
             val workoutExercises = repository.getExercisesByIds(
                 repository.getSetsForSession(workoutId).first().map { it.exerciseId }.distinct()
-            ).first()
+            ).first().sortedBy { it.tier }
 
             val rawSets = repository.getSetsForSession(workoutId).first()
-
             val recoveryScore = userPrefs.recoveryScore.first()
             val rpeReduction = when {
                 recoveryScore < 40 -> 2
@@ -246,53 +269,50 @@ class ActiveSessionViewModel @Inject constructor(
             }
         }
     }
-    fun negotiateAdjustment(userText: String) {
+    fun interactWithCoach(userText: String) { // Renamed for clarity
         val currentHistory = _chatHistory.value.toMutableList()
         currentHistory.add(ChatMessage("User", userText))
         _chatHistory.value = currentHistory
 
         viewModelScope.launch {
             val currentExercises = _exerciseStates.value.filter {
-                it.sets.any { set -> !set.isCompleted } // Only send uncompleted work
+                it.sets.any { set -> !set.isCompleted }
             }.joinToString { it.exercise.name }
 
             val available = repository.getAllExercises().first()
+            val response = bedrockClient.coachInteraction(currentExercises, userText, available)
 
-            // 1. Get AI Response
-            val response = bedrockClient.negotiateWorkout(currentExercises, userText, available)
-
-            // 2. Update Chat UI
             val newHistory = _chatHistory.value.toMutableList()
             newHistory.add(ChatMessage("Coach", response.explanation))
             _chatHistory.value = newHistory
 
-            // 3. Update Database
+            // Only modify DB if AI explicitly returns new exercises
             if (response.exercises.isNotEmpty()) {
                 val workoutId = _workoutId.value
                 val incompleteSets = _sets.value.filter { !it.isCompleted }
-
-                // Now works because we added it to the repository
                 repository.deleteSets(incompleteSets)
 
-                val newSets = response.exercises.flatMapIndexed { index, genEx ->
+                // FIX: Use mapNotNull + flatten to skip invalid exercises and prevent FK crash
+                val newSets = response.exercises.mapNotNull { genEx ->
                     val match = available.find { it.name.equals(genEx.name, ignoreCase = true) }
-                    val exerciseId = match?.exerciseId ?: 0L
+                    if (match != null) {
+                        List(genEx.sets) { setNum ->
+                            WorkoutSetEntity(
+                                workoutId = workoutId,
+                                exerciseId = match.exerciseId,
+                                setNumber = setNum + 1,
+                                suggestedReps = genEx.suggestedReps,
+                                suggestedLbs = genEx.suggestedLbs.toInt(),
+                                suggestedRpe = 8
+                            )
+                        }
+                    } else null // Safe skip
+                }.flatten()
 
-                    List(genEx.sets) { setNum ->
-                        WorkoutSetEntity(
-                            workoutId = workoutId,
-                            exerciseId = exerciseId,
-                            setNumber = setNum + 1,
-                            suggestedReps = genEx.suggestedReps,
-                            // FIX: Cast Float to Int
-                            suggestedLbs = genEx.suggestedLbs.toInt(),
-                            // FIX: Use Int (8) instead of Double (8.0)
-                            suggestedRpe = 8
-                        )
-                    }
+                if (newSets.isNotEmpty()) {
+                    repository.insertSets(newSets)
+                    loadWorkout(workoutId)
                 }
-                repository.insertSets(newSets)
-                loadWorkout(workoutId)
             }
         }
     }

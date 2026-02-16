@@ -61,7 +61,7 @@ fun GeneratePlanScreen(
         ) {
             // Dynamic Header
             Text(
-                text = if (uiState is PlanUiState.Success) "Your 4-Week Plan" else "Plan Generator",
+                text = if (uiState is PlanUiState.Success) "Plan Generator" else "Plan Generator",
                 style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -241,21 +241,59 @@ fun PlanInputForm(
 @Composable
 fun PlanDisplay(plan: WorkoutPlan) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (plan.explanation.isNotBlank()) {
+            Text(
+                text = "Coach's Strategy:",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = plan.explanation,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            HorizontalDivider()
+        }
         plan.weeks.forEach { week ->
-            ElevatedCard(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = "WEEK ${week.week}", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = "WEEK ${week.week}",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
                     week.days.forEach { day ->
                         Column(modifier = Modifier.padding(vertical = 4.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.small, modifier = Modifier.padding(end = 8.dp)) {
-                                    Text(text = day.day, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                Surface(
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    shape = MaterialTheme.shapes.small,
+                                    modifier = Modifier.padding(end = 8.dp)
+                                ) {
+                                    Text(
+                                        text = day.day,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
+                                // day.title will now show the correct 'workoutName'
                                 Text(day.title, style = MaterialTheme.typography.titleMedium)
                             }
                             day.exercises.forEachIndexed { index, ex ->
-                                Text(text = "${index + 1}. ${ex.name} (${ex.sets} x ${ex.reps})", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp, top = 2.dp))
+                                Text(
+                                    text = "${index + 1}. ${ex.name} (${ex.sets} x ${ex.reps})",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 16.dp, top = 2.dp)
+                                )
                             }
                         }
                         Spacer(modifier = Modifier.height(12.dp))

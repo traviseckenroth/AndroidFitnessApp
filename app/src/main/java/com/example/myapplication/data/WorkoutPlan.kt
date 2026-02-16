@@ -35,7 +35,4 @@ data class Exercise(
     val estimatedTimePerSet: Double,
     val rpe: Int,
     val suggestedLbs: Float = 0f
-
-
-
 )

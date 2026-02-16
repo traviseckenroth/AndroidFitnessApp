@@ -103,9 +103,11 @@ class WorkoutExecutionRepository @Inject constructor(
         val candidates = workoutDao.getAlternativesByMajorMuscleAndTier(currentExercise.majorMuscle, currentExercise.tier, currentExercise.exerciseId)
         return candidates.distinctBy { it.name }.sortedByDescending { it.equipment == currentExercise.equipment }.take(5)
     }
-    suspend fun deleteSets(sets: List<WorkoutSetEntity>) {
-        if (sets.isNotEmpty()) {
+    suspend fun deleteSets(sets: List<WorkoutSetEntity>): Int {
+        return if (sets.isNotEmpty()) {
             workoutDao.deleteSets(sets)
+        } else {
+            0
         }
     }
     suspend fun swapExercise(workoutId: Long, oldExerciseId: Long, newExerciseId: Long) {

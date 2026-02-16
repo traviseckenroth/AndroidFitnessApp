@@ -140,14 +140,14 @@ class PromptRepository @Inject constructor() {
             3. Set Carbs to fuel the {avgWorkoutDurationMins} minute duration.
             
             OUTPUT FORMAT (RAW JSON ONLY):
-            {
-              "calories": "2500", 
-              "protein": "180g", 
-              "carbs": "250g", 
-              "fats": "80g",
-              "timing": "Advice on pre/post workout nutrition.",
-              "explanation": "CRITICAL: Explain specifically how these numbers support training {weeklyWorkoutDays} days a week. Mention the workout volume and how the protein/carbs fuel that specific load."
-            }
+                {
+                  "calories": "2500", 
+                  "protein": "180g", 
+                  "carbs": "250g", 
+                  "fats": "80g",
+                  "timing": "Short advice.",
+                  "explanation": "CRITICAL: A CONCISE explanation (max 300 characters) of how these numbers fuel the specific load."
+                }
         """.trimIndent(),
 
         "prompt_template_coaching_cue" to """

@@ -68,6 +68,7 @@ class PlanRepository @Inject constructor(
             startDate = startDate,
             goal = goal,
             programType = programType,
+            aiExplanation = aiResponse.explanation,
             nutritionJson = existingNutritionJson
         )
 
@@ -167,7 +168,7 @@ class PlanRepository @Inject constructor(
         }
 
         return WorkoutPlan(
-            explanation = planEntity?.name ?: "Your Plan",
+            explanation = planEntity?.aiExplanation ?: planEntity?.name ?: "Your Plan",
             weeks = weeklyPlans,
             nutrition = domainNutrition
         )

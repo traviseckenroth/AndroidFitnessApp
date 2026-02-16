@@ -15,6 +15,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.app.Activity
+import android.content.Intent
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +56,7 @@ fun ActiveWorkoutScreen(
     var showChat by remember { mutableStateOf(false) }
     var userText by remember { mutableStateOf("") }
     val chatHistory by viewModel.chatHistory.collectAsState()
+    val listState = rememberLazyListState()
 
     val currentView = LocalView.current
     DisposableEffect(Unit) {
@@ -92,7 +99,22 @@ fun ActiveWorkoutScreen(
             onWorkoutComplete(workoutId)
         }
     }
+    LaunchedEffect(chatHistory.size) {
+        if (chatHistory.isNotEmpty()) {
+            listState.animateScrollToItem(chatHistory.size - 1)
+        }
+    }
 
+    val voiceLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spokenText = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.get(0)
+            if (!spokenText.isNullOrBlank()) {
+                userText = spokenText
+            }
+        }
+    }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -135,16 +157,13 @@ fun ActiveWorkoutScreen(
                 title = { Text("Coach Chat") },
                 text = {
                     Column(
-                        modifier = Modifier
-                            .height(300.dp) // Fixed height for scrolling
-                            .fillMaxWidth(),
+                        modifier = Modifier.height(400.dp).fillMaxWidth(),
                         verticalArrangement = Arrangement.SpaceBetween
                     ) {
-                        // Message History List
+                        // 1. Message History (with auto-scroll state)
                         LazyColumn(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(bottom = 8.dp)
+                            state = listState, // ATTACH THE SCROLL STATE HERE
+                            modifier = Modifier.weight(1f).padding(bottom = 8.dp)
                         ) {
                             items(chatHistory) { msg ->
                                 val isCoach = msg.sender == "Coach"
@@ -160,34 +179,54 @@ fun ActiveWorkoutScreen(
                                         shape = RoundedCornerShape(8.dp),
                                         modifier = Modifier.padding(vertical = 4.dp, horizontal = 4.dp)
                                     ) {
-                                        Text(
-                                            text = msg.text,
-                                            modifier = Modifier.padding(8.dp),
-                                            fontSize = 14.sp
-                                        )
+                                        Text(text = msg.text, modifier = Modifier.padding(8.dp), fontSize = 14.sp)
                                     }
                                 }
                             }
                         }
 
-                        // Input Area
-                        OutlinedTextField(
-                            value = userText,
-                            onValueChange = { userText = it },
-                            placeholder = { Text("Type here...") },
-                            modifier = Modifier.fillMaxWidth(),
-                            trailingIcon = {
-                                IconButton(onClick = {
-                                    if (userText.isNotBlank()) {
-                                        viewModel.negotiateAdjustment(userText)
-                                        userText = ""
+                        // 2. Chat Input Area
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = userText,
+                                onValueChange = { userText = it },
+                                placeholder = { Text("Type or speak...") },
+                                modifier = Modifier.weight(1f),
+                                leadingIcon = {
+                                    IconButton(onClick = {
+                                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                            putExtra(RecognizerIntent.EXTRA_PROMPT, "Talk to your coach")
+                                        }
+                                        voiceLauncher.launch(intent)
+                                    }) {
+                                        Icon(Icons.Default.Mic, contentDescription = "Voice Input")
                                     }
-                                }) {
-                                    // FIX: Use Icons.Default.Send instead of Icons.AutoMirrored.Filled.Send
-                                    Icon(Icons.Default.Send, contentDescription = "Send")
+                                },
+                                trailingIcon = {
+                                    IconButton(onClick = {
+                                        if (userText.isNotBlank()) {
+                                            viewModel.interactWithCoach(userText)
+                                            userText = ""
+                                        }
+                                    }) {
+                                        Icon(Icons.Default.Send, contentDescription = "Send")
+                                    }
                                 }
+                            )
+
+                            // 3. Live Streaming Toggle Button (Gemini Live Style)
+                            IconButton(
+                                onClick = { viewModel.toggleLiveCoaching() },
+                                modifier = Modifier.padding(start = 4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isListening) Icons.Default.Hearing else Icons.Default.HearingDisabled,
+                                    contentDescription = "Live Coaching",
+                                    tint = if (isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                                )
                             }
-                        )
+                        }
                     }
                 },
                 confirmButton = {

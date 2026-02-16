@@ -3,6 +3,7 @@
 package com.example.myapplication.data.remote
 
 import android.util.Log
+import aws.sdk.kotlin.credentials.CognitoCredentialsProvider
 import aws.sdk.kotlin.services.bedrockruntime.BedrockRuntimeClient
 import aws.sdk.kotlin.services.bedrockruntime.model.InvokeModelRequest
 import aws.smithy.kotlin.runtime.http.engine.okhttp.OkHttpEngine
@@ -19,6 +20,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.Json
 import java.util.Date
 
@@ -70,14 +72,14 @@ data class GeneratedPlanResponse(
 data class GeneratedDay(
     val week: Int = 1,
     val day: String,
-    val title: String = "Workout",
+    @SerialName("workoutName") val title: String = "Workout",
     val exercises: List<GeneratedExercise> = emptyList()
 )
 
 @Serializable
 data class GeneratedExercise(
     val name: String,
-    val muscleGroup: String? = null,
+    @SerialName("targetMuscle") val muscleGroup: String? = null,
     val equipment: String? = null,
     val fatigue: String? = null,
     val tier: Int = 1,
@@ -265,36 +267,44 @@ class BedrockClient @Inject constructor(
         val exercises: List<GeneratedExercise>
     )
 
-    suspend fun negotiateWorkout(
+    suspend fun coachInteraction(
         currentWorkout: String,
-        userComplaint: String,
+        userMessage: String,
         availableExercises: List<ExerciseEntity>
     ): NegotiationResponse = withContext(Dispatchers.Default) {
-        val exerciseList = availableExercises.joinToString("\n") { "- ${it.name} (Muscle: ${it.muscleGroup}, Tier: ${it.tier})" }
+        val exerciseList = availableExercises.joinToString("\n") { "- ${it.name}" }
 
         val systemPrompt = """
-        You are an adaptive fitness coach. The user is currently doing this workout:
+        You are an expert, supportive Fitness Coach. The user is currently performing a workout.
+        
+        YOUR GOALS:
+        1. BE CONVERSATIONAL: If the user asks for advice, form tips, or motivation, answer them directly and concisely (max 3 sentences).
+        2. ADAPT THE PLAN: If the user mentions pain (e.g., "my knee hurts"), extreme fatigue, or missing equipment, provide empathy AND modify the remaining exercises.
+        
+        RULES FOR EXERCISE MODIFICATION:
+        - Only modify the plan if the user's message warrants it.
+        - ONLY use exercises from the ALLOWED LIST below.
+        - If no modification is needed, return an empty list for "exercises".
+        
+        CURRENT WORKOUT CONTEXT:
         $currentWorkout
         
-        They have a complaint: "$userComplaint"
-        
-        TASK: 
-        1. Empathize with the user briefly.
-        2. Modify the remaining exercises to accommodate the issue.
+        ALLOWED LIST:
+        $exerciseList
         
         OUTPUT FORMAT (JSON OBJECT ONLY):
         {
-          "explanation": "I've swapped Bench Press for Floor Press to reduce shoulder strain.",
-          "exercises": [ { "name": "...", "sets": 3, "suggestedReps": 10, "suggestedLbs": 0.0, "tier": 2 } ]
+          "explanation": "Your spoken response to the user (advice or explanation of changes).",
+          "exercises": [ { "name": "...", "sets": 3, "suggestedReps": 10, "suggestedLbs": 0.0, "tier": 1 } ]
         }
     """.trimIndent()
 
         try {
-            val cleanJson = invokeClaude(systemPrompt, "Adapt my workout based on my complaint.")
+            val cleanJson = invokeClaude(systemPrompt, userMessage)
             jsonConfig.decodeFromString<NegotiationResponse>(cleanJson)
         } catch (e: Exception) {
-            Log.e("BedrockError", "Negotiation failed", e)
-            NegotiationResponse("Couldn't reach the coach. Please try again.", emptyList())
+            Log.e("BedrockError", "Coach interaction failed", e)
+            NegotiationResponse("I'm here, but I'm having trouble processing that. Keep going!", emptyList())
         }
     }
     // --- 2. GENERATE NUTRITION PLAN (Separate Call) ---
@@ -348,6 +358,7 @@ class BedrockClient @Inject constructor(
 
         val response = client.invokeModel(request)
         val responseBody = response.body?.decodeToString() ?: ""
+        Log.d("BedrockClient", "Raw Response: $responseBody") // ADD THIS LOG
 
         val outerResponse = jsonConfig.decodeFromString<ClaudeResponse>(responseBody)
         val rawText = outerResponse.content.firstOrNull()?.text ?: ""

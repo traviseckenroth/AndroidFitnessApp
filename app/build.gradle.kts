@@ -108,7 +108,7 @@ dependencies {
 
     // 1. Bedrock Runtime (for AI)
     implementation(libs.aws.bedrock.runtime)
-
+    implementation("aws.sdk.kotlin:transcribestreaming:1.0.41")
     // 2. Cognito Identity (for Guest Credentials) -> THIS REPLACES 'auth'
     implementation(libs.aws.cognito.identity)
 
@@ -139,7 +139,7 @@ dependencies {
 
     // --- ML Kit ---
     implementation("com.google.mlkit:pose-detection-accurate:18.0.0-beta5")
-
+    implementation("androidx.compose.material:material-icons-extended")
     // --- Testing ---
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
