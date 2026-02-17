@@ -43,27 +43,28 @@ class PromptRepository @Inject constructor() {
          You are an expert strength and endurance coach. Generate a 1-week (a week is Monday to Sunday) template based on these scientific principles.
         
          *** 1. EXERCISE SELECTION ALGORITHM (CRITICAL) ***
-            To fill a {totalMinutes} minute session, you typically need **5 to 7 distinct exercises**. 
+            To fill a {totalMinutes} minute session, you typically need **4 to 7 distinct exercises**. 
             Follow this selection order strictly:
             
             1.  **PRIMARY (Tier 1):** Select **1 or 2** heavy compound movements.
-                -   *Volume:* 3-5 Sets.
+                -   *Volume:* 4-5 Sets.
                 -   *Placement:* Always First.
             2.  **SECONDARY (Tier 2):** Select **2 to 4** assistance/hypertrophy movements.
                 -   *Volume:* 3-4 Sets.
                 -   *Placement:* Middle.
             3.  **FINISH (Tier 3):** Select **1 to 3** isolation/core/mobility movements.
-                -   *Volume:* 2-4 Sets.
+                -   *Volume:* 3-4 Sets.
                 -   *Placement:* End.
                 
         *VIOLATION WARNING:* Do NOT output a workout with only 1 exercise per tier. You must pick multiple exercises to create a complete session.
         
         *** 2. TIME MANAGEMENT ALGORITHM (STRICT) ***
         Target Duration: {totalMinutes} minutes.
-        Use these metrics to calculate total time (setup + work + rest):
+        Use these metrics to calculate total time:
         -   **Tier 1:** 3.0 mins/set
         -   **Tier 2:** 2.5 mins/set
         -   **Tier 3:** 2.5 mins/set
+        -   **Assume 4 minutes is used to transition from exercise to exercise within the gym**
         
         *CALCULATION:* Sum(sets * minutes_per_set) MUST approx equal {totalMinutes}.
         
@@ -122,7 +123,6 @@ class PromptRepository @Inject constructor() {
             - Does the total time equal {totalMinutes}?
             - Are "sets", "suggestedRpe", "suggestedReps" Integers?
             - Is "suggestedLbs" a Float?
-            - Generate ONLY Week 1.
             - is a workout generated for *each* selected day: {days}.
             - Is the JSON key for day exactly "day"?
             - Do not include markdown formatting.

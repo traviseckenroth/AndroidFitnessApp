@@ -9,9 +9,16 @@ import com.example.myapplication.data.local.WorkoutEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
 import java.time.Duration
 import java.time.Instant
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.*
 import javax.inject.Inject
 import javax.inject.Singleton
+
+data class WorkoutSummaryResult(
+    val title: String,
+    val subtitle: String,
+    val totalVolume: Int,
+    val totalExercises: Int
+)
 
 @Singleton
 class WorkoutExecutionRepository @Inject constructor(
@@ -65,11 +72,90 @@ class WorkoutExecutionRepository @Inject constructor(
         }
         workoutDao.insertSets(finalSets)
     }
+    suspend fun getWorkoutSummary(workoutId: Long): WorkoutSummaryResult {
+        val workout = workoutDao.getWorkoutById(workoutId)
+            ?: return WorkoutSummaryResult("Workout Complete", "Good job!", 0, 0)
 
-    suspend fun completeWorkout(workoutId: Long): List<String> {
-        val workout = workoutDao.getWorkoutById(workoutId) ?: return emptyList()
-        val sets = workoutDao.getSetsForWorkoutList(workoutId)
-        val historyEntries = sets.filter { it.isCompleted }.map { set ->
+        val sets = workoutDao.getSetsForWorkoutList(workoutId).filter { it.isCompleted }
+        val exercises = workoutDao.getExercisesForWorkoutOneShot(workoutId)
+
+        // 1. Calculate Stats
+        val volume = sets.sumOf { (it.actualLbs ?: 0f).toInt() * (it.actualReps ?: 0) }
+
+        // 2. Determine Focus
+        val focus = exercises.groupingBy { it.majorMuscle }.eachCount().maxByOrNull { it.value }?.key ?: "Full Body"
+
+        // 3. Check for PRs
+        var isPr = false
+        var prMessage = "Great job sticking to the plan."
+
+        for (exercise in exercises) {
+            val exerciseSets = sets.filter { it.exerciseId == exercise.exerciseId }
+            val maxWeightSession = exerciseSets.maxOfOrNull { it.actualLbs ?: 0f } ?: 0f
+
+            try {
+                val history = workoutDao.getCompletedWorkoutsForExercise(exercise.exerciseId).firstOrNull() ?: emptyList()
+                // Filter out current workout entries if they were already saved to avoid self-comparison
+                val previousHistory = history.filter { it.completedWorkout.date != workout.scheduledDate }
+                val maxWeightHistory = previousHistory.maxOfOrNull { it.completedWorkout.weight } ?: 0
+
+                if (maxWeightSession > maxWeightHistory && maxWeightSession > 0) {
+                    isPr = true
+                    prMessage = "You set a new ${exercise.name} PR of ${maxWeightSession.toInt()}lbs!"
+                    break
+                }
+            } catch (e: Exception) {
+                Log.e("Summary", "Error checking PR", e)
+            }
+        }
+
+        val title = if (isPr) "New Record!" else "$focus Workout"
+        val subtitle = if (isPr) prMessage else "Way to destroy those $focus muscles."
+
+        return WorkoutSummaryResult(title, subtitle, volume, exercises.size)
+    }
+    suspend fun completeWorkout(workoutId: Long): WorkoutSummaryResult {
+        val workout = workoutDao.getWorkoutById(workoutId)
+            ?: return WorkoutSummaryResult("Workout Complete", "Good job!", 0, 0)
+
+        val sets = workoutDao.getSetsForWorkoutList(workoutId).filter { it.isCompleted }
+        val exercises = workoutDao.getExercisesForWorkoutOneShot(workoutId)
+
+        // 1. Calculate Stats
+        val volume = sets.sumOf { (it.actualLbs ?: 0f).toInt() * (it.actualReps ?: 0) }
+
+        // 2. Determine Focus
+        val focus = exercises.groupingBy { it.majorMuscle }.eachCount().maxByOrNull { it.value }?.key ?: "Full Body"
+
+        // 3. Check for PRs
+        var isPr = false
+        var prMessage = "Great job sticking to the plan."
+
+        for (exercise in exercises) {
+            val exerciseSets = sets.filter { it.exerciseId == exercise.exerciseId }
+            val maxWeightSession = exerciseSets.maxOfOrNull { it.actualLbs ?: 0f } ?: 0f
+
+            // Check history
+            try {
+                // Using firstOrNull to avoid crashes if flow is empty
+                val history = workoutDao.getCompletedWorkoutsForExercise(exercise.exerciseId).firstOrNull() ?: emptyList()
+                val maxWeightHistory = history.maxOfOrNull { it.completedWorkout.weight } ?: 0
+
+                if (maxWeightSession > maxWeightHistory && maxWeightSession > 0) {
+                    isPr = true
+                    prMessage = "You set a new ${exercise.name} PR of ${maxWeightSession.toInt()}lbs!"
+                    break
+                }
+            } catch (e: Exception) {
+                Log.e("Summary", "Error checking PR", e)
+            }
+        }
+
+        val title = if (isPr) "New Record!" else "$focus Workout"
+        val subtitle = if (isPr) prMessage else "Way to destroy those $focus muscles."
+
+        // Save History
+        val historyEntries = sets.map { set ->
             CompletedWorkoutEntity(
                 exerciseId = set.exerciseId,
                 date = workout.scheduledDate,
@@ -80,7 +166,8 @@ class WorkoutExecutionRepository @Inject constructor(
         }
         if (historyEntries.isNotEmpty()) workoutDao.insertCompletedWorkouts(historyEntries)
         workoutDao.markWorkoutAsComplete(workoutId)
-        return emptyList()
+
+        return WorkoutSummaryResult(title, subtitle, volume, exercises.size)
     }
 
     suspend fun injectWarmUpSets(workoutId: Long, exerciseId: Long, workingWeight: Int) {

@@ -20,6 +20,14 @@
 
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- Required for Instagram Story Sharing on Android 11+ -->
+    <queries>
+        <package android:name="com.instagram.android" />
+        <intent>
+            <action android:name="com.instagram.share.ADD_TO_STORY" />
+        </intent>
+    </queries>
+
     <application
         android:name=".WorkoutApp"
         android:allowBackup="true"

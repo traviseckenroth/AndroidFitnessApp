@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts.RequestMultiple
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.repository.HealthConnectManager
 import com.example.myapplication.data.repository.WorkoutExecutionRepository
+import com.example.myapplication.data.repository.WorkoutSummaryResult
 import com.example.myapplication.service.WorkoutTimerService
 import com.example.myapplication.util.SpeechToTextManager
 import com.example.myapplication.util.VoiceManager
@@ -68,8 +69,8 @@ class ActiveSessionViewModel @Inject constructor(
     private val _coachBriefing = MutableStateFlow("Loading briefing...")
     val coachBriefing: StateFlow<String> = _coachBriefing
 
-    private val _workoutSummary = MutableStateFlow<List<String>?>(null)
-    val workoutSummary: StateFlow<List<String>?> = _workoutSummary
+    private val _workoutSummary = MutableStateFlow<WorkoutSummaryResult?>(null)
+    val workoutSummary: StateFlow<WorkoutSummaryResult?> = _workoutSummary
 
     private val _chatHistory = MutableStateFlow(
         listOf(ChatMessage("Coach", "Get exercise tips, address muscle or joint pains, etc."))
@@ -235,6 +236,14 @@ class ActiveSessionViewModel @Inject constructor(
                 briefing = "⚠️ RECOVERY LOW ($recoveryScore%)\nTargets reduced by $rpeReduction RPE. Take it easy today.\n\n$briefing"
             }
             _coachBriefing.value = briefing
+        }
+    }
+
+    fun loadSummary(workoutId: Long) {
+        viewModelScope.launch {
+            if (_workoutSummary.value == null) {
+                _workoutSummary.value = repository.getWorkoutSummary(workoutId)
+            }
         }
     }
 

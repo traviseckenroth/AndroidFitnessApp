@@ -94,6 +94,7 @@ dependencies {
     implementation(libs.androidx.compose.runtime)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.media3.common.ktx)
+    implementation(libs.androidx.compose.foundation.layout)
     ksp(libs.androidx.room.compiler)
     val room_version = "2.6.1" // Update this to the latest stable version
     implementation("androidx.room:room-runtime:$room_version")
