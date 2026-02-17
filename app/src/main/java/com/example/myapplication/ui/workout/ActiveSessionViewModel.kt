@@ -92,20 +92,12 @@ class ActiveSessionViewModel @Inject constructor(
         viewModelScope.launch {
             WorkoutTimerService.timerState.collect { serviceState ->
                 // 1. Check for Stale State on Startup
-                if (isInitialTimerCheck) {
-                    isInitialTimerCheck = false
-                    if (serviceState.hasFinished) {
-                        Log.w("WorkoutTimer", "Ignoring stale 'Finished' state from previous session.")
-                        stopTimerService() // Clear the stale state in the service
-                        // Do NOT run completion logic here. Just update UI to 00:00.
-                        updateLocalTimerState(
-                            activeExerciseId = serviceState.activeExerciseId,
-                            remainingTime = 0,
-                            isRunning = false
-                        )
-                        return@collect
-                    }
-                }
+                // FIX: If service claims to be finished OR (not running but has ID), reset it.
+                updateLocalTimerState(
+                    activeExerciseId = serviceState.activeExerciseId,
+                    remainingTime = serviceState.remainingTime.toLong(),
+                    isRunning = serviceState.isRunning
+                )
 
                 // 2. Normal Logic (Only runs for subsequent events)
                 val isTimerFinished = serviceState.remainingTime == 0 && serviceState.activeExerciseId != null
@@ -125,6 +117,12 @@ class ActiveSessionViewModel @Inject constructor(
                     remainingTime = serviceState.remainingTime.toLong(),
                     isRunning = serviceState.isRunning
                 )
+            }
+            fun skipSetTimer(exerciseId: Long) {
+                val intent = Intent(application, WorkoutTimerService::class.java).apply {
+                    action = WorkoutTimerService.ACTION_STOP
+                }
+                application.startService(intent)
             }
         }
 

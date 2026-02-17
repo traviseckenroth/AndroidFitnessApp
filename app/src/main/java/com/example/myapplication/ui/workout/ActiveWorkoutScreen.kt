@@ -670,37 +670,12 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
 @Composable
 fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
     val timerState = exerciseState.timerState
-    var timerTargetIndex by rememberSaveable(exerciseState.exercise.exerciseId) {
-        mutableIntStateOf(exerciseState.sets.indexOfFirst { !it.isCompleted }.takeIf { it != -1 } ?: 0)
-    }
-    val safeTargetIndex = timerTargetIndex.coerceIn(0, (exerciseState.sets.size - 1).coerceAtLeast(0))
-    val allSetsDone = exerciseState.sets.all { it.isCompleted }
-
-    fun cycleTimer() {
-        val currentTargetSet = exerciseState.sets.getOrNull(safeTargetIndex)
-        if (currentTargetSet != null && !currentTargetSet.isCompleted) {
-            viewModel.updateSetCompletion(currentTargetSet, true)
-        }
-        if (safeTargetIndex < exerciseState.sets.size - 1) {
-            timerTargetIndex = safeTargetIndex + 1
-        }
-        viewModel.skipSetTimer(exerciseState.exercise.exerciseId)
-        viewModel.startSetTimer(exerciseState.exercise.exerciseId)
-    }
-
-    var previousTime by remember { mutableLongStateOf(timerState.remainingTime) }
-
-    LaunchedEffect(timerState.remainingTime) {
-        if (previousTime > 0 && timerState.remainingTime == 0L) {
-            cycleTimer()
-        }
-        previousTime = timerState.remainingTime
-    }
-
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
     ) {
+        val allSetsDone = exerciseState.sets.all { it.isCompleted }
+
         if (allSetsDone) {
             Text(
                 text = "Complete",
@@ -708,6 +683,7 @@ fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
                 color = MaterialTheme.colorScheme.primary
             )
         } else {
+            // Display Time
             Text(
                 text = String.format(
                     Locale.US,
@@ -719,12 +695,14 @@ fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
                 color = if (timerState.isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
             )
 
+            // Control Button
             Button(onClick = {
                 if (timerState.isRunning) {
-                    cycleTimer()
+                    // User wants to SKIP the rest. Just stop the timer.
+                    // DO NOT mark the next set as done. User does that manually.
+                    viewModel.skipSetTimer(exerciseState.exercise.exerciseId)
                 } else {
-                    val nextIndex = exerciseState.sets.indexOfFirst { !it.isCompleted }
-                    if (nextIndex != -1) timerTargetIndex = nextIndex
+                    // User wants to START a rest timer (e.g. after a set).
                     viewModel.startSetTimer(exerciseState.exercise.exerciseId)
                 }
             }) {
