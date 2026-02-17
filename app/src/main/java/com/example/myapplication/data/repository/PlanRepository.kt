@@ -45,7 +45,20 @@ class PlanRepository @Inject constructor(
         workoutDao.deleteFutureUncompletedWorkouts(System.currentTimeMillis())
 
         val workoutHistory = workoutDao.getCompletedWorkoutsWithExercise().first()
-        val availableExercises = workoutDao.getAllExercises().first()
+        val allExercises = workoutDao.getAllExercises().first()
+
+        // FIX 1: Fetch Excluded Equipment
+        val excludedEquipment = userPrefs.excludedEquipment.first() // Returns Set<String> e.g. {"Barbell", "Cable"}
+
+        // FIX 2: Filter the exercises before sending to AI
+        val availableExercises = allExercises.filter { exercise ->
+            // Keep exercise if its equipment is NOT in the excluded list
+            // (If equipment is null/blank, assume it's bodyweight and keep it)
+            val eq = exercise.equipment
+            eq.isNullOrBlank() || !excludedEquipment.contains(eq)
+        }
+        Log.d("PlanRepo", "Filtered ${allExercises.size} down to ${availableExercises.size} exercises. Excluded: $excludedEquipment")
+
         val height = userPrefs.userHeight.first()
         val weight = userPrefs.userWeight.first()
         val age = userPrefs.userAge.first()

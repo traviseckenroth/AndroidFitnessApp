@@ -40,8 +40,36 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             userPrefs.saveGymType(type)
             when(type) {
-                "Commercial" -> listOf("Barbell", "Dumbbell", "Cable", "Machine").forEach { userPrefs.toggleEquipmentExclusion(it, false) }
-                "Limited" -> listOf("Barbell", "Cable", "Machine", "Smith Machine", "Leg Press").forEach { userPrefs.toggleEquipmentExclusion(it, true) }
+                "Commercial" -> {
+                    // Reset: Uncheck everything (User has everything)
+                    val allEquipment = listOf(
+                        "Barbell", "Dumbbell", "Kettlebell", "Cable", "Machine",
+                        "Smith Machine", "Pull Up Bar", "Dip Station", "Bench",
+                        "Squat Rack", "Leg Press", "EZ Bar"
+                    )
+                    allEquipment.forEach { userPrefs.toggleEquipmentExclusion(it, false) }
+                }
+                "Home Gym" -> {
+                    // Home usually lacks Machines and specialized cables
+                    listOf("Machine", "Smith Machine", "Leg Press", "Cable").forEach {
+                        userPrefs.toggleEquipmentExclusion(it, true)
+                    }
+                    // Usually has these:
+                    listOf("Barbell", "Dumbbell", "Bench", "Squat Rack", "Pull Up Bar").forEach {
+                        userPrefs.toggleEquipmentExclusion(it, false)
+                    }
+                }
+                "Limited" -> {
+                    // Hotel/Limited: No large equipment.
+                    // FIX: Expanded list to exclude ALL large equipment
+                    listOf(
+                        "Barbell", "Cable", "Machine", "Smith Machine",
+                        "Leg Press", "Squat Rack", "EZ Bar", "Dip Station"
+                    ).forEach { userPrefs.toggleEquipmentExclusion(it, true) }
+
+                    // Ensure Dumbbells are available
+                    userPrefs.toggleEquipmentExclusion("Dumbbell", false)
+                }
             }
         }
     }
