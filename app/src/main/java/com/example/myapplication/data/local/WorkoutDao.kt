@@ -101,6 +101,9 @@ interface WorkoutDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertExercise(exercise: ExerciseEntity): Long
 
+    @Update
+    suspend fun updateExercise(exercise: ExerciseEntity): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSets(sets: List<WorkoutSetEntity>): List<Long>
 
@@ -135,6 +138,10 @@ interface WorkoutDao {
 
     @Query("DELETE FROM exercises")
     suspend fun deleteAllExercises(): Int
+
+    // NEW: Delete specific workout
+    @Query("DELETE FROM daily_workouts WHERE workoutId = :workoutId")
+    suspend fun deleteWorkout(workoutId: Long): Int
 
     @Transaction
     suspend fun saveFullWorkoutPlan(

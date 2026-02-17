@@ -10,6 +10,7 @@ import com.example.myapplication.data.local.DailyWorkoutEntity
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.local.WorkoutDao
+import com.example.myapplication.data.local.CompletedWorkoutWithExercise
 import com.example.myapplication.data.local.WorkoutPlanEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.remote.BedrockClient
@@ -129,6 +130,9 @@ class PlanRepository @Inject constructor(
         return workoutDao.saveFullWorkoutPlan(planEntity, fullPlanData)
     }
 
+    fun getWorkoutHistory(): Flow<List<CompletedWorkoutWithExercise>> {
+        return workoutDao.getCompletedWorkoutsWithExercise()
+    }
     suspend fun getPlanDetails(planId: Long): WorkoutPlan {
         val targetPlanId = if (planId == 0L) workoutDao.getLatestPlan()?.planId ?: 0L else planId
         val planEntity = workoutDao.getPlanById(targetPlanId)
@@ -185,6 +189,125 @@ class PlanRepository @Inject constructor(
             weeks = weeklyPlans,
             nutrition = domainNutrition
         )
+    }
+    private fun cleanMobilityDescription(text: String): String {
+        // Improved regex to catch "Hold for...", "for 30 seconds", "30s hold", "30-second hold", etc.
+        val patterns = listOf(
+            "(?i)hold\\s+for\\s+\\d+\\s*(seconds?|s|minutes?|m)",
+            "(?i)(for\\s+)?\\d+\\s*(seconds?|s|minutes?|m)\\s*hold",
+            "(?i)(for\\s+)?\\d+\\s*(seconds?|s|minutes?|m)\\s*stretch",
+            "(?i)maintain\\s+(this\\s+)?position\\s+for\\s+\\d+\\s*(seconds?|s|minutes?|m)"
+        )
+
+        var cleaned = text
+        patterns.forEach { pattern ->
+            cleaned = cleaned.replace(Regex(pattern), "")
+        }
+
+        // Clean up trailing punctuation, extra spaces, and ensure sentence case
+        return cleaned.replace(Regex("[.,;:]\\s*$"), "") // Remove trailing punctuation
+            .replace(Regex("\\s+"), " ")                // Normalize spaces
+            .trim()
+            .replaceFirstChar { it.uppercase() }
+    }
+    suspend fun saveSingleDayWorkout(
+        planId: Long,
+        date: Long,
+        title: String,
+        exercises: List<GeneratedExercise>
+    ): Long {
+        val workoutId = workoutDao.insertDailyWorkout(
+            DailyWorkoutEntity(
+                planId = planId,
+                scheduledDate = date,
+                title = title,
+                isCompleted = false
+            )
+        )
+
+        val allExercises = workoutDao.getAllExercisesOneShot()
+        val sets = exercises.flatMap { aiEx ->
+            var realEx = allExercises.find {
+                it.name.trim().equals(aiEx.name.trim(), ignoreCase = true)
+            }
+
+            // 1. Clean the instructions of redundant time text for the session
+            val cleanedNotes = cleanMobilityDescription(aiEx.notes)
+
+            // 2. Dynamically calculate time per set based on AI prescribed hold time
+            val holdTimeInMinutes = aiEx.suggestedReps.toDouble() / 60.0
+
+            if (realEx == null) {
+                // Create a new exercise entry with cleaned instructions
+                val newExerciseId = workoutDao.insertExercise(
+                    ExerciseEntity(
+                        name = aiEx.name,
+                        muscleGroup = aiEx.muscleGroup,
+                        majorMuscle = aiEx.muscleGroup ?: "Mobility",
+                        minorMuscle = null,
+                        equipment = aiEx.equipment,
+                        tier = 3,
+                        loadability = aiEx.loadability,
+                        fatigue = aiEx.fatigue,
+                        notes = cleanedNotes,
+                        description = cleanedNotes,
+                        estimatedTimePerSet = holdTimeInMinutes
+                    )
+                )
+
+                realEx = ExerciseEntity(
+                    exerciseId = newExerciseId,
+                    name = aiEx.name,
+                    muscleGroup = aiEx.muscleGroup,
+                    majorMuscle = "Mobility",
+                    equipment = aiEx.equipment,
+                    loadability = aiEx.loadability,
+                    fatigue = aiEx.fatigue,
+                    description = cleanedNotes,
+                    tier = 3,
+                    estimatedTimePerSet = holdTimeInMinutes,
+                    notes = cleanedNotes
+                )
+            } else {
+                // FIX: If exercise exists, check if the master record needs to be cleaned
+                val durationRegex = Regex("(?i)\\d+\\s*(second|s|minute)")
+                if (realEx.notes.contains(durationRegex) || realEx.description.contains(durationRegex)) {
+                    val updatedEx = realEx.copy(
+                        notes = cleanedNotes,
+                        description = cleanedNotes,
+                        estimatedTimePerSet = holdTimeInMinutes
+                    )
+                    workoutDao.updateExercise(updatedEx)
+                    realEx = updatedEx
+                }
+            }
+
+            // Generate the sets for this specific workout session
+            List(aiEx.sets) { setNum ->
+                WorkoutSetEntity(
+                    workoutId = workoutId,
+                    exerciseId = realEx!!.exerciseId,
+                    setNumber = setNum + 1,
+                    suggestedReps = aiEx.suggestedReps, // Used as hold time in seconds
+                    suggestedRpe = aiEx.suggestedRpe,
+                    suggestedLbs = aiEx.suggestedLbs.toInt(),
+                    isCompleted = false
+                )
+            }
+        }
+
+        if (sets.isNotEmpty()) {
+            workoutDao.insertSets(sets)
+        }
+        return workoutId
+    }
+
+    suspend fun getActivePlan(): WorkoutPlanEntity? {
+        return workoutDao.getActivePlan()
+    }
+
+    suspend fun getLatestPlan(): WorkoutPlanEntity? {
+        return workoutDao.getLatestPlan()
     }
 
     suspend fun activatePlan(planId: Long) {

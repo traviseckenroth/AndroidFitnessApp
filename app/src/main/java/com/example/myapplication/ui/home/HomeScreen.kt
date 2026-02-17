@@ -38,29 +38,28 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val workout by viewModel.dailyWorkout.collectAsState()
-    // ADDED: State collection for the calendar
     val selectedDate by viewModel.selectedDate.collectAsState()
     val workoutDates by viewModel.workoutDates.collectAsState()
+    val isGenerating by viewModel.isGenerating.collectAsState()
+
+    // NEW: Observe navigation events
+    LaunchedEffect(Unit) {
+        viewModel.navigationEvents.collect { route ->
+            onNavigate(route)
+        }
+    }
 
     val userName = "Travis"
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background
-    ) { padding ->
+    Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 1. Header & Date
             item {
                 Spacer(modifier = Modifier.height(16.dp))
                 HeaderSection(userName = userName)
                 Spacer(modifier = Modifier.height(8.dp))
-
-                // RESTORED: Replaced static DateCard with InfiniteScrollingCalendar
                 InfiniteScrollingCalendar(
                     initialDate = LocalDate.now(),
                     selectedDate = selectedDate,
@@ -69,155 +68,74 @@ fun HomeScreen(
                 )
             }
 
-
-
-            // 3. Today's Workout Card
             item {
-                Text(
-                    "Today's Session",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
+                Text("Today's Session", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 if (workout != null) {
                     WorkoutCard(workout = workout!!, onNavigate = onNavigate)
                 } else {
-                    NoWorkoutCard()
+                    RestDayRecoveryCard(
+                        onGenerateStretching = { viewModel.generateRecoverySession("Stretching") },
+                        onGenerateAccessory = { viewModel.generateRecoverySession("Accessory") },
+                        isGenerating = isGenerating
+                    )
                 }
             }
 
-            item { Spacer(modifier = Modifier.height(15.dp)) }
-
-            // 2. QUICK ACTIONS
-            item {
-                QuickActionsSection(onNavigate = onNavigate)
-            }
+            item { QuickActionsSection(onNavigate = onNavigate) }
         }
     }
 }
+
 @Composable
-fun RestDayRecoveryCard(onWarmUpClick: () -> Unit) {
+fun RestDayRecoveryCard(
+    onGenerateStretching: () -> Unit,
+    onGenerateAccessory: () -> Unit,
+    isGenerating: Boolean
+) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.elevatedCardElevation(2.dp)
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.SelfImprovement,
-                    contentDescription = null,
-                    tint = PrimaryIndigo, // Updated from ElectricBlue
-                    modifier = Modifier.size(28.dp)
-                )
-                Icon(
-                    Icons.Default.SelfImprovement,
-                    null,
-                    tint = PrimaryIndigo,
-                    modifier = Modifier.size(28.dp)
-                )
+                Icon(Icons.Default.SelfImprovement, null, tint = PrimaryIndigo, modifier = Modifier.size(32.dp))
                 Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = "REST & RECOVER",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = PrimaryIndigo // Updated from ElectricBlue
-                )
-                Text(
-                    "REST & RECOVER",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = PrimaryIndigo
-                )
+                Text("REST & RECHARGE", style = MaterialTheme.typography.labelLarge, color = PrimaryIndigo)
             }
-
             Spacer(modifier = Modifier.height(12.dp))
+            Text("Your body grows while you rest. Use today to stay mobile.",
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
-            Text(
-                text = "No lifting today, but don't stay static.",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
+            Spacer(modifier = Modifier.height(24.dp))
 
-            Text(
-                text = "Active recovery improves blood flow and speeds up muscle repair.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Text(
-                "No lifting today, but don't stay static.",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                "Active recovery improves blood flow and speeds up muscle repair.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Suggested Mobility Drill Preview
-            Surface(
-                color = MaterialTheme.colorScheme.background, // Clean studio background
-                shape = MaterialTheme.shapes.small,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Bolt,
-                        contentDescription = null,
-                        tint = SecondaryIndigo, // Updated from NeonLime
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Icon(
-                        Icons.Default.Bolt,
-                        null,
-                        tint = SecondaryIndigo,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Suggested: World's Greatest Stretch",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontStyle = FontStyle.Italic,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        "Suggested: World's Greatest Stretch",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontStyle = FontStyle.Italic,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            OutlinedButton(
-                onClick = onWarmUpClick,
-                modifier = Modifier.fillMaxWidth(),
-                border = BorderStroke(1.dp, PrimaryIndigo), // Updated from ElectricBlue
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryIndigo)
-            ) {
-                OutlinedButton(
-                    onClick = onWarmUpClick,
-                    modifier = Modifier.fillMaxWidth(),
-                    border = BorderStroke(1.dp, PrimaryIndigo),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryIndigo)
-                ) {
-                    Text("VIEW ALL MOBILITY PROTOCOLS")
+            if (isGenerating) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = PrimaryIndigo)
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(
+                        onClick = onGenerateStretching,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo)
+                    ) {
+                        Icon(Icons.Default.AutoMode, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("GENERATE STRETCHING FLOW")
+                    }
+                    OutlinedButton(
+                        onClick = onGenerateAccessory,
+                        modifier = Modifier.fillMaxWidth(),
+                        border = BorderStroke(1.dp, SecondaryIndigo)
+                    ) {
+                        Icon(Icons.Default.FitnessCenter, null, tint = SecondaryIndigo, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("GENERATE ACCESSORY WORK", color = SecondaryIndigo)
+                    }
                 }
             }
         }
     }
 }
-
 @Composable
 fun QuickActionsSection(onNavigate: (String) -> Unit) {
     Row(
@@ -324,34 +242,11 @@ fun HeaderSection(userName: String) {
 }
 
 @Composable
-fun DateCard() {
-    val today = LocalDate.now()
-    val dateString = "${today.dayOfWeek.name.lowercase().replaceFirstChar { it.uppercase() }}, ${today.month.name.lowercase().replaceFirstChar { it.uppercase() }} ${today.dayOfMonth}"
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Default.CalendarToday, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = dateString,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Medium
-            )
-        }
-    }
-}
-
-@Composable
 fun WorkoutCard(workout: DailyWorkoutEntity, onNavigate: (String) -> Unit) {
+    // Check if the title indicates a stretching/mobility session
+    val isStretching = workout.title.contains("Recovery", ignoreCase = true) ||
+            workout.title.contains("Stretching", ignoreCase = true)
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
@@ -364,40 +259,41 @@ fun WorkoutCard(workout: DailyWorkoutEntity, onNavigate: (String) -> Unit) {
                     color = MaterialTheme.colorScheme.background.copy(alpha = 0.5f),
                     modifier = Modifier.size(48.dp)
                 ) {
-                    Box(contentAlignment = Alignment.Center) { Text("💪", fontSize = 24.sp) }
+                    // Dynamic icon based on workout type
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(if (isStretching) "🧘" else "💪", fontSize = 24.sp)
+                    }
                 }
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
                     Text(workout.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text("Scheduled Session", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = if (isStretching) "Mobility Session" else "Scheduled Session",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
             Spacer(modifier = Modifier.height(20.dp))
             Button(
-                onClick = { onNavigate(Screen.ActiveWorkout.createRoute(workout.workoutId)) },                modifier = Modifier.fillMaxWidth(),
+                onClick = {
+                    // CONDITIONAL NAVIGATION:
+                    if (isStretching) {
+                        onNavigate(Screen.StretchingSession.createRoute(workout.workoutId))
+                    } else {
+                        onNavigate(Screen.ActiveWorkout.createRoute(workout.workoutId))
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
             ) {
-                Text("START SESSION", fontWeight = FontWeight.Bold)
+                Text(
+                    text = if (isStretching) "START MOBILITY" else "START SESSION",
+                    fontWeight = FontWeight.Bold
+                )
                 Spacer(modifier = Modifier.width(8.dp))
                 Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
-            }
-        }
-    }
-}
-
-@Composable
-fun NoWorkoutCard() {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-    ) {
-        Box(modifier = Modifier.padding(24.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.Weekend, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(48.dp))
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Rest Day or No Plan Generated", color = MaterialTheme.colorScheme.onSurface, fontStyle = FontStyle.Italic)
             }
         }
     }

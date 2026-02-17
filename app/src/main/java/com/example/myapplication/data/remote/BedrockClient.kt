@@ -243,6 +243,9 @@ class BedrockClient @Inject constructor(
             val totalMinutes = (duration * 60).toInt()
 
             val rawPrompt = promptRepository.getWorkoutSystemPrompt()
+            
+            // VERIFICATION LOG: Confirming prompt source
+            Log.d("BedrockPromptTest", "WORKOUT PROMPT TEMPLATE: $rawPrompt")
 
             val systemPrompt = rawPrompt
                 .replace("{userAge}", userAge.toString())
@@ -255,8 +258,11 @@ class BedrockClient @Inject constructor(
                 .replace("{exerciseListString}", exerciseListString)
                 .replace("{tierDefinitions}", tierDefinitions)
                 .replace("{totalMinutesMinus5}", (totalMinutes - 5).toString())
+            
+            Log.d("BedrockPromptTest", "RESOLVED SYSTEM PROMPT: $systemPrompt")
 
             val userPrompt = "Generate plan for ${userAge}year old, ${userWeight}kg, Goal: ${goal}."
+            Log.d("BedrockPromptTest", "USER PROMPT: $userPrompt")
 
             val cleanJson = invokeClaude(systemPrompt, userPrompt)
             jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
@@ -343,7 +349,47 @@ class BedrockClient @Inject constructor(
             RemoteNutritionPlan(explanation = "Error generating plan. Please try again.")
         }
     }
+    suspend fun generateStretchingFlow(
+        currentGoal: String,
+        history: List<CompletedWorkoutWithExercise>,
+        availableExercises: List<ExerciseEntity>
+    ): GeneratedPlanResponse = withContext(Dispatchers.Default) {
+        val exerciseList = availableExercises.joinToString("\n") { "- ${it.name}" }
+        val rawPrompt = promptRepository.getStretchingSystemPrompt()
+        val prompt = rawPrompt
+            .replace("{currentGoal}", currentGoal)
+            .replace("{exerciseList}", exerciseList)
 
+        try {
+            val cleanJson = invokeClaude(prompt, "Generate Stretching")
+            jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
+        } catch (e: Exception) {
+            Log.e("Bedrock", "Stretching parse failed", e)
+            GeneratedPlanResponse(explanation = "Failed to generate mobility flow.")
+        }
+    }
+
+    // --- WORKFLOW 2: ACCESSORY WORKOUT ---
+    suspend fun generateAccessoryWorkout(
+        currentGoal: String,
+        history: List<CompletedWorkoutWithExercise>,
+        availableExercises: List<ExerciseEntity>
+    ): GeneratedPlanResponse = withContext(Dispatchers.Default) {
+        val exerciseList = availableExercises.joinToString("\n") { "- ${it.name}" }
+        val rawPrompt = promptRepository.getAccessorySystemPrompt()
+        val prompt = rawPrompt
+            .replace("{currentGoal}", currentGoal)
+            .replace("{exerciseList}", exerciseList)
+
+        try {
+            val cleanJson = invokeClaude(prompt, "Generate Accessory")
+            Log.d("BedrockClient", "Accessory JSON: $cleanJson") // Log the raw JSON
+            jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
+        } catch (e: Exception) {
+            Log.e("Bedrock", "Accessory parse failed: ${e.localizedMessage}", e)
+            GeneratedPlanResponse(explanation = "Failed to generate accessory work. Error: ${e.localizedMessage}")
+        }
+    }
     // --- SHARED API HELPER ---
     private suspend fun invokeClaude(systemPrompt: String, userPrompt: String): String {
         val requestBody = ClaudeRequest(

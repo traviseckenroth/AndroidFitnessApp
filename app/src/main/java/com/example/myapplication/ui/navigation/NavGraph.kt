@@ -25,6 +25,7 @@ import com.example.myapplication.ui.summary.WorkoutSummaryScreen
 import com.example.myapplication.ui.warmup.WarmUpScreen
 import com.example.myapplication.ui.workout.ActiveSessionViewModel
 import com.example.myapplication.ui.workout.ActiveWorkoutScreen
+import com.example.myapplication.ui.workout.StretchingSessionScreen
 
 @Composable
 fun NavGraph(
@@ -57,7 +58,19 @@ fun NavGraph(
                 onNavigate = { route -> navController.navigate(route) }
             )
         }
+        composable(
+            route = Screen.StretchingSession.route,
+            arguments = listOf(navArgument("workoutId") { type = NavType.LongType })
+        ) { backStackEntry ->
+            val workoutId = backStackEntry.arguments?.getLong("workoutId") ?: return@composable
 
+            // Redirect to the new Stretching workout file
+            StretchingSessionScreen(
+                workoutId = workoutId,
+                onBack = { navController.popBackStack() },
+                onComplete = { navController.popBackStack() }
+            )
+        }
         composable(Screen.Profile.route) {
             ProfileScreen(
                 onBack = { navController.popBackStack() },

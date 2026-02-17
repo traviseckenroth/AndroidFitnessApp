@@ -7,13 +7,15 @@ import com.google.firebase.remoteconfig.FirebaseRemoteConfig
 // FIX 2: Use standard extension imports (no .ktx)
 import com.google.firebase.remoteconfig.remoteConfig
 import com.google.firebase.remoteconfig.remoteConfigSettings
+import com.example.myapplication.BuildConfig
+import com.google.firebase.FirebaseApp
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class PromptRepository @Inject constructor() {
 
-    private val remoteConfig: FirebaseRemoteConfig = Firebase.remoteConfig
+    private var remoteConfig: FirebaseRemoteConfig? = null
 
     // Default Fallback Prompts (Used if offline or before first fetch)
     private val defaults = mapOf(
@@ -156,30 +158,132 @@ class PromptRepository @Inject constructor() {
             Give them a SHORT, spoken correction (max 5 words).
             Examples: "Chest up!", "Drive the knees!", "Squeeze at the top!".
             Output ONLY the text to speak. No quotes.
+        """.trimIndent(),
+
+        "system_instruction_stretching" to """
+            You are a Mobility & Recovery Specialist. Generate a 15-minute RESTORATIVE stretching flow.
+            Context: The user's main goal is "{currentGoal}".
+            
+            DIRECTIONS:
+            1. Suggest actual stretches and mobility drills (e.g., Pigeon Pose, World's Greatest Stretch, Cat-Cow).
+            2. If an appropriate stretch is in the ALLOWED LIST below, use it.
+            3. If not, you may INVENT/SUGGEST specific mobility exercises.
+            4. 'suggestedReps' should represent hold time in SECONDS.
+            
+            IMPORTANT:
+            - Do NOT include the hold time, duration, or repetitions inside the 'notes', 'description', or 'explanation' fields. 
+            - Focus instructions strictly on form and breathing (e.g., "Keep your back flat and breathe into the hips").
+            
+            ALLOWED LIST:
+            {exerciseList}
+            
+            OUTPUT SCHEMA (JSON ONLY):
+            {
+              "explanation": "...",
+              "schedule": [{
+                "day": "Today",
+                "workoutName": "Recovery Flow",
+                "exercises": [
+                  { 
+                    "name": "Exercise Name", 
+                    "sets": 2, 
+                    "suggestedReps": 30, 
+                    "suggestedLbs": 0, 
+                    "tier": 3,
+                    "notes": "Instruction on form only. No time info.",
+                    "targetMuscle": "Primary muscle targeted"
+                  }
+                ]
+              }]
+            }
+        """.trimIndent(),
+
+        "system_instruction_accessory" to """
+            You are a Strength & Conditioning Coach. 
+            Generate a low-intensity accessory workout (3-5 exercises) that supports the goal: "{currentGoal}".
+            
+            RULES:
+            1. ONLY use exercises from the ALLOWED LIST below. Do not invent exercise names.
+            2. Provide 2-3 sets per exercise.
+            3. Use INTEGERS for 'sets' and 'suggestedReps' (e.g., 12, not "10-12").
+            4. Format: JSON ONLY, matching the schema below.
+            
+            ALLOWED LIST:
+            {exerciseList}
+            
+            OUTPUT SCHEMA (JSON ONLY):
+            {
+              "explanation": "Coach's reasoning for the selection.",
+              "schedule": [
+                {
+                  "day": "Today",
+                  "workoutName": "Accessory Work",
+                  "exercises": [
+                    { 
+                      "name": "Exact Name from Allowed List", 
+                      "sets": 3, 
+                      "suggestedReps": 12, 
+                      "suggestedLbs": 15.0, 
+                      "tier": 2,
+                      "notes": "Brief form cue.",
+                      "targetMuscle": "Primary muscle targeted"
+                    }
+                  ]
+                }
+              ]
+            }
         """.trimIndent()
     )
 
     init {
-        // Fetch config every hour (3600s)
-        val configSettings = remoteConfigSettings {
-            minimumFetchIntervalInSeconds = 3600
-        }
-        remoteConfig.setConfigSettingsAsync(configSettings)
-        remoteConfig.setDefaultsAsync(defaults)
+        try {
+            // Check for dummy API key or missing key to avoid crash
+            val apiKey = try { FirebaseApp.getInstance().options.apiKey } catch (e: Exception) { "" }
+            
+            if (apiKey.contains("dummy") || apiKey.isEmpty()) {
+                Log.w("PromptRepo", "Invalid/Dummy Firebase API Key detected ($apiKey). Skipping Remote Config init.")
+            } else {
+                remoteConfig = Firebase.remoteConfig
+                
+                // Fetch config every hour (3600s)
+                val configSettings = remoteConfigSettings {
+                    // FIX: Use 0 seconds for debug builds to fetch every time
+                    minimumFetchIntervalInSeconds = if (BuildConfig.DEBUG) 0 else 3600
+                }
+                remoteConfig?.setConfigSettingsAsync(configSettings)
+                remoteConfig?.setDefaultsAsync(defaults)
 
-        // Fetch immediately on init
-        fetchPrompts()
+                // Fetch immediately on init
+                fetchPrompts()
+            }
+        } catch (e: Exception) {
+            Log.e("PromptRepo", "Failed to initialize Firebase Remote Config: ${e.message}")
+            // Proceed without Firebase, using defaults
+        }
     }
 
     fun fetchPrompts() {
-        remoteConfig.fetchAndActivate()
-            .addOnSuccessListener { Log.d("PromptRepo", "Prompts updated from Firebase") }
-            .addOnFailureListener { Log.e("PromptRepo", "Failed to fetch prompts") }
+        remoteConfig?.fetchAndActivate()
+            ?.addOnSuccessListener { 
+                Log.e("PromptRepo", "Prompts successfully updated from Firebase!")
+            }
+            ?.addOnFailureListener { e ->
+                Log.e("PromptRepo", "Failed to fetch prompts: ${e.message}", e)
+            }
     }
 
     // Getters for specific prompts
-    fun getWorkoutSystemPrompt(): String = remoteConfig.getString("system_instruction_workout")
-    fun getNutritionSystemPrompt(): String = remoteConfig.getString("system_instruction_nutrition")
-    fun getFoodLogSystemPrompt(): String = remoteConfig.getString("system_instruction_food_log")
-    fun getCoachingCueTemplate(): String = remoteConfig.getString("prompt_template_coaching_cue")
+    fun getWorkoutSystemPrompt(): String {
+        val value = remoteConfig?.getString("system_instruction_workout") ?: defaults["system_instruction_workout"]!!
+        // VERIFICATION LOG: Compare retrieved value with default
+        val isDefault = value == defaults["system_instruction_workout"]
+        Log.e("PromptRepo", "Workout Prompt Source: ${if (isDefault) "DEFAULT" else "REMOTE (Firebase)"}")
+        return value
+    }
+
+    fun getNutritionSystemPrompt(): String = remoteConfig?.getString("system_instruction_nutrition") ?: defaults["system_instruction_nutrition"]!!
+    fun getFoodLogSystemPrompt(): String = remoteConfig?.getString("system_instruction_food_log") ?: defaults["system_instruction_food_log"]!!
+    fun getCoachingCueTemplate(): String = remoteConfig?.getString("prompt_template_coaching_cue") ?: defaults["prompt_template_coaching_cue"]!!
+    fun getStretchingSystemPrompt(): String = remoteConfig?.getString("system_instruction_stretching") ?: defaults["system_instruction_stretching"]!!
+    fun getAccessorySystemPrompt(): String = remoteConfig?.getString("system_instruction_accessory") ?: defaults["system_instruction_accessory"]!!
 }

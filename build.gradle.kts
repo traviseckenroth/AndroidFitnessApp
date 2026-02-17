@@ -3,10 +3,7 @@ buildscript {
         google()
         mavenCentral()
     }
-    dependencies {
-        // Manually load the Google Services Classpath
-        classpath("com.google.gms:google-services:4.4.2")
-    }
+    // REMOVED: dependencies { classpath("com.google.gms:google-services:4.4.2") }
 }
 
 plugins {
@@ -27,8 +24,7 @@ plugins {
 
     // 6. Serialization
     alias(libs.plugins.kotlin.serialization) apply false
-    id("com.google.gms.google-services") version "4.4.4" apply false
-
-    // REMOVED: alias(libs.plugins.google.services) apply false
-    // We removed this line because we are loading it via 'buildscript' above.
+    
+    // 7. Google Services
+    alias(libs.plugins.google.services) apply false
 }

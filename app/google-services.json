@@ -1,14 +1,13 @@
-
 {
   "project_info": {
-    "project_number": "1234567890",
-    "project_id": "my-application",
-    "storage_bucket": "my-application.appspot.com"
+    "project_number": "774083969290",
+    "project_id": "fitnessapp-a4669",
+    "storage_bucket": "fitnessapp-a4669.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:1234567890:android:abcdef1234567890",
+        "mobilesdk_app_id": "1:774083969290:android:6f6da8337ba8d83be8faf3",
         "android_client_info": {
           "package_name": "com.example.myapplication"
         }
@@ -16,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "dummy_api_key"
+          "current_key": "AIzaSyBmue6xLGckMh6VH7YSLS5QMA84G0CaP5M"
         }
       ],
       "services": {
