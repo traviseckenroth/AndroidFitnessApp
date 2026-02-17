@@ -65,6 +65,8 @@ fun ActiveWorkoutScreen(
     val listState = rememberLazyListState()
     val isListening by viewModel.isListening.collectAsState()
     val scope = rememberCoroutineScope()
+    val barWeight by viewModel.barWeight.collectAsState()
+    val userGender by viewModel.userGender.collectAsState()
 
     // FIX 1: Define Context correctly
     val context = LocalContext.current
@@ -337,7 +339,9 @@ fun ActiveWorkoutScreen(
                         SetsTable(
                             sets = exerciseState.sets,
                             equipment = exerciseState.exercise.equipment,
-                            viewModel = viewModel
+                            viewModel = viewModel,
+                            barWeight = barWeight,
+                            userGender = userGender
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         SetTimer(exerciseState = exerciseState, viewModel = viewModel)
@@ -466,7 +470,7 @@ fun ExerciseHeader(
 }
 
 @Composable
-fun SetsTable(sets: List<WorkoutSetEntity>, equipment: String?, viewModel: ActiveSessionViewModel) {
+fun SetsTable(sets: List<WorkoutSetEntity>, equipment: String?, viewModel: ActiveSessionViewModel, barWeight: Double, userGender: String) {
     var showRpeInfo by remember { mutableStateOf(false) }
 
     if (showRpeInfo) {
@@ -494,14 +498,16 @@ fun SetsTable(sets: List<WorkoutSetEntity>, equipment: String?, viewModel: Activ
                 setNumber = index + 1,
                 set = set,
                 isBarbell = equipment?.contains("Barbell", ignoreCase = true) == true,
-                viewModel = viewModel
+                viewModel = viewModel,
+                barWeight = barWeight,
+                userGender = userGender
             )
         }
     }
 }
 
 @Composable
-fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel: ActiveSessionViewModel) {
+fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel: ActiveSessionViewModel, barWeight: Double, userGender: String) {
     val focusManager = LocalFocusManager.current
     var weightText by remember(set.actualLbs) { mutableStateOf(set.actualLbs?.toInt()?.toString() ?: "") }
     var repsText by remember(set.actualReps) { mutableStateOf(set.actualReps?.toString() ?: "") }
@@ -515,7 +521,15 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
             text = {
                 Column {
                     Text("Per side:", fontWeight = FontWeight.Bold)
-                    Text(PlateCalculator.calculatePlates(set.suggestedLbs.toDouble()), fontSize = 18.sp)
+                    Text(PlateCalculator.calculatePlates(set.suggestedLbs.toDouble(), barWeight), fontSize = 18.sp)
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // 6. Add the Caveat Text
+                    Text(
+                        text = "Based on $userGender using ${barWeight.toInt()}lbs barbell",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
                 }
             },
             confirmButton = { TextButton(onClick = { showPlateDialog = false }) { Text("Close") } }

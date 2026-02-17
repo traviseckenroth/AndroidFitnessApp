@@ -72,6 +72,13 @@ class ActiveSessionViewModel @Inject constructor(
     private val _workoutSummary = MutableStateFlow<WorkoutSummaryResult?>(null)
     val workoutSummary: StateFlow<WorkoutSummaryResult?> = _workoutSummary
 
+    val barWeight: StateFlow<Double> = userPrefs.userGender
+        .map { if (it.equals("Female", ignoreCase = true)) 35.0 else 45.0 }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 45.0)
+
+    val userGender: StateFlow<String> = userPrefs.userGender
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Male")
+
     private val _chatHistory = MutableStateFlow(
         listOf(ChatMessage("Coach", "Get exercise tips, address muscle or joint pains, etc."))
     )

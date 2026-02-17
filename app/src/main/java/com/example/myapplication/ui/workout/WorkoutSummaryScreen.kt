@@ -185,7 +185,6 @@ fun WorkoutReceiptCard(data: WorkoutSummaryResult) {
     }
 }
 
-// ... (Keep existing shareToInstagramStory implementation) ...
 private fun shareToInstagramStory(context: Context, bitmap: Bitmap) {
     try {
         val cachePath = File(context.cacheDir, "images")
