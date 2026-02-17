@@ -51,9 +51,9 @@ class ActiveSessionViewModel @Inject constructor(
     private val application: Application,
     private val userPrefs: UserPreferencesRepository,
     private val healthConnectManager: HealthConnectManager,
-    private val voiceManager: VoiceManager, // Added for AI Voice Over
+    private val voiceManager: VoiceManager,
     private val speechToTextManager: SpeechToTextManager,
-    private val bedrockClient: BedrockClient // Changed to private val to follow best practices
+    private val bedrockClient: BedrockClient
 ) : ViewModel() {
 
     // --- 1. STATE PROPERTIES ---
@@ -80,9 +80,10 @@ class ActiveSessionViewModel @Inject constructor(
     val isListening: StateFlow<Boolean> = _isListening
 
     private var workoutStartTime: Instant = Instant.now()
-    private var transcribeJob: Job? = null // Correct declaration for session management
+    private var transcribeJob: Job? = null
 
     // --- 2. INITIALIZATION ---
+    private var isInitialTimerCheck = true
 
     init {
         workoutStartTime = Instant.now()
@@ -90,6 +91,23 @@ class ActiveSessionViewModel @Inject constructor(
         // Sync with Timer Service
         viewModelScope.launch {
             WorkoutTimerService.timerState.collect { serviceState ->
+                // 1. Check for Stale State on Startup
+                if (isInitialTimerCheck) {
+                    isInitialTimerCheck = false
+                    if (serviceState.hasFinished) {
+                        Log.w("WorkoutTimer", "Ignoring stale 'Finished' state from previous session.")
+                        stopTimerService() // Clear the stale state in the service
+                        // Do NOT run completion logic here. Just update UI to 00:00.
+                        updateLocalTimerState(
+                            activeExerciseId = serviceState.activeExerciseId,
+                            remainingTime = 0,
+                            isRunning = false
+                        )
+                        return@collect
+                    }
+                }
+
+                // 2. Normal Logic (Only runs for subsequent events)
                 val isTimerFinished = serviceState.remainingTime == 0 && serviceState.activeExerciseId != null
                 if (serviceState.hasFinished && serviceState.activeExerciseId != null) {
                     val exerciseId = serviceState.activeExerciseId!!
@@ -101,6 +119,7 @@ class ActiveSessionViewModel @Inject constructor(
                         startSetTimer(exerciseId)
                     }
                 }
+
                 updateLocalTimerState(
                     activeExerciseId = serviceState.activeExerciseId,
                     remainingTime = serviceState.remainingTime.toLong(),
@@ -222,7 +241,7 @@ class ActiveSessionViewModel @Inject constructor(
     }
 
     fun finishWorkout(workoutId: Long) {
-        skipSetTimer(-1)
+        stopTimerService() // FIX: Correctly stop the service to clear state
         viewModelScope.launch {
             val report = repository.completeWorkout(workoutId)
             _workoutSummary.value = report
@@ -318,6 +337,14 @@ class ActiveSessionViewModel @Inject constructor(
         startSetTimer(exerciseId)
     }
 
+    // FIX: Helper to explicitly stop the service and reset state
+    private fun stopTimerService() {
+        val intent = Intent(application, WorkoutTimerService::class.java).apply {
+            action = WorkoutTimerService.ACTION_STOP
+        }
+        application.startService(intent)
+    }
+
     private fun updateLocalTimerState(activeExerciseId: Long?, remainingTime: Long, isRunning: Boolean) {
         _exerciseStates.value = _exerciseStates.value.map { state ->
             if (state.exercise.exerciseId == activeExerciseId) {
@@ -340,46 +367,35 @@ class ActiveSessionViewModel @Inject constructor(
     // --- 6. AI & CHAT INTERACTION ---
 
     fun interactWithCoach(userText: String) {
-        // 1. Update UI with User Message
         val currentHistory = _chatHistory.value.toMutableList()
         currentHistory.add(ChatMessage("User", userText))
         _chatHistory.value = currentHistory
 
         viewModelScope.launch {
-            // 2. PAUSE LISTENING (Prevent AI from hearing itself)
-            // We cancel the job but keep _isListening = true so we know to resume
             val wasListening = _isListening.value
             if (wasListening) {
                 transcribeJob?.cancel()
             }
 
-            // ... (Existing AI generation logic) ...
             val currentExercises = _exerciseStates.value.filter {
                 it.sets.any { set -> !set.isCompleted }
             }.joinToString { it.exercise.name }
             val available = repository.getAllExercises().first()
             val response = bedrockClient.coachInteraction(currentExercises, userText, available)
 
-            // 3. Update UI with Coach Response
             val newHistory = _chatHistory.value.toMutableList()
             newHistory.add(ChatMessage("Coach", response.explanation))
             _chatHistory.value = newHistory
 
-            // 4. SPEAK & RESUME
             voiceManager.speak(response.explanation) {
-                // This runs when speech finishes.
-                // Check if the user didn't turn it off manually while AI was talking.
                 if (wasListening && _isListening.value) {
-                    // Must relaunch on main scope
                     viewModelScope.launch {
                         startLiveTranscription()
                     }
                 }
             }
 
-            // 5. Apply workout modifications (Existing logic)
             if (response.exercises.isNotEmpty()) {
-                // ... (keep existing workout modification code) ...
                 val workoutId = _workoutId.value
                 val incompleteSets = _sets.value.filter { !it.isCompleted }
                 repository.deleteSets(incompleteSets)
@@ -409,7 +425,6 @@ class ActiveSessionViewModel @Inject constructor(
     }
 
     suspend fun generateCoachingCue(exerciseName: String, issue: String): String {
-        // The bedrockClient function is a suspend function, so we can call it directly.
         return bedrockClient.generateCoachingCue(exerciseName, issue, 0)
     }
 
@@ -429,11 +444,9 @@ class ActiveSessionViewModel @Inject constructor(
 
         transcribeJob = viewModelScope.launch {
             try {
-                // 3. USE NATIVE SPEECH RECOGNIZER
                 speechToTextManager.startListening()
                     .collect { transcript ->
                         Log.d("LiveCoach", "Heard: $transcript")
-                        // Send to AI Coach
                         interactWithCoach(transcript)
                     }
             } catch (e: Exception) {
@@ -450,12 +463,11 @@ class ActiveSessionViewModel @Inject constructor(
         voiceManager.stop()
     }
 
-    // CRITICAL: Overrides must be direct members of the class
     override fun onCleared() {
         super.onCleared()
         stopLiveTranscription()
-        voiceManager.stop() // Cleanup TTS resources
-        skipSetTimer(-1)
+        voiceManager.stop()
+        stopTimerService() // FIX: Ensure service stops and state is cleared on exit
     }
 
     // --- PRIVATE HELPERS ---
