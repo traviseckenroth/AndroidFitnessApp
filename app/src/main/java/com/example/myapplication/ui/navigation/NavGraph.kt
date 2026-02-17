@@ -59,19 +59,22 @@ fun NavGraph(
             )
         }
 
-        composable("settings") {
-            SettingsScreen(
+        composable(Screen.Profile.route) {
+            ProfileScreen(
                 onBack = { navController.popBackStack() },
-                onLogoutSuccess = { navController.navigate("login") { popUpTo(0) { inclusive = true } } },
-                onNavigateToGymSettings = { navController.navigate("gym_settings") } // FIXED: Added navigation callback
+                onNavigateToSettings = { navController.navigate(Screen.Settings.route) }
             )
         }
 
-        composable(Screen.Plan.route) {
-            GeneratePlanScreen(
-                viewModel = planViewModel,
-                onManualCreateClick = { navController.navigate(Screen.ManualPlan.route) },
-                onPlanGenerated = { navController.navigate(Screen.Home.route) { popUpTo(Screen.Home.route) { inclusive = true } } }
+        composable(Screen.Settings.route) {
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onLogoutSuccess = {
+                    navController.navigate("login") {
+                        popUpTo(0) { inclusive = true }
+                    }
+                },
+                onNavigateToGymSettings = { navController.navigate("gym_settings") }
             )
         }
 
@@ -93,32 +96,13 @@ fun NavGraph(
 
         composable(Screen.Nutrition.route) { NutritionScreen() }
         composable(Screen.Insights.route) { InsightsScreen() }
-        composable(Screen.Profile.route) { ProfileScreen(onBack = { navController.popBackStack() }) }
+
         composable("warm_up") { WarmUpScreen(onBack = { navController.popBackStack() }) }
 
         composable("exercise_list") {
             ExerciseListScreen(
                 onBack = { navController.popBackStack() },
                 onNavigateToExerciseHistory = { exerciseId -> navController.navigate("exercise_history/$exerciseId") }
-            )
-        }
-// FIX: Ensure ProfileScreen is called correctly
-        composable(Screen.Profile.route) {
-            ProfileScreen(
-                onBack = { navController.popBackStack() }
-            )
-        }
-        composable(Screen.Settings.route) {
-            SettingsScreen(
-                onNavigateToGymSettings = { navController.navigate("gym_settings") },
-                onBack = { navController.popBackStack() },
-                onLogoutSuccess = { navController.navigate("login") { popUpTo(0) { inclusive = true } } }
-            )
-        }
-
-        composable("gym_settings") {
-            GymSettingsScreen(
-                onBack = { navController.popBackStack() }
             )
         }
 

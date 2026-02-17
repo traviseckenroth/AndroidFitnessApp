@@ -24,38 +24,36 @@ class LiveTranscribeClient @Inject constructor(private val authRepository: AuthR
         }
     }
 
-    // FIX: Use channelFlow to keep the HTTP/2 stream alive
-    fun startStreaming(audioStreamFlow: Flow<ByteArray>): Flow<String> = channelFlow {
+    fun startStreaming(audioFlow: Flow<ByteArray>): Flow<String> = channelFlow {
         val request = StartStreamTranscriptionRequest {
             languageCode = LanguageCode.EnUs
             mediaEncoding = MediaEncoding.Pcm
             mediaSampleRateHertz = 16000
-            audioStream = audioStreamFlow.map { bytes ->
+            // Map the audio flow safely
+            audioStream = audioFlow.map { bytes ->
                 AudioStream.AudioEvent(AudioEvent { audioChunk = bytes })
             }
         }
 
         try {
             client.startStreamTranscription(request) { response ->
-                // This block keeps the connection open
                 response.transcriptResultStream?.collect { event ->
                     if (event is TranscriptResultStream.TranscriptEvent) {
-                        // Only send finalized phrases to the AI Coach
-                        val result = event.value.transcript?.results
+                        // CRITICAL: Only send finalized phrases
+                        val transcript = event.value.transcript?.results
                             ?.firstOrNull { !it.isPartial }
                             ?.alternatives?.firstOrNull()?.transcript
 
-                        if (!result.isNullOrBlank()) {
-                            send(result) // Send to ViewModel
+                        if (!transcript.isNullOrBlank()) {
+                            send(transcript)
                         }
                     }
                 }
             }
         } catch (e: Exception) {
-            if (e !is kotlinx.coroutines.CancellationException) {
-                android.util.Log.e("Transcribe", "Stream error", e)
-            }
-            close(e)
+            // Log specifically for cancellation or reset
+            android.util.Log.w("TranscribeClient", "Session ended: ${e.message}")
+            close(e) // Pass exception to ViewModel
         }
     }
 }

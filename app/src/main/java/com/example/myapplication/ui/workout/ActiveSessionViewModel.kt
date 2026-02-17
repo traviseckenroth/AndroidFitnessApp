@@ -14,6 +14,8 @@ import com.example.myapplication.data.repository.HealthConnectManager
 import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import com.example.myapplication.service.WorkoutTimerService
 import com.example.myapplication.util.AudioRecordingManager
+import kotlinx.coroutines.CoroutineExceptionHandler
+import com.example.myapplication.util.VoiceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
@@ -47,9 +49,10 @@ class ActiveSessionViewModel @Inject constructor(
     private val application: Application,
     private val userPrefs: UserPreferencesRepository,
     private val healthConnectManager: HealthConnectManager,
+    private val voiceManager: VoiceManager, // Added for AI Voice Over
     private val liveTranscribeClient: LiveTranscribeClient,
-    private val audioManager: com.example.myapplication.util.AudioRecordingManager,
-    val bedrockClient: BedrockClient
+    private val audioManager: AudioRecordingManager, // Added for Live Transcription
+    private val bedrockClient: BedrockClient // Changed to private val to follow best practices
 ) : ViewModel() {
 
     // --- 1. STATE PROPERTIES ---
@@ -67,16 +70,16 @@ class ActiveSessionViewModel @Inject constructor(
     private val _workoutSummary = MutableStateFlow<List<String>?>(null)
     val workoutSummary: StateFlow<List<String>?> = _workoutSummary
 
-    private val _chatHistory = MutableStateFlow(listOf(
-        ChatMessage("Coach", "Get exercise tips, address muscle or joint pains, etc.")
-    ))
+    private val _chatHistory = MutableStateFlow(
+        listOf(ChatMessage("Coach", "Get exercise tips, address muscle or joint pains, etc."))
+    )
     val chatHistory: StateFlow<List<ChatMessage>> = _chatHistory
 
     private val _isListening = MutableStateFlow(false)
     val isListening: StateFlow<Boolean> = _isListening
 
     private var workoutStartTime: Instant = Instant.now()
-    private var transcribeJob: Job? = null
+    private var transcribeJob: Job? = null // Correct declaration for session management
 
     // --- 2. INITIALIZATION ---
 
@@ -335,6 +338,7 @@ class ActiveSessionViewModel @Inject constructor(
     // --- 6. AI & CHAT INTERACTION ---
 
     fun interactWithCoach(userText: String) {
+        // 1. Update UI immediately with user message
         val currentHistory = _chatHistory.value.toMutableList()
         currentHistory.add(ChatMessage("User", userText))
         _chatHistory.value = currentHistory
@@ -345,12 +349,19 @@ class ActiveSessionViewModel @Inject constructor(
             }.joinToString { it.exercise.name }
 
             val available = repository.getAllExercises().first()
+
+            // 2. Get AI Response from Bedrock
             val response = bedrockClient.coachInteraction(currentExercises, userText, available)
 
+            // 3. Update UI with Coach Response
             val newHistory = _chatHistory.value.toMutableList()
             newHistory.add(ChatMessage("Coach", response.explanation))
             _chatHistory.value = newHistory
 
+            // 4. VOICE OVER: Speak the response out loud
+            voiceManager.speak(response.explanation)
+
+            // 5. Apply workout modifications if needed
             if (response.exercises.isNotEmpty()) {
                 val workoutId = _workoutId.value
                 val incompleteSets = _sets.value.filter { !it.isCompleted }
@@ -397,12 +408,26 @@ class ActiveSessionViewModel @Inject constructor(
 
     private fun startLiveTranscription() {
         transcribeJob?.cancel()
-        transcribeJob = viewModelScope.launch {
-            liveTranscribeClient.startStreaming(audioManager.getAudioStream())
-                .collect { transcript ->
-                    android.util.Log.d("LiveCoach", "Voice Command Received: $transcript")
-                    interactWithCoach(transcript)
-                }
+
+        // 1. Create a safety handler for background crashes
+        val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
+            android.util.Log.e("LiveCoach", "Transcription crashed: ${throwable.message}")
+            _isListening.value = false
+        }
+
+        // 2. Attach the handler to the launch
+        transcribeJob = viewModelScope.launch(exceptionHandler) {
+            try {
+                liveTranscribeClient.startStreaming(audioManager.getAudioStream())
+                    .collect { transcript ->
+                        android.util.Log.d("LiveCoach", "Heard: $transcript")
+                        interactWithCoach(transcript)
+                    }
+            } catch (e: Exception) {
+                // This catches standard errors
+                android.util.Log.e("LiveCoach", "Transcription stopped: ${e.message}")
+                _isListening.value = false
+            }
         }
     }
 
@@ -410,23 +435,35 @@ class ActiveSessionViewModel @Inject constructor(
         _isListening.value = false
         transcribeJob?.cancel()
         transcribeJob = null
+        voiceManager.stop()
     }
-}
 
-// --- PRIVATE HELPERS ---
+    // CRITICAL: Overrides must be direct members of the class
+    override fun onCleared() {
+        super.onCleared()
+        stopLiveTranscription()
+        voiceManager.stop() // Cleanup TTS resources
+    }
 
-private fun generateCoachBriefing(exercises: List<ExerciseEntity>, sets: List<WorkoutSetEntity>, recoveryScore: Int): String {
-    if (exercises.isEmpty() || sets.isEmpty()) return "Ready to start your workout?"
+    // --- PRIVATE HELPERS ---
 
-    val dominantMuscle = exercises.groupingBy { it.muscleGroup }
-        .eachCount()
-        .maxByOrNull { it.value }?.key ?: "Full Body"
+    private fun generateCoachBriefing(
+        exercises: List<ExerciseEntity>,
+        sets: List<WorkoutSetEntity>,
+        recoveryScore: Int
+    ): String {
+        if (exercises.isEmpty() || sets.isEmpty()) return "Ready to start your workout?"
 
-    val tier1Count = exercises.count { it.tier == 1 }
-    val avgReps = if (sets.isNotEmpty()) sets.map { it.suggestedReps }.average() else 0.0
+        val dominantMuscle = exercises.groupingBy { it.muscleGroup }
+            .eachCount()
+            .maxByOrNull { it.value }?.key ?: "Full Body"
 
-    return when {
-        tier1Count >= 2 && avgReps < 8 -> "Mission: Heavy $dominantMuscle Day.\nIntensity is key today."
-        else -> "Mission: $dominantMuscle Hypertrophy.\nFocus on the mind-muscle connection."
+        val tier1Count = exercises.count { it.tier == 1 }
+        val avgReps = if (sets.isNotEmpty()) sets.map { it.suggestedReps }.average() else 0.0
+
+        return when {
+            tier1Count >= 2 && avgReps < 8 -> "Mission: Heavy $dominantMuscle Day.\nIntensity is key today."
+            else -> "Mission: $dominantMuscle Hypertrophy.\nFocus on the mind-muscle connection."
+        }
     }
 }
