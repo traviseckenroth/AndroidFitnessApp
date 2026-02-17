@@ -28,7 +28,7 @@ object AppModule {
         )
             // FIXED: Removed undefined 'MIGRATION_22_23'.
             // fallbackToDestructiveMigration handles version mismatches (e.g. 12 vs 22) by resetting the DB.
-            .fallbackToDestructiveMigration()
+            .fallbackToDestructiveMigration(true)
             .build()
     }
 

@@ -9,6 +9,8 @@ import aws.smithy.kotlin.runtime.http.engine.okhttp.OkHttpEngine
 import com.example.myapplication.BuildConfig
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
 import org.json.JSONObject
+import okhttp3.internal.http2.StreamResetException
+import kotlinx.coroutines.CancellationException
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.repository.AuthRepository
 // 1. ADD IMPORT
@@ -178,6 +180,10 @@ class BedrockClient @Inject constructor(
 
             responseBody.getJSONArray("results").getJSONObject(0).getString("outputText").trim()
 
+        } catch (e: StreamResetException) {
+            // FIX: Handle stream reset safely
+            Log.w("BedrockClient", "Cue generation cancelled: ${e.message}")
+            throw CancellationException("Request cancelled")
         } catch (e: Exception) {
             Log.e("BedrockClient", "AI Generation failed", e)
             "Keep pushing!" // Fallback
@@ -354,18 +360,24 @@ class BedrockClient @Inject constructor(
             accept = "application/json"
             body = jsonString.toByteArray()
         }
+        try {
+            val response = client.invokeModel(request)
+            val responseBody = response.body?.decodeToString() ?: ""
+            Log.d("BedrockClient", "Raw Response: $responseBody")
 
-        val response = client.invokeModel(request)
-        val responseBody = response.body?.decodeToString() ?: ""
-        Log.d("BedrockClient", "Raw Response: $responseBody") // ADD THIS LOG
+            val outerResponse = jsonConfig.decodeFromString<ClaudeResponse>(responseBody)
+            val rawText = outerResponse.content.firstOrNull()?.text ?: ""
 
-        val outerResponse = jsonConfig.decodeFromString<ClaudeResponse>(responseBody)
-        val rawText = outerResponse.content.firstOrNull()?.text ?: ""
+            // Extract JSON from potential Markdown wrapper
+            val jsonRegex = Regex("\\{.*\\}", setOf(RegexOption.DOT_MATCHES_ALL))
+            val match = jsonRegex.find(rawText)
 
-        // Extract JSON from potential Markdown wrapper
-        val jsonRegex = Regex("\\{.*\\}", setOf(RegexOption.DOT_MATCHES_ALL))
-        val match = jsonRegex.find(rawText)
+            return match?.value ?: throw Exception("AI returned invalid format: $rawText")
 
-        return match?.value ?: throw Exception("AI returned invalid format: $rawText")
+        } catch (e: StreamResetException) {
+            Log.w("BedrockClient", "Stream cancelled safely during request: ${e.message}")
+            // Throwing CancellationException ensures the coroutine scope cancels gracefully without crashing
+            throw CancellationException("Bedrock request cancelled")
+        }
     }
 }

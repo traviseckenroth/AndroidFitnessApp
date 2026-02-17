@@ -129,6 +129,7 @@ dependencies {
     implementation(libs.firebase.common.ktx)
     implementation(libs.firebase.config)
     implementation("com.google.firebase:firebase-config-ktx")
+    implementation(libs.play.services.coroutines)
 
 
     // --- CameraX ---

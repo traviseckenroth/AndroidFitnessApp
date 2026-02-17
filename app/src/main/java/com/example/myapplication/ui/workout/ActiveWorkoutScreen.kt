@@ -1,32 +1,35 @@
 package com.example.myapplication.ui.workout
 
+import android.Manifest
+import android.app.Activity
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.speech.RecognizerIntent
+import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import java.util.Locale
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import android.speech.RecognizerIntent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import android.app.Activity
-import android.content.Intent
-import android.util.Log
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -35,6 +38,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
@@ -42,6 +46,7 @@ import com.example.myapplication.ui.camera.CameraFormCheckScreen
 import com.example.myapplication.ui.camera.FormAnalyzer
 import com.example.myapplication.util.PlateCalculator
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,62 +64,109 @@ fun ActiveWorkoutScreen(
     val chatHistory by viewModel.chatHistory.collectAsState()
     val listState = rememberLazyListState()
     val isListening by viewModel.isListening.collectAsState()
+    val scope = rememberCoroutineScope()
 
+    // FIX 1: Define Context correctly
+    val context = LocalContext.current
     val currentView = LocalView.current
+
     DisposableEffect(Unit) {
         currentView.keepScreenOn = true
         onDispose {
             currentView.keepScreenOn = false
         }
     }
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (!isGranted) {
-            Log.e("Permissions", "Microphone permission denied")
+
+    // FIX 2: Check for BOTH Camera and Audio permissions
+    var permissionsGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED &&
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    // FIX 3: Unified Launcher for Multiple Permissions
+    val launcher = rememberLauncherForActivityResult(
+        contract = RequestMultiplePermissions()
+    ) { permissions ->
+        permissionsGranted = permissions.values.all { it }
+        if (!permissionsGranted) {
+            Log.e("Permissions", "Required permissions (Camera/Audio) denied.")
         }
     }
+
+    // FIX 4: Request both on startup
+    LaunchedEffect(Unit) {
+        if (!permissionsGranted) {
+            launcher.launch(
+                arrayOf(
+                    Manifest.permission.CAMERA,
+                    Manifest.permission.RECORD_AUDIO
+                )
+            )
+        }
+    }
+
+    // --- CAMERA / FORM CHECK LOGIC ---
     var activeCameraExerciseState by remember { mutableStateOf<ExerciseState?>(null) }
 
     if (activeCameraExerciseState != null) {
-        val nextSet = activeCameraExerciseState!!.sets.firstOrNull { !it.isCompleted }
-        Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-            CameraFormCheckScreen(
-                exerciseName = activeCameraExerciseState!!.exercise.name,
-                targetWeight = nextSet?.suggestedLbs?.toInt() ?: 0,
-                targetReps = nextSet?.suggestedReps ?: 0,
-                onClose = { activeCameraExerciseState = null },
-
-                // UPDATED CALL
-                fetchAiCue = { issue ->
-                    viewModel.generateCoachingCue(
-                        activeCameraExerciseState!!.exercise.name,
-                        issue
-                    )
+        // Only show camera if permissions are actually granted
+        if (permissionsGranted) {
+            val nextSet = activeCameraExerciseState!!.sets.firstOrNull { !it.isCompleted }
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+                CameraFormCheckScreen(
+                    exerciseName = activeCameraExerciseState!!.exercise.name,
+                    targetWeight = nextSet?.suggestedLbs?.toInt() ?: 0,
+                    targetReps = nextSet?.suggestedReps ?: 0,
+                    onClose = { activeCameraExerciseState = null },
+                    // Assuming CameraFormCheckScreen is updated to handle this lambda correctly
+                    // If this still causes type errors, ensure CameraFormCheckScreen is updated or remove this param if unused.
+                    fetchAiCue = { issue ->
+                        viewModel.generateCoachingCue(
+                            activeCameraExerciseState!!.exercise.name,
+                            issue
+                        )
+                    }
+                )
+            }
+        } else {
+            // Fallback UI if permissions are missing
+            AlertDialog(
+                onDismissRequest = { activeCameraExerciseState = null },
+                title = { Text("Permissions Required") },
+                text = { Text("Camera and Microphone access are needed for AI Form Check and Voice Coaching.") },
+                confirmButton = {
+                    Button(onClick = {
+                        launcher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
+                    }) { Text("Grant Permissions") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { activeCameraExerciseState = null }) { Text("Cancel") }
                 }
             )
         }
         return
     }
+
     LaunchedEffect(workoutId) {
         viewModel.loadWorkout(workoutId)
     }
 
     LaunchedEffect(workoutSummary) {
         if (workoutSummary != null) {
-            // Once the viewmodel generates the summary (meaning db is updated), we navigate
-            viewModel.clearSummary() // Optional cleanup
+            viewModel.clearSummary()
             onWorkoutComplete(workoutId)
         }
     }
+
     LaunchedEffect(chatHistory.size) {
         if (chatHistory.isNotEmpty()) {
             listState.animateScrollToItem(chatHistory.size - 1)
         }
     }
-    LaunchedEffect(Unit) {
-        permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
-    }
+
+    // Voice Input Launcher (Google Speech Recognizer)
     val voiceLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -125,6 +177,7 @@ fun ActiveWorkoutScreen(
             }
         }
     }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -160,7 +213,7 @@ fun ActiveWorkoutScreen(
             }
         }
     ) { padding ->
-        // 3. Add Chat Dialog Logic
+        // --- CHAT OVERLAY ---
         if (showChat) {
             AlertDialog(
                 onDismissRequest = { showChat = false },
@@ -170,9 +223,9 @@ fun ActiveWorkoutScreen(
                         modifier = Modifier.height(400.dp).fillMaxWidth(),
                         verticalArrangement = Arrangement.SpaceBetween
                     ) {
-                        // 1. Message History (with auto-scroll state)
+                        // 1. Message History
                         LazyColumn(
-                            state = listState, // ATTACH THE SCROLL STATE HERE
+                            state = listState,
                             modifier = Modifier.weight(1f).padding(bottom = 8.dp)
                         ) {
                             items(chatHistory) { msg ->
@@ -225,9 +278,15 @@ fun ActiveWorkoutScreen(
                                 }
                             )
 
-                            // 3. Live Streaming Toggle Button (Gemini Live Style)
+                            // 3. Live Streaming Toggle Button
                             IconButton(
-                                onClick = { viewModel.toggleLiveCoaching() },
+                                onClick = {
+                                    if (permissionsGranted) {
+                                        viewModel.toggleLiveCoaching()
+                                    } else {
+                                        launcher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
+                                    }
+                                },
                                 modifier = Modifier.padding(start = 4.dp)
                             ) {
                                 Icon(
@@ -300,6 +359,7 @@ fun ActiveWorkoutScreen(
     }
 }
 
+// ... (Rest of your composables: WorkoutHeader, ExerciseHeader, SetsTable, etc. remain unchanged) ...
 @Composable
 fun WorkoutHeader(title: String) {
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
@@ -360,7 +420,7 @@ fun ExerciseHeader(
                 )
                 IconButton(onClick = { showDescriptionDialog = true }) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Help, // Updated icon
+                        imageVector = Icons.AutoMirrored.Filled.Help,
                         contentDescription = "Info",
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)
@@ -376,7 +436,6 @@ fun ExerciseHeader(
             }
         }
 
-        // Inline "hasWarmups" check
         if (exerciseState.exercise.tier == 1 && !exerciseState.sets.any { it.suggestedRpe == 0 }) {
             Spacer(modifier = Modifier.width(8.dp))
             AssistChip(
@@ -431,7 +490,6 @@ fun SetsTable(sets: List<WorkoutSetEntity>, equipment: String?, viewModel: Activ
             Text("DONE", modifier = Modifier.weight(0.5f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
         sets.forEachIndexed { index, set ->
-            // Inline "isBarbell" check
             SetRow(
                 setNumber = index + 1,
                 set = set,
@@ -484,11 +542,9 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
                     .fillMaxWidth()
                     .onFocusChanged {
                         if (it.isFocused) {
-                            // Clear text on focus for easier entry
                             weightText = ""
                         } else {
                             if (weightText.isBlank()) {
-                                // Restore original if left empty
                                 weightText = set.actualLbs?.toInt()?.toString() ?: ""
                             } else {
                                 viewModel.updateSetWeight(set, weightText)
@@ -614,40 +670,24 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
 @Composable
 fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
     val timerState = exerciseState.timerState
-
-    // 1. STATE SNAPSHOT: Identify which set index the timer is currently responsible for.
-    // Use rememberSaveable to persist across configuration changes.
-    // Initialize to the first incomplete set index (or 0 if all done/none started)
     var timerTargetIndex by rememberSaveable(exerciseState.exercise.exerciseId) {
         mutableIntStateOf(exerciseState.sets.indexOfFirst { !it.isCompleted }.takeIf { it != -1 } ?: 0)
     }
-
-    // Safety check: Ensure target index is within bounds of current sets
     val safeTargetIndex = timerTargetIndex.coerceIn(0, (exerciseState.sets.size - 1).coerceAtLeast(0))
     val allSetsDone = exerciseState.sets.all { it.isCompleted }
 
-    // Logic to cycle the timer: Mark done -> Move Index -> Reset Timer -> Start Timer
     fun cycleTimer() {
-        // A. Mark current target done (if not already done manually)
         val currentTargetSet = exerciseState.sets.getOrNull(safeTargetIndex)
         if (currentTargetSet != null && !currentTargetSet.isCompleted) {
             viewModel.updateSetCompletion(currentTargetSet, true)
         }
-
-        // B. Advance Index immediately (don't wait for DB update)
-        // This ensures the next cycle targets the next set, even if DB is slow
         if (safeTargetIndex < exerciseState.sets.size - 1) {
             timerTargetIndex = safeTargetIndex + 1
         }
-
-        // C. Restart Loop
-        // 1. Reset (Skip) guarantees we go back to the top (e.g., 60s)
         viewModel.skipSetTimer(exerciseState.exercise.exerciseId)
-        // 2. Start ensures it begins counting down immediately
         viewModel.startSetTimer(exerciseState.exercise.exerciseId)
     }
 
-    // 2. Auto-Completion when Timer hits 0:00
     var previousTime by remember { mutableLongStateOf(timerState.remainingTime) }
 
     LaunchedEffect(timerState.remainingTime) {
@@ -668,7 +708,6 @@ fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
                 color = MaterialTheme.colorScheme.primary
             )
         } else {
-            // Display Timer
             Text(
                 text = String.format(
                     Locale.US,
@@ -682,15 +721,10 @@ fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
 
             Button(onClick = {
                 if (timerState.isRunning) {
-                    // SKIP REST: Stop timer, Mark Done, Restart for next
                     cycleTimer()
                 } else {
-                    // START TIMER (Initial start)
-                    // Sync target index to the first incomplete set just in case the user
-                    // manually checked off boxes while the timer was stopped.
                     val nextIndex = exerciseState.sets.indexOfFirst { !it.isCompleted }
                     if (nextIndex != -1) timerTargetIndex = nextIndex
-
                     viewModel.startSetTimer(exerciseState.exercise.exerciseId)
                 }
             }) {

@@ -14,14 +14,13 @@ import com.example.myapplication.ui.exercise.ExerciseListScreen
 import com.example.myapplication.ui.exercise_history.ExerciseHistoryScreen
 import com.example.myapplication.ui.home.HomeScreen
 import com.example.myapplication.ui.insights.InsightsScreen
-import com.example.myapplication.ui.settings.GymSettingsScreen // FIXED: Added Import
+import com.example.myapplication.ui.settings.GymSettingsScreen
 import com.example.myapplication.ui.nutrition.NutritionScreen
 import com.example.myapplication.ui.plan.GeneratePlanScreen
 import com.example.myapplication.ui.plan.ManualPlanScreen
 import com.example.myapplication.ui.plan.PlanViewModel
 import com.example.myapplication.ui.profile.ProfileScreen
 import com.example.myapplication.ui.settings.SettingsScreen
-import com.example.myapplication.ui.settings.GymSettingsScreen // FIXED: Added missing import
 import com.example.myapplication.ui.summary.WorkoutSummaryScreen
 import com.example.myapplication.ui.warmup.WarmUpScreen
 import com.example.myapplication.ui.workout.ActiveSessionViewModel
@@ -76,6 +75,10 @@ fun NavGraph(
                 },
                 onNavigateToGymSettings = { navController.navigate("gym_settings") }
             )
+        }
+
+        composable("gym_settings") {
+            GymSettingsScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Screen.GeneratePlan.route) {

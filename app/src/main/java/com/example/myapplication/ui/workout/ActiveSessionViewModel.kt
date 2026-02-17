@@ -8,21 +8,23 @@ import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.remote.BedrockClient
-import com.example.myapplication.data.remote.LiveTranscribeClient
+import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.repository.HealthConnectManager
 import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import com.example.myapplication.service.WorkoutTimerService
-import com.example.myapplication.util.AudioRecordingManager
-import kotlinx.coroutines.CoroutineExceptionHandler
+import com.example.myapplication.util.SpeechToTextManager
 import com.example.myapplication.util.VoiceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
+import kotlin.coroutines.cancellation.CancellationException
 
 // --- DATA MODELS ---
 
@@ -50,8 +52,7 @@ class ActiveSessionViewModel @Inject constructor(
     private val userPrefs: UserPreferencesRepository,
     private val healthConnectManager: HealthConnectManager,
     private val voiceManager: VoiceManager, // Added for AI Voice Over
-    private val liveTranscribeClient: LiveTranscribeClient,
-    private val audioManager: AudioRecordingManager, // Added for Live Transcription
+    private val speechToTextManager: SpeechToTextManager,
     private val bedrockClient: BedrockClient // Changed to private val to follow best practices
 ) : ViewModel() {
 
@@ -89,6 +90,7 @@ class ActiveSessionViewModel @Inject constructor(
         // Sync with Timer Service
         viewModelScope.launch {
             WorkoutTimerService.timerState.collect { serviceState ->
+                val isTimerFinished = serviceState.remainingTime == 0 && serviceState.activeExerciseId != null
                 if (serviceState.hasFinished && serviceState.activeExerciseId != null) {
                     val exerciseId = serviceState.activeExerciseId!!
                     val currentState = _exerciseStates.value.find { it.exercise.exerciseId == exerciseId }
@@ -338,19 +340,24 @@ class ActiveSessionViewModel @Inject constructor(
     // --- 6. AI & CHAT INTERACTION ---
 
     fun interactWithCoach(userText: String) {
-        // 1. Update UI immediately with user message
+        // 1. Update UI with User Message
         val currentHistory = _chatHistory.value.toMutableList()
         currentHistory.add(ChatMessage("User", userText))
         _chatHistory.value = currentHistory
 
         viewModelScope.launch {
+            // 2. PAUSE LISTENING (Prevent AI from hearing itself)
+            // We cancel the job but keep _isListening = true so we know to resume
+            val wasListening = _isListening.value
+            if (wasListening) {
+                transcribeJob?.cancel()
+            }
+
+            // ... (Existing AI generation logic) ...
             val currentExercises = _exerciseStates.value.filter {
                 it.sets.any { set -> !set.isCompleted }
             }.joinToString { it.exercise.name }
-
             val available = repository.getAllExercises().first()
-
-            // 2. Get AI Response from Bedrock
             val response = bedrockClient.coachInteraction(currentExercises, userText, available)
 
             // 3. Update UI with Coach Response
@@ -358,11 +365,21 @@ class ActiveSessionViewModel @Inject constructor(
             newHistory.add(ChatMessage("Coach", response.explanation))
             _chatHistory.value = newHistory
 
-            // 4. VOICE OVER: Speak the response out loud
-            voiceManager.speak(response.explanation)
+            // 4. SPEAK & RESUME
+            voiceManager.speak(response.explanation) {
+                // This runs when speech finishes.
+                // Check if the user didn't turn it off manually while AI was talking.
+                if (wasListening && _isListening.value) {
+                    // Must relaunch on main scope
+                    viewModelScope.launch {
+                        startLiveTranscription()
+                    }
+                }
+            }
 
-            // 5. Apply workout modifications if needed
+            // 5. Apply workout modifications (Existing logic)
             if (response.exercises.isNotEmpty()) {
+                // ... (keep existing workout modification code) ...
                 val workoutId = _workoutId.value
                 val incompleteSets = _sets.value.filter { !it.isCompleted }
                 repository.deleteSets(incompleteSets)
@@ -392,6 +409,7 @@ class ActiveSessionViewModel @Inject constructor(
     }
 
     suspend fun generateCoachingCue(exerciseName: String, issue: String): String {
+        // The bedrockClient function is a suspend function, so we can call it directly.
         return bedrockClient.generateCoachingCue(exerciseName, issue, 0)
     }
 
@@ -409,23 +427,17 @@ class ActiveSessionViewModel @Inject constructor(
     private fun startLiveTranscription() {
         transcribeJob?.cancel()
 
-        // 1. Create a safety handler for background crashes
-        val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
-            android.util.Log.e("LiveCoach", "Transcription crashed: ${throwable.message}")
-            _isListening.value = false
-        }
-
-        // 2. Attach the handler to the launch
-        transcribeJob = viewModelScope.launch(exceptionHandler) {
+        transcribeJob = viewModelScope.launch {
             try {
-                liveTranscribeClient.startStreaming(audioManager.getAudioStream())
+                // 3. USE NATIVE SPEECH RECOGNIZER
+                speechToTextManager.startListening()
                     .collect { transcript ->
-                        android.util.Log.d("LiveCoach", "Heard: $transcript")
+                        Log.d("LiveCoach", "Heard: $transcript")
+                        // Send to AI Coach
                         interactWithCoach(transcript)
                     }
             } catch (e: Exception) {
-                // This catches standard errors
-                android.util.Log.e("LiveCoach", "Transcription stopped: ${e.message}")
+                Log.e("LiveCoach", "Speech error: ${e.message}")
                 _isListening.value = false
             }
         }
@@ -443,6 +455,7 @@ class ActiveSessionViewModel @Inject constructor(
         super.onCleared()
         stopLiveTranscription()
         voiceManager.stop() // Cleanup TTS resources
+        skipSetTimer(-1)
     }
 
     // --- PRIVATE HELPERS ---

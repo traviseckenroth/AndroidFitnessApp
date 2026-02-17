@@ -12,7 +12,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 sealed class Screen(val route: String, val title: String? = null, val icon: ImageVector? = null) {
     // Bottom Navigation Items
     object Home : Screen("home", "Home", Icons.Default.Home)
-    object Plan : Screen("plan", "Plan", Icons.Default.DateRange)
+    object Plan : Screen("generate_plan", "Plan", Icons.Default.DateRange)
     object Nutrition : Screen("nutrition", "Nutrition", Icons.Default.Fastfood)
     object Insights : Screen("insights", "Insights", Icons.Default.BarChart)
     object Profile : Screen("profile", "Profile", Icons.Default.Person)
