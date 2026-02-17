@@ -34,7 +34,7 @@ fun NavGraph(
 ) {
     NavHost(
         navController = navController,
-        startDestination = "login",
+        startDestination = Screen.Login.route,
         modifier = modifier
     ) {
         // --- AUTH ROUTES ---
