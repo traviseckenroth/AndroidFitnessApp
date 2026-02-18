@@ -23,6 +23,7 @@ import javax.inject.Inject
 
 // Helper data classes (Defined strictly in this file)
 private data class Biometrics(
+    val userName: String,
     val height: Int,
     val weight: Double,
     val age: Int,
@@ -55,12 +56,22 @@ class ProfileViewModel @Inject constructor(
 
         viewModelScope.launch {
             val biometricsFlow = combine(
+                userPrefs.userName,
                 userPrefs.userHeight,
                 userPrefs.userWeight,
                 userPrefs.userAge,
                 userPrefs.userGender,
                 userPrefs.userActivity
-            ) { h, w, a, g, act -> Biometrics(h, w, a, g, act) }
+            ) { args ->
+                Biometrics(
+                    userName = args[0] as String,
+                    height = args[1] as Int,
+                    weight = args[2] as Double,
+                    age = args[3] as Int,
+                    gender = args[4] as String,
+                    activity = args[5] as String
+                )
+            }
 
             val lifestyleFlow = combine(
                 userPrefs.userBodyFat,
@@ -86,6 +97,7 @@ class ProfileViewModel @Inject constructor(
                 _uiState.update { currentState ->
                     currentState.copy(
                         isLoading = false,
+                        userName = bio.userName,
                         height = bio.height.toString(),
                         weight = bio.weight.toString(),
                         age = bio.age.toString(),

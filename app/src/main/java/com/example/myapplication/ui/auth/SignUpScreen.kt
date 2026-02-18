@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.repository.AuthRepository
 import com.example.myapplication.data.repository.SignUpResult
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -19,7 +20,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class SignUpViewModel @Inject constructor(
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val userPrefs: UserPreferencesRepository
 ) : ViewModel() {
     var isLoading by mutableStateOf(false)
     var errorMsg by mutableStateOf<String?>(null)
@@ -30,7 +32,10 @@ class SignUpViewModel @Inject constructor(
             isLoading = true
             errorMsg = null
             when (val result = authRepository.signUp(name, email, pass)) {
-                is SignUpResult.Success -> isCodeSent = true
+                is SignUpResult.Success -> {
+                    isCodeSent = true
+                    userPrefs.saveUserName(name)
+                }
                 is SignUpResult.Error -> errorMsg = result.message
                 else -> {}
             }

@@ -9,10 +9,12 @@ import aws.sdk.kotlin.services.cognitoidentityprovider.model.AttributeType
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.AuthFlowType
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.ChallengeNameType
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.ConfirmSignUpRequest
+import aws.sdk.kotlin.services.cognitoidentityprovider.model.GetUserRequest
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.InitiateAuthRequest
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.RespondToAuthChallengeRequest
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.SignUpRequest
 import com.example.myapplication.BuildConfig
+import com.example.myapplication.data.local.UserPreferencesRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -35,10 +37,11 @@ sealed class SignUpResult {
 
 @Singleton
 class AuthRepository @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val userPrefs: UserPreferencesRepository
 ) {
     private val ID_TOKEN_KEY = stringPreferencesKey("id_token")
-    private val REFRESH_TOKEN_KEY = stringPreferencesKey("refresh_token") // <--- NEW
+    private val REFRESH_TOKEN_KEY = stringPreferencesKey("refresh_token")
 
     private var currentSession: String? = null
     private var currentUsername: String? = null
@@ -49,13 +52,11 @@ class AuthRepository @Inject constructor(
 
     // --- AUTO LOGIN (KEEP SIGNED IN) ---
     suspend fun autoLogin(): Boolean {
-        // 1. Get the saved Refresh Token
         val refreshToken = context.authDataStore.data.map { it[REFRESH_TOKEN_KEY] }.first()
 
-        if (refreshToken.isNullOrBlank()) return false // No saved session
+        if (refreshToken.isNullOrBlank()) return false
 
         return try {
-            // 2. Ask AWS for a new ID Token using the Refresh Token
             val request = InitiateAuthRequest {
                 authFlow = AuthFlowType.RefreshTokenAuth
                 clientId = BuildConfig.COGNITO_CLIENT_ID
@@ -65,19 +66,24 @@ class AuthRepository @Inject constructor(
             val response = cognitoClient.initiateAuth(request)
 
             if (response.authenticationResult?.idToken != null) {
-                // 3. Success! Save the new valid ID token.
-                // Note: We keep the old Refresh Token unless AWS sends a new one.
                 val newIdToken = response.authenticationResult?.idToken!!
-                val newRefreshToken = response.authenticationResult?.refreshToken // Might be null
+                val newRefreshToken = response.authenticationResult?.refreshToken
 
                 saveTokens(newIdToken, newRefreshToken)
+                
+                // Fetch user name if not present
+                val currentName = userPrefs.userName.first()
+                if (currentName == "User") {
+                    fetchAndSaveUserName(response.authenticationResult?.accessToken)
+                }
+                
                 true
             } else {
                 false
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            false // Token likely expired or revoked
+            false
         }
     }
 
@@ -92,11 +98,14 @@ class AuthRepository @Inject constructor(
             val response = cognitoClient.initiateAuth(request)
 
             if (response.authenticationResult?.idToken != null) {
-                // SAVE BOTH TOKENS
                 saveTokens(
                     response.authenticationResult?.idToken!!,
                     response.authenticationResult?.refreshToken
                 )
+                
+                // Fetch and save user name
+                fetchAndSaveUserName(response.authenticationResult?.accessToken)
+                
                 return LoginResult.Success
             }
             if (response.challengeName == ChallengeNameType.NewPasswordRequired) {
@@ -107,6 +116,21 @@ class AuthRepository @Inject constructor(
             LoginResult.Error("Unknown login state")
         } catch (e: Exception) {
             LoginResult.Error(e.localizedMessage ?: "Login failed")
+        }
+    }
+
+    private suspend fun fetchAndSaveUserName(accessToken: String?) {
+        if (accessToken == null) return
+        try {
+            val userResponse = cognitoClient.getUser(GetUserRequest {
+                this.accessToken = accessToken
+            })
+            val nameAttr = userResponse.userAttributes?.find { it.name == "name" }?.value
+            if (nameAttr != null) {
+                userPrefs.saveUserName(nameAttr)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -126,6 +150,9 @@ class AuthRepository @Inject constructor(
                     response.authenticationResult?.idToken!!,
                     response.authenticationResult?.refreshToken
                 )
+                
+                fetchAndSaveUserName(response.authenticationResult?.accessToken)
+                
                 LoginResult.Success
             } else {
                 LoginResult.Error("Failed to set new password")
@@ -174,7 +201,7 @@ class AuthRepository @Inject constructor(
     suspend fun logout() {
         context.authDataStore.edit { prefs ->
             prefs.remove(ID_TOKEN_KEY)
-            prefs.remove(REFRESH_TOKEN_KEY) // Essential for "Keep Signed In" to stop
+            prefs.remove(REFRESH_TOKEN_KEY)
         }
     }
 

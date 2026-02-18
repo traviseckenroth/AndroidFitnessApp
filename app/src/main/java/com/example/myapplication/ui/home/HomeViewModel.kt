@@ -9,6 +9,7 @@ import com.example.myapplication.data.repository.PlanRepository
 import com.example.myapplication.data.remote.BedrockClient
 import com.example.myapplication.data.repository.ContentRepository
 import com.example.myapplication.data.local.ContentSourceEntity
+import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.local.WorkoutDao
 import com.example.myapplication.ui.navigation.Screen
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -25,7 +26,8 @@ class HomeViewModel @Inject constructor(
     private val repository: PlanRepository,
     private val bedrockClient: BedrockClient,
     private val workoutDao: WorkoutDao,
-    private val contentRepository: ContentRepository
+    private val contentRepository: ContentRepository,
+    private val userPrefs: UserPreferencesRepository
 ) : ViewModel() {
 
     private val _selectedDate = MutableStateFlow(LocalDate.now())
@@ -46,6 +48,12 @@ class HomeViewModel @Inject constructor(
 
     private val _isBriefingLoading = MutableStateFlow(false)
     val isBriefingLoading: StateFlow<Boolean> = _isBriefingLoading.asStateFlow()
+
+    val userName: StateFlow<String> = userPrefs.userName.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = "User"
+    )
 
     val workoutDates: StateFlow<List<LocalDate>> = repository.getAllWorkoutDates()
         .map { dates ->

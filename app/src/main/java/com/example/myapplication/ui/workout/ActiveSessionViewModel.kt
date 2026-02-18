@@ -147,27 +147,23 @@ class ActiveSessionViewModel @Inject constructor(
         }
 
         // Construct UI State (Unified Logic)
-        // FIX: Moved RPE reduction logic here to ensure it applies to all data sources
         viewModelScope.launch {
             combine(
                 _exercises,
                 _sets,
                 userPrefs.recoveryScore
             ) { allExercises, sessionSets, recovery ->
-                // 1. Calculate Adjustment based on recovery
                 val rpeReduction = when {
                     recovery < 40 -> 2
                     recovery < 70 -> 1
                     else -> 0
                 }
 
-                // 2. Prepare Data
                 val sessionExerciseIds = sessionSets.map { it.exerciseId }.toSet()
                 val sessionExercises = allExercises
                     .filter { it.exerciseId in sessionExerciseIds }
                     .sortedBy { it.tier }
 
-                // 3. Generate Briefing
                 if (sessionExercises.isNotEmpty() && sessionSets.isNotEmpty()) {
                     var briefing = generateCoachBriefing(sessionExercises, sessionSets, recovery)
                     if (rpeReduction > 0) {
@@ -176,11 +172,9 @@ class ActiveSessionViewModel @Inject constructor(
                     _coachBriefing.value = briefing
                 }
 
-                // 4. Map to UI State
                 val setsByExercise = sessionSets.groupBy { it.exerciseId }
 
                 sessionExercises.map { exercise ->
-                    // Apply RPE reduction to sets here dynamically
                     val rawSets = setsByExercise[exercise.exerciseId] ?: emptyList()
                     val adjustedSets = rawSets.map { set ->
                         if (rpeReduction > 0) {
@@ -199,7 +193,6 @@ class ActiveSessionViewModel @Inject constructor(
                     )
                 }
             }.collect { newStates ->
-                // Update state if we have data or if it's an explicit clear
                 _exerciseStates.value = newStates
             }
         }
@@ -208,8 +201,6 @@ class ActiveSessionViewModel @Inject constructor(
     // --- 3. SESSION MANAGEMENT ---
 
     fun loadWorkout(workoutId: Long) {
-        // FIX: Simply update the ID. The reactive chain in init {} handles fetching, filtering, and RPE adjustment.
-        // This prevents the "Race Condition" where manual fetching overwrote the reactive stream.
         _workoutId.value = workoutId
     }
 
@@ -259,12 +250,16 @@ class ActiveSessionViewModel @Inject constructor(
 
     fun updateSetReps(set: WorkoutSetEntity, newReps: String) {
         val repsInt = newReps.toIntOrNull() ?: return
-        viewModelScope.launch { repository.updateSet(set.copy(actualReps = repsInt)) }
+        viewModelScope.launch {
+            repository.updateSetsReps(set.workoutId, set.exerciseId, set.setNumber, repsInt)
+        }
     }
 
     fun updateSetWeight(set: WorkoutSetEntity, newLbs: String) {
         val lbsFloat = newLbs.toFloatOrNull() ?: return
-        viewModelScope.launch { repository.updateSet(set.copy(actualLbs = lbsFloat)) }
+        viewModelScope.launch {
+            repository.updateSetsWeight(set.workoutId, set.exerciseId, set.setNumber, lbsFloat)
+        }
     }
 
     fun updateSetRpe(set: WorkoutSetEntity, newRpe: String) {
@@ -281,6 +276,20 @@ class ActiveSessionViewModel @Inject constructor(
     fun swapExercise(oldExerciseId: Long, newExerciseId: Long) {
         viewModelScope.launch { repository.swapExercise(_workoutId.value, oldExerciseId, newExerciseId) }
     }
+
+    fun addSet(exerciseId: Long) {
+        viewModelScope.launch {
+            repository.addSet(_workoutId.value, exerciseId)
+        }
+    }
+
+    fun addExercise(exerciseId: Long) {
+        viewModelScope.launch {
+            repository.addExercise(_workoutId.value, exerciseId)
+        }
+    }
+
+    fun getAllExercises(): Flow<List<ExerciseEntity>> = repository.getAllExercises()
 
     suspend fun getTopAlternatives(exercise: ExerciseEntity): List<ExerciseEntity> {
         return repository.getBestAlternatives(exercise)
@@ -378,12 +387,9 @@ class ActiveSessionViewModel @Inject constructor(
             if (response.exercises.isNotEmpty()) {
                 val workoutId = _workoutId.value
                 val incompleteSets = _sets.value.filter { !it.isCompleted }
-                // Warning: Deleting incomplete sets might be aggressive if user just wanted to ADD an exercise
-                // But keeping consistent with previous logic for now
                 repository.deleteSets(incompleteSets)
 
                 val newSets = response.exercises.mapNotNull { genEx ->
-                    // FIX: Fuzzy matching logic
                     val match = available.find {
                         it.name.equals(genEx.name, ignoreCase = true) ||
                                 it.name.contains(genEx.name, ignoreCase = true) ||
@@ -409,7 +415,6 @@ class ActiveSessionViewModel @Inject constructor(
 
                 if (newSets.isNotEmpty()) {
                     repository.insertSets(newSets)
-                    // No need to call loadWorkout, the flow will update automatically
                 }
             }
         }

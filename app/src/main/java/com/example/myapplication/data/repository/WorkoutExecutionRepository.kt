@@ -40,8 +40,40 @@ class WorkoutExecutionRepository @Inject constructor(
     // --- WRITES ---
     suspend fun updateSet(set: WorkoutSetEntity) = workoutDao.updateSet(set)
 
+    suspend fun updateSetsWeight(workoutId: Long, exerciseId: Long, fromSetNumber: Int, newLbs: Float) {
+        val allSets = workoutDao.getSetsForWorkoutList(workoutId)
+        val setsToUpdate = allSets.filter { 
+            it.exerciseId == exerciseId && it.setNumber >= fromSetNumber 
+        }.map { 
+            // Update the current set being edited AND all subsequent uncompleted sets
+            if (it.setNumber == fromSetNumber || !it.isCompleted) {
+                it.copy(actualLbs = newLbs)
+            } else {
+                it
+            }
+        }
+        if (setsToUpdate.isNotEmpty()) {
+            workoutDao.insertSets(setsToUpdate)
+        }
+    }
+
+    suspend fun updateSetsReps(workoutId: Long, exerciseId: Long, fromSetNumber: Int, newReps: Int) {
+        val allSets = workoutDao.getSetsForWorkoutList(workoutId)
+        val setsToUpdate = allSets.filter { 
+            it.exerciseId == exerciseId && it.setNumber >= fromSetNumber 
+        }.map { 
+            if (it.setNumber == fromSetNumber || !it.isCompleted) {
+                it.copy(actualReps = newReps)
+            } else {
+                it
+            }
+        }
+        if (setsToUpdate.isNotEmpty()) {
+            workoutDao.insertSets(setsToUpdate)
+        }
+    }
+
     // FIX 1: Bio-Sync Title Adjustment
-    // Intercepts the workout creation to check recovery status
     suspend fun insertWorkout(workout: WorkoutEntity): Long {
         val isRecovery = checkRecoveryNeeded()
 
@@ -54,8 +86,6 @@ class WorkoutExecutionRepository @Inject constructor(
         return workoutDao.insertWorkout(finalWorkout)
     }
 
-    // FIX 2: Bio-Sync Volume Reduction (30%)
-    // Intercepts the set creation to reduce reps if recovery is needed
     suspend fun insertSets(sets: List<WorkoutSetEntity>) {
         val isRecovery = checkRecoveryNeeded()
 
@@ -63,7 +93,6 @@ class WorkoutExecutionRepository @Inject constructor(
             Log.d("BioSync", "Reducing workout volume by 30% for recovery.")
             sets.map { set ->
                 set.copy(
-                    // Reduce suggested reps by 30% (keep at least 1 rep)
                     suggestedReps = (set.suggestedReps * 0.7).toInt().coerceAtLeast(1)
                 )
             }
@@ -72,6 +101,7 @@ class WorkoutExecutionRepository @Inject constructor(
         }
         workoutDao.insertSets(finalSets)
     }
+
     suspend fun getWorkoutSummary(workoutId: Long): WorkoutSummaryResult {
         val workout = workoutDao.getWorkoutById(workoutId)
             ?: return WorkoutSummaryResult("Workout Complete", "Good job!", 0, 0)
@@ -79,13 +109,9 @@ class WorkoutExecutionRepository @Inject constructor(
         val sets = workoutDao.getSetsForWorkoutList(workoutId).filter { it.isCompleted }
         val exercises = workoutDao.getExercisesForWorkoutOneShot(workoutId)
 
-        // 1. Calculate Stats
         val volume = sets.sumOf { (it.actualLbs ?: 0f).toInt() * (it.actualReps ?: 0) }
-
-        // 2. Determine Focus
         val focus = exercises.groupingBy { it.majorMuscle }.eachCount().maxByOrNull { it.value }?.key ?: "Full Body"
 
-        // 3. Check for PRs
         var isPr = false
         var prMessage = "Great job sticking to the plan."
 
@@ -95,7 +121,6 @@ class WorkoutExecutionRepository @Inject constructor(
 
             try {
                 val history = workoutDao.getCompletedWorkoutsForExercise(exercise.exerciseId).firstOrNull() ?: emptyList()
-                // Filter out current workout entries if they were already saved to avoid self-comparison
                 val previousHistory = history.filter { it.completedWorkout.date != workout.scheduledDate }
                 val maxWeightHistory = previousHistory.maxOfOrNull { it.completedWorkout.weight } ?: 0
 
@@ -114,6 +139,7 @@ class WorkoutExecutionRepository @Inject constructor(
 
         return WorkoutSummaryResult(title, subtitle, volume, exercises.size)
     }
+
     suspend fun completeWorkout(workoutId: Long): WorkoutSummaryResult {
         val workout = workoutDao.getWorkoutById(workoutId)
             ?: return WorkoutSummaryResult("Workout Complete", "Good job!", 0, 0)
@@ -121,13 +147,9 @@ class WorkoutExecutionRepository @Inject constructor(
         val sets = workoutDao.getSetsForWorkoutList(workoutId).filter { it.isCompleted }
         val exercises = workoutDao.getExercisesForWorkoutOneShot(workoutId)
 
-        // 1. Calculate Stats
         val volume = sets.sumOf { (it.actualLbs ?: 0f).toInt() * (it.actualReps ?: 0) }
-
-        // 2. Determine Focus
         val focus = exercises.groupingBy { it.majorMuscle }.eachCount().maxByOrNull { it.value }?.key ?: "Full Body"
 
-        // 3. Check for PRs
         var isPr = false
         var prMessage = "Great job sticking to the plan."
 
@@ -135,9 +157,7 @@ class WorkoutExecutionRepository @Inject constructor(
             val exerciseSets = sets.filter { it.exerciseId == exercise.exerciseId }
             val maxWeightSession = exerciseSets.maxOfOrNull { it.actualLbs ?: 0f } ?: 0f
 
-            // Check history
             try {
-                // Using firstOrNull to avoid crashes if flow is empty
                 val history = workoutDao.getCompletedWorkoutsForExercise(exercise.exerciseId).firstOrNull() ?: emptyList()
                 val maxWeightHistory = history.maxOfOrNull { it.completedWorkout.weight } ?: 0
 
@@ -154,7 +174,6 @@ class WorkoutExecutionRepository @Inject constructor(
         val title = if (isPr) "New Record!" else "$focus Workout"
         val subtitle = if (isPr) prMessage else "Way to destroy those $focus muscles."
 
-        // Save History
         val historyEntries = sets.map { set ->
             CompletedWorkoutEntity(
                 exerciseId = set.exerciseId,
@@ -190,6 +209,7 @@ class WorkoutExecutionRepository @Inject constructor(
         val candidates = workoutDao.getAlternativesByMajorMuscleAndTier(currentExercise.majorMuscle, currentExercise.tier, currentExercise.exerciseId)
         return candidates.distinctBy { it.name }.sortedByDescending { it.equipment == currentExercise.equipment }.take(5)
     }
+
     suspend fun deleteSets(sets: List<WorkoutSetEntity>): Int {
         return if (sets.isNotEmpty()) {
             workoutDao.deleteSets(sets)
@@ -197,21 +217,43 @@ class WorkoutExecutionRepository @Inject constructor(
             0
         }
     }
+
     suspend fun swapExercise(workoutId: Long, oldExerciseId: Long, newExerciseId: Long) {
         workoutDao.swapExerciseInSets(workoutId, oldExerciseId, newExerciseId)
     }
 
-    // --- HELPER FUNCTION ---
-    // Centralized logic to check if sleep was under 6 hours in the last 24h
+    suspend fun addSet(workoutId: Long, exerciseId: Long) {
+        val sets = workoutDao.getSetsForWorkoutList(workoutId).filter { it.exerciseId == exerciseId }.sortedBy { it.setNumber }
+        val lastSet = sets.lastOrNull()
+        val newSet = WorkoutSetEntity(
+            workoutId = workoutId,
+            exerciseId = exerciseId,
+            setNumber = (lastSet?.setNumber ?: 0) + 1,
+            suggestedReps = lastSet?.suggestedReps ?: 10,
+            suggestedLbs = lastSet?.suggestedLbs ?: 0,
+            suggestedRpe = lastSet?.suggestedRpe ?: 8,
+            isCompleted = false
+        )
+        workoutDao.insertSets(listOf(newSet))
+    }
+
+    suspend fun addExercise(workoutId: Long, exerciseId: Long) {
+        val newSet = WorkoutSetEntity(
+            workoutId = workoutId,
+            exerciseId = exerciseId,
+            setNumber = 1,
+            suggestedReps = 10,
+            suggestedLbs = 0,
+            suggestedRpe = 8,
+            isCompleted = false
+        )
+        workoutDao.insertSets(listOf(newSet))
+    }
+
     private suspend fun checkRecoveryNeeded(): Boolean {
-        // 1. Define window: Look at sleep from the last 24 hours
         val now = Instant.now()
         val yesterday = now.minus(Duration.ofHours(24))
-
-        // 2. Fetch Data
         val sleepDuration = healthConnectManager.getDailySleepDuration(yesterday, now)
-
-        // 3. Evaluate: Sleep is positive but less than 6 hours (360 minutes)
         return sleepDuration.toMinutes() in 1..359
     }
 }

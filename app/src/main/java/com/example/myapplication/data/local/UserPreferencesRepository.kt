@@ -19,6 +19,7 @@ class UserPreferencesRepository @Inject constructor(
     private val dataStore = context.dataStore
 
     private object PreferencesKeys {
+        val USER_NAME = stringPreferencesKey("user_name")
         val USER_HEIGHT = intPreferencesKey("user_height")
         val USER_WEIGHT = doublePreferencesKey("user_weight")
         val USER_AGE = intPreferencesKey("user_age")
@@ -35,6 +36,7 @@ class UserPreferencesRepository @Inject constructor(
         val EXCLUDED_EQUIPMENT = stringSetPreferencesKey("excluded_equipment")
     }
 
+    val userName: Flow<String> = dataStore.data.map { it[PreferencesKeys.USER_NAME] ?: "User" }
     val recoveryScore: Flow<Int> = context.dataStore.data.map { it[PreferencesKeys.RECOVERY_SCORE] ?: 100 }
 
     val userHeight: Flow<Int> = dataStore.data.map { it[PreferencesKeys.USER_HEIGHT] ?: 170 }
@@ -48,6 +50,12 @@ class UserPreferencesRepository @Inject constructor(
 
     val gymType: Flow<String> = dataStore.data.map { it[PreferencesKeys.GYM_TYPE] ?: "Commercial" }
     val excludedEquipment: Flow<Set<String>> = dataStore.data.map { it[PreferencesKeys.EXCLUDED_EQUIPMENT] ?: emptySet() }
+
+    suspend fun saveUserName(name: String) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.USER_NAME] = name
+        }
+    }
 
     suspend fun saveProfile(h: Int, w: Double, a: Int, g: String, act: String, bf: Double?, d: String, p: String) {
         dataStore.edit { preferences ->

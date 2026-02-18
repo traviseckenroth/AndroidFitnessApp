@@ -68,7 +68,8 @@ fun ActiveWorkoutScreen(
     val barWeight by viewModel.barWeight.collectAsState()
     val userGender by viewModel.userGender.collectAsState()
 
-    // FIX 1: Define Context correctly
+    var showAddExerciseDialog by remember { mutableStateOf(false) }
+
     val context = LocalContext.current
     val currentView = LocalView.current
 
@@ -79,7 +80,6 @@ fun ActiveWorkoutScreen(
         }
     }
 
-    // FIX 2: Check for BOTH Camera and Audio permissions
     var permissionsGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED &&
@@ -87,7 +87,6 @@ fun ActiveWorkoutScreen(
         )
     }
 
-    // FIX 3: Unified Launcher for Multiple Permissions
     val launcher = rememberLauncherForActivityResult(
         contract = RequestMultiplePermissions()
     ) { permissions ->
@@ -97,7 +96,6 @@ fun ActiveWorkoutScreen(
         }
     }
 
-    // FIX 4: Request both on startup
     LaunchedEffect(Unit) {
         if (!permissionsGranted) {
             launcher.launch(
@@ -109,11 +107,9 @@ fun ActiveWorkoutScreen(
         }
     }
 
-    // --- CAMERA / FORM CHECK LOGIC ---
     var activeCameraExerciseState by remember { mutableStateOf<ExerciseState?>(null) }
 
     if (activeCameraExerciseState != null) {
-        // Only show camera if permissions are actually granted
         if (permissionsGranted) {
             val nextSet = activeCameraExerciseState!!.sets.firstOrNull { !it.isCompleted }
             Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
@@ -122,8 +118,6 @@ fun ActiveWorkoutScreen(
                     targetWeight = nextSet?.suggestedLbs?.toInt() ?: 0,
                     targetReps = nextSet?.suggestedReps ?: 0,
                     onClose = { activeCameraExerciseState = null },
-                    // Assuming CameraFormCheckScreen is updated to handle this lambda correctly
-                    // If this still causes type errors, ensure CameraFormCheckScreen is updated or remove this param if unused.
                     fetchAiCue = { issue ->
                         viewModel.generateCoachingCue(
                             activeCameraExerciseState!!.exercise.name,
@@ -133,7 +127,6 @@ fun ActiveWorkoutScreen(
                 )
             }
         } else {
-            // Fallback UI if permissions are missing
             AlertDialog(
                 onDismissRequest = { activeCameraExerciseState = null },
                 title = { Text("Permissions Required") },
@@ -168,7 +161,6 @@ fun ActiveWorkoutScreen(
         }
     }
 
-    // Voice Input Launcher (Google Speech Recognizer)
     val voiceLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -178,6 +170,17 @@ fun ActiveWorkoutScreen(
                 userText = spokenText
             }
         }
+    }
+
+    if (showAddExerciseDialog) {
+        AddExerciseDialog(
+            viewModel = viewModel,
+            onDismiss = { showAddExerciseDialog = false },
+            onExerciseSelected = { exerciseId ->
+                viewModel.addExercise(exerciseId)
+                showAddExerciseDialog = false
+            }
+        )
     }
 
     Scaffold(
@@ -206,16 +209,25 @@ fun ActiveWorkoutScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showChat = true },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            ) {
-                Icon(Icons.Default.Chat, contentDescription = "AI Negotiator")
+            Column(horizontalAlignment = Alignment.End) {
+                FloatingActionButton(
+                    onClick = { showAddExerciseDialog = true },
+                    containerColor = MaterialTheme.colorScheme.secondary,
+                    contentColor = MaterialTheme.colorScheme.onSecondary,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add Exercise")
+                }
+                FloatingActionButton(
+                    onClick = { showChat = true },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ) {
+                    Icon(Icons.Default.Chat, contentDescription = "AI Negotiator")
+                }
             }
         }
     ) { padding ->
-        // --- CHAT OVERLAY ---
         if (showChat) {
             AlertDialog(
                 onDismissRequest = { showChat = false },
@@ -225,7 +237,6 @@ fun ActiveWorkoutScreen(
                         modifier = Modifier.height(400.dp).fillMaxWidth(),
                         verticalArrangement = Arrangement.SpaceBetween
                     ) {
-                        // 1. Message History
                         LazyColumn(
                             state = listState,
                             modifier = Modifier.weight(1f).padding(bottom = 8.dp)
@@ -250,7 +261,6 @@ fun ActiveWorkoutScreen(
                             }
                         }
 
-                        // 2. Chat Input Area
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             OutlinedTextField(
                                 value = userText,
@@ -280,7 +290,6 @@ fun ActiveWorkoutScreen(
                                 }
                             )
 
-                            // 3. Live Streaming Toggle Button
                             IconButton(
                                 onClick = {
                                     if (permissionsGranted) {
@@ -337,6 +346,7 @@ fun ActiveWorkoutScreen(
 
                     if (exerciseState.areSetsVisible) {
                         SetsTable(
+                            exerciseId = exerciseState.exercise.exerciseId,
                             sets = exerciseState.sets,
                             equipment = exerciseState.exercise.equipment,
                             viewModel = viewModel,
@@ -363,7 +373,6 @@ fun ActiveWorkoutScreen(
     }
 }
 
-// ... (Rest of your composables: WorkoutHeader, ExerciseHeader, SetsTable, etc. remain unchanged) ...
 @Composable
 fun WorkoutHeader(title: String) {
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
@@ -470,7 +479,14 @@ fun ExerciseHeader(
 }
 
 @Composable
-fun SetsTable(sets: List<WorkoutSetEntity>, equipment: String?, viewModel: ActiveSessionViewModel, barWeight: Double, userGender: String) {
+fun SetsTable(
+    exerciseId: Long,
+    sets: List<WorkoutSetEntity>,
+    equipment: String?,
+    viewModel: ActiveSessionViewModel,
+    barWeight: Double,
+    userGender: String
+) {
     var showRpeInfo by remember { mutableStateOf(false) }
 
     if (showRpeInfo) {
@@ -503,6 +519,16 @@ fun SetsTable(sets: List<WorkoutSetEntity>, equipment: String?, viewModel: Activ
                 userGender = userGender
             )
         }
+
+        // Add Set Button
+        TextButton(
+            onClick = { viewModel.addSet(exerciseId) },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("ADD SET")
+        }
     }
 }
 
@@ -523,8 +549,6 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
                     Text("Per side:", fontWeight = FontWeight.Bold)
                     Text(PlateCalculator.calculatePlates(set.suggestedLbs.toDouble(), barWeight), fontSize = 18.sp)
                     Spacer(modifier = Modifier.height(16.dp))
-
-                    // 6. Add the Caveat Text
                     Text(
                         text = "Based on $userGender using ${barWeight.toInt()}lbs barbell",
                         style = MaterialTheme.typography.bodySmall,
@@ -697,7 +721,6 @@ fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
                 color = MaterialTheme.colorScheme.primary
             )
         } else {
-            // Display Time
             Text(
                 text = String.format(
                     Locale.US,
@@ -709,14 +732,10 @@ fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
                 color = if (timerState.isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
             )
 
-            // Control Button
             Button(onClick = {
                 if (timerState.isRunning) {
-                    // User wants to SKIP the rest. Just stop the timer.
-                    // DO NOT mark the next set as done. User does that manually.
                     viewModel.skipSetTimer(exerciseState.exercise.exerciseId)
                 } else {
-                    // User wants to START a rest timer (e.g. after a set).
                     viewModel.startSetTimer(exerciseState.exercise.exerciseId)
                 }
             }) {
@@ -807,5 +826,52 @@ fun SwapExerciseDialog(
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+fun AddExerciseDialog(
+    viewModel: ActiveSessionViewModel,
+    onDismiss: () -> Unit,
+    onExerciseSelected: (Long) -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    val allExercises by viewModel.getAllExercises().collectAsState(initial = emptyList())
+
+    val filteredExercises = remember(searchQuery, allExercises) {
+        if (searchQuery.isBlank()) {
+            allExercises.take(10)
+        } else {
+            allExercises.filter { it.name.contains(searchQuery, ignoreCase = true) }.take(20)
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add Exercise") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().height(400.dp)) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Search exercises...") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                LazyColumn(modifier = Modifier.weight(1f)) {
+                    items(filteredExercises) { exercise ->
+                        ListItem(
+                            headlineContent = { Text(exercise.name) },
+                            supportingContent = { Text("${exercise.majorMuscle} • ${exercise.equipment ?: "Bodyweight"}") },
+                            modifier = Modifier.clickable { onExerciseSelected(exercise.exerciseId) }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
     )
 }

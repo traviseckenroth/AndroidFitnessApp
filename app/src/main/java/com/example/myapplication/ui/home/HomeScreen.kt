@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -56,13 +57,13 @@ fun HomeScreen(
     val briefing by viewModel.knowledgeBriefing.collectAsState()
     val isBriefingLoading by viewModel.isBriefingLoading.collectAsState()
 
+    val userName by viewModel.userName.collectAsState()
+
     LaunchedEffect(Unit) {
         viewModel.navigationEvents.collect { route ->
             onNavigate(route)
         }
     }
-
-    val userName = "Travis"
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         LazyColumn(
@@ -93,8 +94,6 @@ fun HomeScreen(
                     )
                 }
             }
-
-            item { QuickActionsSection(onNavigate = onNavigate) }
 
             // Discovery Feed & Daily Briefing
             item {
@@ -179,6 +178,8 @@ fun HomeScreen(
                     }
                 }
             }
+
+            item { QuickActionsSection(onNavigate = onNavigate) }
             
             item { Spacer(modifier = Modifier.height(24.dp)) }
         }
@@ -319,7 +320,7 @@ fun KnowledgeFeedCard(item: ContentSourceEntity, onClick: () -> Unit) {
                 val icon = when (item.mediaType) {
                     "Video" -> Icons.Default.PlayCircle
                     "Social" -> Icons.Default.Share
-                    else -> Icons.Default.Article
+                    else -> Icons.AutoMirrored.Filled.Article
                 }
                 
                 Icon(
@@ -499,7 +500,7 @@ fun HeaderSection(userName: String) {
             color = MaterialTheme.colorScheme.primaryContainer
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Text("T", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(userName.take(1).uppercase(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             }
         }
     }
