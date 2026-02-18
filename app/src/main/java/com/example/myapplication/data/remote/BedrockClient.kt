@@ -396,7 +396,40 @@ class BedrockClient @Inject constructor(
             null
         }
     }
+    suspend fun getInterestRecommendations(currentInterests: List<String>): List<String> = withContext(Dispatchers.Default) {
+        if (currentInterests.isEmpty()) {
+            return@withContext listOf("CrossFit", "Powerlifting", "Hyrox", "Olympic Weightlifting", "Yoga")
+        }
 
+        // Local fast-path for "CrossFit" as requested by user
+        if (currentInterests.any { it.equals("CrossFit", ignoreCase = true) }) {
+            return@withContext listOf("Mat Fraser", "Rich Froning", "Tia-Clair Toomey", "Justin Medeiros", "Mal O'Brien")
+        }
+
+        val prompt = """
+            The user follows these sports/athletes: ${currentInterests.joinToString(", ")}.
+            Recommend 5 related top athletes or niche sports they might like.
+            If they follow a sport (e.g., "CrossFit"), recommend top athletes in that sport.
+            If they follow an athlete, recommend their rivals or training partners.
+            
+            Return ONLY a JSON object with a "recommendations" key containing an array of strings. 
+            Example: {"recommendations": ["Mat Fraser", "Hyrox", "Rich Froning"]}
+        """.trimIndent()
+
+        try {
+            val response = invokeClaude(prompt, "Recommend interests")
+            val json = JSONObject(response)
+            val jsonArray = json.getJSONArray("recommendations")
+            val results = mutableListOf<String>()
+            for (i in 0 until jsonArray.length()) {
+                results.add(jsonArray.getString(i))
+            }
+            return@withContext results
+        } catch (e: Exception) {
+            Log.e("Bedrock", "Recommendation failed", e)
+            return@withContext emptyList()
+        }
+    }
     // --- WORKFLOW 2: ACCESSORY WORKOUT ---
     suspend fun generateAccessoryWorkout(
         currentGoal: String,
@@ -418,6 +451,35 @@ class BedrockClient @Inject constructor(
             GeneratedPlanResponse(explanation = "Failed to generate accessory work. Error: ${e.localizedMessage}")
         }
     }
+
+    suspend fun generateKnowledgeBriefing(
+        content: List<ContentSourceEntity>,
+        workoutTitle: String? = null
+    ): String = withContext(Dispatchers.Default) {
+        if (content.isEmpty() && workoutTitle == null) return@withContext "No news yet. Follow some interests to get started!"
+        
+        val contentList = content.joinToString("\n") { "- ${it.title} (${it.sportTag}): ${it.summary}" }
+        val workoutContext = if (workoutTitle != null) "The user's workout for today is: $workoutTitle." else "No workout scheduled today."
+        
+        val systemPrompt = """
+            You are a Fitness Intelligence Analyst. 
+            Synthesize the following recent articles and videos into a 3-sentence "Daily Briefing" for the user.
+            $workoutContext
+            Focus on actionable tips or major trends that might be relevant to the user's interests or today's workout.
+            Format as a single paragraph.
+            Output JSON: {"briefing": "..."}
+        """.trimIndent()
+
+        try {
+            val cleanJson = invokeClaude(systemPrompt, "Summarize this content: \n$contentList")
+            val json = JSONObject(cleanJson)
+            json.getString("briefing")
+        } catch (e: Exception) {
+            Log.e("Bedrock", "Briefing failed", e)
+            "Stay focused on your goals! Check back later for your personalized briefing."
+        }
+    }
+
     // --- SHARED API HELPER ---
     private suspend fun invokeClaude(systemPrompt: String, userPrompt: String): String {
         val requestBody = ClaudeRequest(

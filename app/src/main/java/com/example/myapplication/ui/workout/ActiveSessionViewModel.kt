@@ -1,3 +1,4 @@
+// app/src/main/java/com/example/myapplication/ui/workout/ActiveSessionViewModel.kt
 package com.example.myapplication.ui.workout
 
 import android.app.Application
@@ -8,7 +9,6 @@ import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.remote.BedrockClient
-import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.repository.HealthConnectManager
 import com.example.myapplication.data.repository.WorkoutExecutionRepository
@@ -17,15 +17,12 @@ import com.example.myapplication.service.WorkoutTimerService
 import com.example.myapplication.util.SpeechToTextManager
 import com.example.myapplication.util.VoiceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
-import kotlin.coroutines.cancellation.CancellationException
 
 // --- DATA MODELS ---
 
@@ -91,7 +88,6 @@ class ActiveSessionViewModel @Inject constructor(
     private var transcribeJob: Job? = null
 
     // --- 2. INITIALIZATION ---
-    private var isInitialTimerCheck = true
 
     init {
         workoutStartTime = Instant.now()
@@ -99,16 +95,12 @@ class ActiveSessionViewModel @Inject constructor(
         // Sync with Timer Service
         viewModelScope.launch {
             WorkoutTimerService.timerState.collect { serviceState ->
-                // 1. Check for Stale State on Startup
-                // FIX: If service claims to be finished OR (not running but has ID), reset it.
                 updateLocalTimerState(
                     activeExerciseId = serviceState.activeExerciseId,
                     remainingTime = serviceState.remainingTime.toLong(),
                     isRunning = serviceState.isRunning
                 )
 
-                // 2. Normal Logic (Only runs for subsequent events)
-                val isTimerFinished = serviceState.remainingTime == 0 && serviceState.activeExerciseId != null
                 if (serviceState.hasFinished && serviceState.activeExerciseId != null) {
                     val exerciseId = serviceState.activeExerciseId!!
                     val currentState = _exerciseStates.value.find { it.exercise.exerciseId == exerciseId }
@@ -119,18 +111,6 @@ class ActiveSessionViewModel @Inject constructor(
                         startSetTimer(exerciseId)
                     }
                 }
-
-                updateLocalTimerState(
-                    activeExerciseId = serviceState.activeExerciseId,
-                    remainingTime = serviceState.remainingTime.toLong(),
-                    isRunning = serviceState.isRunning
-                )
-            }
-            fun skipSetTimer(exerciseId: Long) {
-                val intent = Intent(application, WorkoutTimerService::class.java).apply {
-                    action = WorkoutTimerService.ACTION_STOP
-                }
-                application.startService(intent)
             }
         }
 
@@ -166,40 +146,61 @@ class ActiveSessionViewModel @Inject constructor(
             }
         }
 
-        // Construct UI State (ExerciseStates)
+        // Construct UI State (Unified Logic)
+        // FIX: Moved RPE reduction logic here to ensure it applies to all data sources
         viewModelScope.launch {
             combine(
                 _exercises,
                 _sets,
                 userPrefs.recoveryScore
-            ) { allExercises: List<ExerciseEntity>, sessionSets: List<WorkoutSetEntity>, recovery: Int ->
+            ) { allExercises, sessionSets, recovery ->
+                // 1. Calculate Adjustment based on recovery
+                val rpeReduction = when {
+                    recovery < 40 -> 2
+                    recovery < 70 -> 1
+                    else -> 0
+                }
+
+                // 2. Prepare Data
                 val sessionExerciseIds = sessionSets.map { it.exerciseId }.toSet()
                 val sessionExercises = allExercises
                     .filter { it.exerciseId in sessionExerciseIds }
                     .sortedBy { it.tier }
 
+                // 3. Generate Briefing
                 if (sessionExercises.isNotEmpty() && sessionSets.isNotEmpty()) {
-                    _coachBriefing.value = generateCoachBriefing(sessionExercises, sessionSets, recovery)
+                    var briefing = generateCoachBriefing(sessionExercises, sessionSets, recovery)
+                    if (rpeReduction > 0) {
+                        briefing = "⚠️ RECOVERY LOW ($recovery%)\nTargets reduced by $rpeReduction RPE. Take it easy today.\n\n$briefing"
+                    }
+                    _coachBriefing.value = briefing
                 }
 
+                // 4. Map to UI State
                 val setsByExercise = sessionSets.groupBy { it.exerciseId }
-                sessionExercises.mapNotNull { exercise ->
-                    setsByExercise[exercise.exerciseId]?.let { exerciseSets ->
-                        val existingState = _exerciseStates.value.find { it.exercise.exerciseId == exercise.exerciseId }
-                        ExerciseState(
-                            exercise = exercise,
-                            sets = exerciseSets.sortedBy { it.setNumber },
-                            timerState = existingState?.timerState ?: ExerciseTimerState(
-                                remainingTime = (exercise.estimatedTimePerSet * 60).toLong()
-                            ),
-                            areSetsVisible = existingState?.areSetsVisible ?: true
-                        )
-                    }
+
+                sessionExercises.map { exercise ->
+                    // Apply RPE reduction to sets here dynamically
+                    val rawSets = setsByExercise[exercise.exerciseId] ?: emptyList()
+                    val adjustedSets = rawSets.map { set ->
+                        if (rpeReduction > 0) {
+                            set.copy(suggestedRpe = (set.suggestedRpe - rpeReduction).coerceAtLeast(1))
+                        } else set
+                    }.sortedBy { it.setNumber }
+
+                    val existingState = _exerciseStates.value.find { it.exercise.exerciseId == exercise.exerciseId }
+                    ExerciseState(
+                        exercise = exercise,
+                        sets = adjustedSets,
+                        timerState = existingState?.timerState ?: ExerciseTimerState(
+                            remainingTime = (exercise.estimatedTimePerSet * 60).toLong()
+                        ),
+                        areSetsVisible = existingState?.areSetsVisible ?: true
+                    )
                 }
             }.collect { newStates ->
-                if (newStates.isNotEmpty() || _sets.value.isEmpty()) {
-                    _exerciseStates.value = newStates
-                }
+                // Update state if we have data or if it's an explicit clear
+                _exerciseStates.value = newStates
             }
         }
     }
@@ -207,43 +208,9 @@ class ActiveSessionViewModel @Inject constructor(
     // --- 3. SESSION MANAGEMENT ---
 
     fun loadWorkout(workoutId: Long) {
-        viewModelScope.launch {
-            _workoutId.value = workoutId
-            val workoutExercises = repository.getExercisesByIds(
-                repository.getSetsForSession(workoutId).first().map { it.exerciseId }.distinct()
-            ).first().sortedBy { it.tier }
-
-            val rawSets = repository.getSetsForSession(workoutId).first()
-            val recoveryScore = userPrefs.recoveryScore.first()
-            val rpeReduction = when {
-                recoveryScore < 40 -> 2
-                recoveryScore < 70 -> 1
-                else -> 0
-            }
-
-            val adjustedSets = rawSets.map { set ->
-                if (rpeReduction > 0) {
-                    set.copy(suggestedRpe = (set.suggestedRpe - rpeReduction).coerceAtLeast(1))
-                } else {
-                    set
-                }
-            }
-
-            val groupedSets = adjustedSets.groupBy { it.exerciseId }
-            _exerciseStates.value = workoutExercises.map { exercise ->
-                ExerciseState(
-                    exercise = exercise,
-                    sets = groupedSets[exercise.exerciseId] ?: emptyList(),
-                    timerState = ExerciseTimerState()
-                )
-            }
-
-            var briefing = generateCoachBriefing(workoutExercises, adjustedSets, recoveryScore)
-            if (rpeReduction > 0) {
-                briefing = "⚠️ RECOVERY LOW ($recoveryScore%)\nTargets reduced by $rpeReduction RPE. Take it easy today.\n\n$briefing"
-            }
-            _coachBriefing.value = briefing
-        }
+        // FIX: Simply update the ID. The reactive chain in init {} handles fetching, filtering, and RPE adjustment.
+        // This prevents the "Race Condition" where manual fetching overwrote the reactive stream.
+        _workoutId.value = workoutId
     }
 
     fun loadSummary(workoutId: Long) {
@@ -255,7 +222,7 @@ class ActiveSessionViewModel @Inject constructor(
     }
 
     fun finishWorkout(workoutId: Long) {
-        stopTimerService() // FIX: Correctly stop the service to clear state
+        stopTimerService()
         viewModelScope.launch {
             val report = repository.completeWorkout(workoutId)
             _workoutSummary.value = report
@@ -351,7 +318,6 @@ class ActiveSessionViewModel @Inject constructor(
         startSetTimer(exerciseId)
     }
 
-    // FIX: Helper to explicitly stop the service and reset state
     private fun stopTimerService() {
         val intent = Intent(application, WorkoutTimerService::class.java).apply {
             action = WorkoutTimerService.ACTION_STOP
@@ -412,10 +378,18 @@ class ActiveSessionViewModel @Inject constructor(
             if (response.exercises.isNotEmpty()) {
                 val workoutId = _workoutId.value
                 val incompleteSets = _sets.value.filter { !it.isCompleted }
+                // Warning: Deleting incomplete sets might be aggressive if user just wanted to ADD an exercise
+                // But keeping consistent with previous logic for now
                 repository.deleteSets(incompleteSets)
 
                 val newSets = response.exercises.mapNotNull { genEx ->
-                    val match = available.find { it.name.equals(genEx.name, ignoreCase = true) }
+                    // FIX: Fuzzy matching logic
+                    val match = available.find {
+                        it.name.equals(genEx.name, ignoreCase = true) ||
+                                it.name.contains(genEx.name, ignoreCase = true) ||
+                                genEx.name.contains(it.name, ignoreCase = true)
+                    }
+
                     if (match != null) {
                         List(genEx.sets) { setNum ->
                             WorkoutSetEntity(
@@ -427,12 +401,15 @@ class ActiveSessionViewModel @Inject constructor(
                                 suggestedRpe = 8
                             )
                         }
-                    } else null
+                    } else {
+                        Log.e("ActiveSession", "AI suggested '${genEx.name}' but no match found in DB.")
+                        null
+                    }
                 }.flatten()
 
                 if (newSets.isNotEmpty()) {
                     repository.insertSets(newSets)
-                    loadWorkout(workoutId)
+                    // No need to call loadWorkout, the flow will update automatically
                 }
             }
         }
@@ -481,10 +458,8 @@ class ActiveSessionViewModel @Inject constructor(
         super.onCleared()
         stopLiveTranscription()
         voiceManager.stop()
-        stopTimerService() // FIX: Ensure service stops and state is cleared on exit
+        stopTimerService()
     }
-
-    // --- PRIVATE HELPERS ---
 
     private fun generateCoachBriefing(
         exercises: List<ExerciseEntity>,

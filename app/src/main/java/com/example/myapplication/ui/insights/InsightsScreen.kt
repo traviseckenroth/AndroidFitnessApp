@@ -1,87 +1,58 @@
+// File: app/src/main/java/com/example/myapplication/ui/insights/InsightsScreen.kt
 package com.example.myapplication.ui.insights
 
-import android.graphics.Paint
+import android.graphics.Paint // Explicit import
+import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.ui.Modifier
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
-import com.example.myapplication.data.local.UserSubscriptionEntity // Added missing import
+import com.example.myapplication.data.local.ContentSourceEntity
+import com.example.myapplication.data.local.UserSubscriptionEntity
+import com.example.myapplication.ui.navigation.Screen
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 
 @Composable
-fun SubscriptionChips(viewModel: InsightsViewModel) {
-    val subscriptions by viewModel.subscriptions.collectAsState()
-    val suggestedTags = listOf("Hyrox", "CrossFit", "Powerlifting") // Expandable list
-
-    Column {
-        Text("Your Interests", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            suggestedTags.forEach { tag ->
-                val isSubscribed = subscriptions.any { it.tagName == tag }
-                FilterChip(
-                    selected = isSubscribed,
-                    onClick = { viewModel.toggleSubscription(tag, "Sport") },
-                    label = { Text(tag) },
-                    leadingIcon = {
-                        if (isSubscribed) {
-                            Icon(Icons.Default.Check, contentDescription = null)
-                        } else {
-                            Icon(Icons.Default.Add, contentDescription = null)
-                        }
-                    }
-                )
-            }
-        }
-    }
-}
-
-@Composable
 fun InsightsScreen(
+    onNavigate: (String) -> Unit,
     viewModel: InsightsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    val subscriptions by viewModel.subscriptions.collectAsState()
     var showExerciseDropdown by remember { mutableStateOf(false) }
 
-// Removed Scaffold to be flush with the top like other main screens
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp), // Standardized padding
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            // --- HEADER ---
             item {
                 Text(
                     "Performance Insights",
@@ -90,12 +61,8 @@ fun InsightsScreen(
                 )
             }
 
-            // --- AI STATUS (Moved from Profile) ---
-            item {
-                AIStatusCard()
-            }
+            item { AIStatusCard() }
 
-            // --- 1RM GRAPH SECTION ---
             item {
                 InsightCard(title = "Estimated 1 Rep Max") {
                     Box(modifier = Modifier.fillMaxWidth()) {
@@ -139,28 +106,22 @@ fun InsightsScreen(
                             lineColor = MaterialTheme.colorScheme.primary
                         )
                     } else {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().height(200.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
+                        Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
                             Text("No history for this exercise.", color = Color.Gray)
                         }
                     }
                 }
             }
 
-            // --- MUSCLE BALANCE SECTION ---
             item {
                 InsightCard(title = "Volume Distribution") {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         val maxVol = state.muscleVolumeDistribution.values.maxOrNull() ?: 1.0
-
                         state.muscleVolumeDistribution.entries
                             .sortedByDescending { it.value }
                             .forEach { (muscle, volume) ->
                                 MuscleVolumeRow(muscle, volume, maxVol)
                             }
-
                         if (state.muscleVolumeDistribution.isEmpty()) {
                             Text("No workout data yet.", color = Color.Gray)
                         }
@@ -168,7 +129,28 @@ fun InsightsScreen(
                 }
             }
 
-            // --- RECENT HISTORY (Moved from Profile, Limited to 10) ---
+            // --- KNOWLEDGE HUB SECTION (INTERESTS ONLY) ---
+            item {
+                Column {
+                    Text(
+                        "Knowledge Hub",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "Personalized intelligence from your favorite sports and athletes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            item {
+                InsightCard(title = "Manage Interests") {
+                    KnowledgeHubControl(viewModel)
+                }
+            }
+
             item {
                 Text(
                     "Recent Activity",
@@ -178,23 +160,8 @@ fun InsightsScreen(
                 )
             }
 
-            item {
-                InsightCard(title = "Knowledge Hub") {
-                    Column {
-                        Text("Followed Sports & Athletes", style = MaterialTheme.typography.titleSmall)
-                        // Implementation for adding/removing tags like "Hyrox"
-                        SubscriptionChips(viewModel = viewModel)
-                        Button(onClick = { /* Navigate to Full Feed */ }) {
-                            Text("Browse All Discovery Content")
-                        }
-                    }
-                }
-            }
-
             if (state.recentWorkouts.isEmpty()) {
-                item {
-                    Text("No recent workouts logged.", color = Color.Gray)
-                }
+                item { Text("No recent workouts logged.", color = Color.Gray) }
             } else {
                 items(state.recentWorkouts) { item ->
                     CompletedWorkoutCard(item)
@@ -352,7 +319,7 @@ fun OneRepMaxGraph(dataPoints: List<Pair<Long, Float>>, lineColor: Color) {
                 labelValue.toString(),
                 0f,
                 yPos - 10f,
-                Paint().apply {
+                android.graphics.Paint().apply {
                     color = textColor
                     textSize = 32f
                 }
@@ -384,5 +351,64 @@ fun OneRepMaxGraph(dataPoints: List<Pair<Long, Float>>, lineColor: Color) {
                 colors = listOf(lineColor.copy(alpha = 0.3f), Color.Transparent)
             )
         )
+    }
+}
+
+@Composable
+fun KnowledgeHubControl(viewModel: InsightsViewModel) {
+    val subscriptions by viewModel.subscriptions.collectAsState()
+    val recommendations by viewModel.recommendations.collectAsState()
+    var customInterest by remember { mutableStateOf("") }
+
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+
+        // 1. ADD CUSTOM INTEREST
+        OutlinedTextField(
+            value = customInterest,
+            onValueChange = { customInterest = it },
+            label = { Text("Add Sport or Athlete") },
+            trailingIcon = {
+                IconButton(onClick = {
+                    viewModel.addInterest(customInterest)
+                    customInterest = ""
+                }) {
+                    Icon(Icons.Default.Add, "Add")
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+
+        // 2. ACTIVE SUBSCRIPTIONS
+        if (subscriptions.isNotEmpty()) {
+            Text("Following", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                subscriptions.forEach { sub ->
+                    InputChip(
+                        selected = true,
+                        onClick = { viewModel.toggleSubscription(sub.tagName, sub.type) },
+                        label = { Text(sub.tagName) },
+                        trailingIcon = { Icon(Icons.Default.Close, "Remove", modifier = Modifier.size(16.dp)) }
+                    )
+                }
+            }
+        }
+
+        // 3. AI RECOMMENDATIONS
+        if (recommendations.isNotEmpty()) {
+            Text("Recommended for You", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.tertiary)
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(recommendations) { rec ->
+                    AssistChip(
+                        onClick = { viewModel.addInterest(rec) },
+                        label = { Text(rec) },
+                        leadingIcon = { Icon(Icons.Default.AutoMode, null, modifier = Modifier.size(16.dp)) }
+                    )
+                }
+            }
+        }
     }
 }

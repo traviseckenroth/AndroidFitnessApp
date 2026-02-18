@@ -1,12 +1,7 @@
+// File: app/src/main/java/com/example/myapplication/data/local/WorkoutDao.kt
 package com.example.myapplication.data.local
 
 import androidx.room.*
-import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
-import androidx.room.Query
-import androidx.room.Transaction
-import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -45,7 +40,6 @@ interface WorkoutDao {
     """)
     suspend fun getExercisesForWorkoutOneShot(workoutId: Long): List<ExerciseEntity>
 
-    // --- FIX: Renamed to avoid conflict ---
     @Query("SELECT * FROM workout_sets WHERE workoutId = :workoutId")
     suspend fun getSetsForWorkoutOneShot(workoutId: Long): List<WorkoutSetEntity>
 
@@ -59,7 +53,6 @@ interface WorkoutDao {
     @Query("SELECT DISTINCT scheduledDate FROM daily_workouts")
     fun getAllWorkoutDates(): Flow<List<Long>>
 
-    // This is the Flow version (Keep this name)
     @Query("SELECT * FROM workout_sets WHERE workoutId = :workoutId ORDER BY exerciseId, setNumber")
     fun getSetsForWorkout(workoutId: Long): Flow<List<WorkoutSetEntity>>
 
@@ -119,14 +112,6 @@ interface WorkoutDao {
     @Query("UPDATE workout_plans SET nutritionJson = :nutritionJson WHERE planId = :planId")
     suspend fun updateNutrition(planId: Long, nutritionJson: String): Int
 
-    @Query("""
-    SELECT * FROM content_sources 
-    WHERE sportTag IN (SELECT tagName FROM user_subscriptions)
-    OR athleteTag IN (SELECT tagName FROM user_subscriptions)
-    ORDER BY dateFetched DESC
-""")
-
-    fun getSubscribedContent(): Flow<List<ContentSourceEntity>>
     @Query("UPDATE daily_workouts SET isCompleted = 1 WHERE workoutId = :workoutId")
     suspend fun markWorkoutAsComplete(workoutId: Long): Int
 
@@ -135,23 +120,12 @@ interface WorkoutDao {
 
     @Query("UPDATE workout_plans SET isActive = 0")
     suspend fun deactivateAllPlans(): Int
+
     @Delete
     suspend fun deleteSets(sets: List<WorkoutSetEntity>): Int
-    // FIX: Add ": Int" return type
+
     @Query("UPDATE workout_plans SET isActive = 1 WHERE planId = :planId")
     suspend fun activatePlan(planId: Long): Int
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertSubscription(subscription: UserSubscriptionEntity): Long
-
-    @Query("DELETE FROM user_subscriptions WHERE tagName = :tagName")
-    suspend fun deleteSubscription(tagName: String): Int
-
-    @Query("SELECT * FROM user_subscriptions")
-    fun getAllSubscriptions(): Flow<List<UserSubscriptionEntity>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertContentSource(content: ContentSourceEntity): Long
 
     @Query("SELECT * FROM workout_plans WHERE isActive = 1 LIMIT 1")
     suspend fun getActivePlan(): WorkoutPlanEntity?
@@ -159,7 +133,6 @@ interface WorkoutDao {
     @Query("DELETE FROM exercises")
     suspend fun deleteAllExercises(): Int
 
-    // NEW: Delete specific workout
     @Query("DELETE FROM daily_workouts WHERE workoutId = :workoutId")
     suspend fun deleteWorkout(workoutId: Long): Int
 
@@ -176,4 +149,29 @@ interface WorkoutDao {
         }
         return planId
     }
+
+    // --- DISCOVERY / SUBSCRIPTIONS ---
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSubscription(subscription: UserSubscriptionEntity): Long
+
+    @Query("DELETE FROM user_subscriptions WHERE tagName = :tagName")
+    suspend fun deleteSubscription(tagName: String): Int
+
+    @Query("SELECT * FROM user_subscriptions")
+    fun getAllSubscriptions(): Flow<List<UserSubscriptionEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertContentSource(content: ContentSourceEntity): Long
+
+    @Query("""
+        SELECT * FROM content_sources 
+        WHERE sportTag IN (SELECT tagName FROM user_subscriptions)
+        OR athleteTag IN (SELECT tagName FROM user_subscriptions)
+        ORDER BY dateFetched DESC
+    """)
+    fun getSubscribedContent(): Flow<List<ContentSourceEntity>>
+
+    // FIX: Added the missing @Query annotation here
+    @Query("SELECT * FROM content_sources WHERE sourceId = :id")
+    fun getContentSourceById(id: Long): Flow<ContentSourceEntity?>
 }

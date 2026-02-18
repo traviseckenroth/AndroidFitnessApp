@@ -13,6 +13,11 @@ data class InsightsUiState(
     val oneRepMaxHistory: List<Pair<Long, Float>> = emptyList(),
     // Data for Muscle Balance
     val muscleVolumeDistribution: Map<String, Double> = emptyMap(),
-    // NEW: Recent History (Limited to last 5-10 items)
-    val recentWorkouts: List<CompletedWorkoutWithExercise> = emptyList()
+    // Recent History (Limited to last 5-10 items)
+    val recentWorkouts: List<CompletedWorkoutWithExercise> = emptyList(),
+    
+    // Knowledge Hub Optimizations
+    val knowledgeBriefing: String = "",
+    val selectedKnowledgeCategory: String = "All", // "All", "Articles", "Videos"
+    val isBriefingLoading: Boolean = false
 )

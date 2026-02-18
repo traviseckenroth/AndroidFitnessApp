@@ -1,10 +1,14 @@
-// app/src/main/java/com/example/myapplication/ui/home/HomeScreen.kt
+// File: app/src/main/java/com/example/myapplication/ui/home/HomeScreen.kt
 package com.example.myapplication.ui.home
 
+import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -17,15 +21,17 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.local.DailyWorkoutEntity
 import com.example.myapplication.data.local.ContentSourceEntity
+import com.example.myapplication.data.local.UserSubscriptionEntity
 import com.example.myapplication.ui.navigation.Screen
 import com.example.myapplication.ui.theme.PrimaryIndigo
 import com.example.myapplication.ui.theme.SecondaryIndigo
@@ -42,9 +48,14 @@ fun HomeScreen(
     val selectedDate by viewModel.selectedDate.collectAsState()
     val workoutDates by viewModel.workoutDates.collectAsState()
     val isGenerating by viewModel.isGenerating.collectAsState()
+    
+    val contentFeed by viewModel.filteredContent.collectAsState()
+    val selectedCategory by viewModel.selectedCategory.collectAsState()
+    val subscriptions by viewModel.subscriptions.collectAsState()
+    
+    val briefing by viewModel.knowledgeBriefing.collectAsState()
+    val isBriefingLoading by viewModel.isBriefingLoading.collectAsState()
 
-    val dailyIntel by viewModel.dailyIntel.collectAsState()
-    // NEW: Observe navigation events
     LaunchedEffect(Unit) {
         viewModel.navigationEvents.collect { route ->
             onNavigate(route)
@@ -56,7 +67,7 @@ fun HomeScreen(
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             item {
                 Spacer(modifier = Modifier.height(16.dp))
@@ -83,17 +94,261 @@ fun HomeScreen(
                 }
             }
 
+            item { QuickActionsSection(onNavigate = onNavigate) }
+
+            // Discovery Feed & Daily Briefing
             item {
-                val dailyIntel by viewModel.dailyIntel.collectAsState()
-                dailyIntel?.let { intel ->
-                    DailyIntelCard(
-                        intel = intel,
-                        onClick = { onNavigate(Screen.ContentDiscovery.createRoute(intel.sourceId)) }
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "Discovery Feed",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                            
+                            KnowledgeCategorySelector(
+                                selectedCategory = selectedCategory,
+                                onCategorySelected = { viewModel.setCategory(it) }
+                            )
+                        }
+                        Text(
+                            text = "Manage topics and athletes in the Insights screen",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // Combined Briefing Card
+                    if (subscriptions.isNotEmpty()) {
+                        KnowledgeBriefingCard(
+                            briefing = briefing,
+                            isLoading = isBriefingLoading,
+                            onRefresh = { viewModel.forceRefreshBriefing() },
+                            subscriptions = subscriptions
+                        )
+                    }
+
+                    if (contentFeed.isNotEmpty()) {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(contentFeed, key = { it.sourceId }) { item ->
+                                KnowledgeFeedCard(
+                                    item = item,
+                                    onClick = { onNavigate(Screen.ContentDiscovery.createRoute(item.sourceId)) }
+                                )
+                            }
+                        }
+                    } else if (subscriptions.isNotEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(100.dp)
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No ${selectedCategory.lowercase()} found for your interests.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(140.dp)
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Follow some interests to see your intelligence feed.", 
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+            
+            item { Spacer(modifier = Modifier.height(24.dp)) }
+        }
+    }
+}
+
+@Composable
+fun KnowledgeBriefingCard(
+    briefing: String,
+    isLoading: Boolean,
+    onRefresh: () -> Unit,
+    subscriptions: List<UserSubscriptionEntity>
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+        ),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Daily Briefing",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
+                
+                if (isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = "Refresh",
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clickable { onRefresh() },
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            AnimatedContent(targetState = briefing, label = "BriefingText") { text ->
+                val displayText = when {
+                    text.isNotEmpty() -> text
+                    isLoading -> {
+                        val tags = subscriptions.take(2).joinToString(", ") { it.tagName }
+                        val more = if (subscriptions.size > 2) " and ${subscriptions.size - 2} more" else ""
+                        "Analyzing latest intelligence for $tags$more..."
+                    }
+                    else -> "Personalizing your briefing..."
+                }
+                
+                Text(
+                    text = displayText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    lineHeight = 20.sp,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+        }
+    }
+}
 
-            item { QuickActionsSection(onNavigate = onNavigate) }
+@Composable
+fun KnowledgeCategorySelector(
+    selectedCategory: String,
+    onCategorySelected: (String) -> Unit
+) {
+    val categories = listOf("All", "Articles", "Videos", "Social")
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        categories.forEach { category ->
+            val isSelected = selectedCategory == category
+            Surface(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .clickable { onCategorySelected(category) },
+                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                border = if (isSelected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+            ) {
+                Text(
+                    text = category,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun KnowledgeFeedCard(item: ContentSourceEntity, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .width(240.dp)
+            .height(160.dp)
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        text = item.sportTag.uppercase(),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                
+                val icon = when (item.mediaType) {
+                    "Video" -> Icons.Default.PlayCircle
+                    "Social" -> Icons.Default.Share
+                    else -> Icons.Default.Article
+                }
+                
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            
+            Spacer(modifier = Modifier.height(4.dp))
+            
+            Text(
+                text = item.summary,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -148,13 +403,13 @@ fun RestDayRecoveryCard(
         }
     }
 }
+
 @Composable
 fun QuickActionsSection(onNavigate: (String) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Action 1: New Plan
         QuickActionCard(
             title = "New Plan",
             icon = Icons.Default.AutoMode,
@@ -163,7 +418,6 @@ fun QuickActionsSection(onNavigate: (String) -> Unit) {
             onClick = { onNavigate(Screen.GeneratePlan.route) }
         )
 
-        // Action 2: Manual Workout
         QuickActionCard(
             title = "Free Lift",
             icon = Icons.Default.FitnessCenter,
@@ -172,7 +426,6 @@ fun QuickActionsSection(onNavigate: (String) -> Unit) {
             onClick = { onNavigate(Screen.ManualPlan.route) }
         )
 
-        // Action 3: Log Food
         QuickActionCard(
             title = "Log Food",
             icon = Icons.Default.Restaurant,
@@ -240,7 +493,6 @@ fun HeaderSection(userName: String) {
                 color = MaterialTheme.colorScheme.onSurface
             )
         }
-        // Profile Icon placeholder
         Surface(
             modifier = Modifier.size(48.dp),
             shape = CircleShape,
@@ -255,7 +507,6 @@ fun HeaderSection(userName: String) {
 
 @Composable
 fun WorkoutCard(workout: DailyWorkoutEntity, onNavigate: (String) -> Unit) {
-    // Check if the title indicates a stretching/mobility session
     val isStretching = workout.title.contains("Recovery", ignoreCase = true) ||
             workout.title.contains("Stretching", ignoreCase = true)
 
@@ -271,7 +522,6 @@ fun WorkoutCard(workout: DailyWorkoutEntity, onNavigate: (String) -> Unit) {
                     color = MaterialTheme.colorScheme.background.copy(alpha = 0.5f),
                     modifier = Modifier.size(48.dp)
                 ) {
-                    // Dynamic icon based on workout type
                     Box(contentAlignment = Alignment.Center) {
                         Text(if (isStretching) "🧘" else "💪", fontSize = 24.sp)
                     }
@@ -289,7 +539,6 @@ fun WorkoutCard(workout: DailyWorkoutEntity, onNavigate: (String) -> Unit) {
             Spacer(modifier = Modifier.height(20.dp))
             Button(
                 onClick = {
-                    // CONDITIONAL NAVIGATION:
                     if (isStretching) {
                         onNavigate(Screen.StretchingSession.createRoute(workout.workoutId))
                     } else {
@@ -306,40 +555,6 @@ fun WorkoutCard(workout: DailyWorkoutEntity, onNavigate: (String) -> Unit) {
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
-            }
-        }
-    }
-}
-
-@Composable
-fun DailyIntelCard(intel: ContentSourceEntity, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            // Icon based on type
-            Text(if (intel.mediaType == "Video") "📺" else "📰", fontSize = 32.sp)
-            Spacer(Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Recommended for You",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = intel.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "${intel.sportTag} • ${intel.summary.take(20)}...",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
     }

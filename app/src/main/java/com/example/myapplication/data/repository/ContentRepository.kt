@@ -11,27 +11,46 @@ import org.jsoup.parser.Parser
 import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.Flow
 
 @Singleton
 class ContentRepository @Inject constructor(
     private val workoutDao: WorkoutDao
 ) {
+    // Cache for Daily Briefing to prevent unnecessary refreshes
+    private var cachedBriefing: String = ""
+    private var cachedInterestTags: Set<String> = emptySet()
+    private var cachedWorkoutTitle: String? = null
+
+    fun getCachedBriefing(interests: List<String>, workoutTitle: String?): String? {
+        val interestSet = interests.toSet()
+        // We only return the cache if interests haven't changed AND workout title is same
+        if (cachedBriefing.isNotEmpty() && cachedInterestTags == interestSet && cachedWorkoutTitle == workoutTitle) {
+            return cachedBriefing
+        }
+        return null
+    }
+
+    fun updateBriefingCache(briefing: String, interests: List<String>, workoutTitle: String?) {
+        cachedBriefing = briefing
+        cachedInterestTags = interests.toSet()
+        cachedWorkoutTitle = workoutTitle
+    }
+
     suspend fun fetchRealContent(query: String): List<ContentSourceEntity> = withContext(Dispatchers.IO) {
         try {
+            // FIX: Encode URL parameters
+            val isAthleteSearch = query.contains("athlete", true) || !query.contains("fitness", true)
             val encodedQuery = URLEncoder.encode(query, "UTF-8")
-            val rssUrl = "https://news.google.com/rss/search?q=$encodedQuery&hl=en-US&gl=US&ceid=US:en"
-
-            Log.d("ContentRepo", "Fetching URL: $rssUrl")
-
+            val rssUrl = "https://news.google.com/rss/search?q=$encodedQuery&hl=en-US&gl=US&ceid=US:en&scoring=n"
             val doc = Jsoup.connect(rssUrl)
-                .timeout(5000)
+                .timeout(8000)
                 .parser(Parser.xmlParser())
                 .get()
 
             val items = doc.select("item")
             val savedList = mutableListOf<ContentSourceEntity>()
 
-            // Process top 5 items
             items.take(5).forEach { item ->
                 val entity = ContentSourceEntity(
                     title = item.select("title").text(),
@@ -41,18 +60,20 @@ class ContentRepository @Inject constructor(
                     sportTag = query,
                     dateFetched = System.currentTimeMillis()
                 )
-
-                // FIX: Save to DB immediately to generate a real ID
+                // Save to DB to generate IDs
                 val newId = workoutDao.insertContentSource(entity)
                 savedList.add(entity.copy(sourceId = newId))
             }
-
-            Log.d("ContentRepo", "Saved ${savedList.size} items for query: $query")
             return@withContext savedList
 
         } catch (e: Exception) {
-            Log.e("ContentRepo", "Crawling failed for $query", e)
+            Log.e("ContentRepo", "Crawling failed", e)
             return@withContext emptyList()
         }
+    }
+
+    // FIX: Moved this OUTSIDE of fetchRealContent
+    fun getContentById(id: Long): Flow<ContentSourceEntity?> {
+        return workoutDao.getContentSourceById(id)
     }
 }

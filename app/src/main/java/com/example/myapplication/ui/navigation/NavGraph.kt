@@ -116,9 +116,12 @@ fun NavGraph(
                 }
             )
         }
-
+        composable(route = Screen.Insights.route) {
+            InsightsScreen(
+                onNavigate = { route -> navController.navigate(route) }
+            )
+        }
         composable(Screen.Nutrition.route) { NutritionScreen() }
-        composable(Screen.Insights.route) { InsightsScreen() }
 
         composable("warm_up") { WarmUpScreen(onBack = { navController.popBackStack() }) }
 

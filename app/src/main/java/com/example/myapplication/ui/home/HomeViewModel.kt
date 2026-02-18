@@ -1,22 +1,21 @@
-// app/src/main/java/com/example/myapplication/ui/home/HomeViewModel.kt
+// File: app/src/main/java/com/example/myapplication/ui/home/HomeViewModel.kt
 package com.example.myapplication.ui.home
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.DailyWorkoutEntity
 import com.example.myapplication.data.repository.PlanRepository
 import com.example.myapplication.data.remote.BedrockClient
+import com.example.myapplication.data.repository.ContentRepository
+import com.example.myapplication.data.local.ContentSourceEntity
+import com.example.myapplication.data.local.WorkoutDao
+import com.example.myapplication.ui.navigation.Screen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
-import com.example.myapplication.data.repository.ContentRepository // NEW IMPORT
 import kotlinx.coroutines.launch
-import com.example.myapplication.data.local.ContentSourceEntity
 import java.time.Instant
-import android.util.Log
-import com.example.myapplication.data.local.CompletedWorkoutWithExercise
-import com.example.myapplication.data.local.WorkoutDao
-import com.example.myapplication.ui.navigation.Screen
 import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
@@ -35,12 +34,18 @@ class HomeViewModel @Inject constructor(
     private val _isGenerating = MutableStateFlow(false)
     val isGenerating: StateFlow<Boolean> = _isGenerating.asStateFlow()
 
-    private val _dailyIntel = MutableStateFlow<ContentSourceEntity?>(null)
-    val dailyIntel: StateFlow<ContentSourceEntity?> = _dailyIntel.asStateFlow()
+    private val _selectedCategory = MutableStateFlow("All")
+    val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
 
-    // NEW: Navigation Events
     private val _navigationEvents = MutableSharedFlow<String>()
     val navigationEvents = _navigationEvents.asSharedFlow()
+
+    // Briefing State
+    private val _knowledgeBriefing = MutableStateFlow("")
+    val knowledgeBriefing: StateFlow<String> = _knowledgeBriefing.asStateFlow()
+
+    private val _isBriefingLoading = MutableStateFlow(false)
+    val isBriefingLoading: StateFlow<Boolean> = _isBriefingLoading.asStateFlow()
 
     val workoutDates: StateFlow<List<LocalDate>> = repository.getAllWorkoutDates()
         .map { dates ->
@@ -64,50 +69,112 @@ class HomeViewModel @Inject constructor(
             initialValue = null
         )
 
+    val subscriptions = workoutDao.getAllSubscriptions()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _rawSubscribedContent = workoutDao.getSubscribedContent()
+    
+    val filteredContent: StateFlow<List<ContentSourceEntity>> = combine(
+        _rawSubscribedContent,
+        _selectedCategory
+    ) { content, category ->
+        val filtered = when (category) {
+            "Articles" -> content.filter { it.mediaType == "Article" }
+            "Videos" -> content.filter { it.mediaType == "Video" }
+            "Social" -> content.filter { it.mediaType == "Social" }
+            else -> content
+        }
+        filtered.sortedWith(compareByDescending<ContentSourceEntity> { it.dateFetched }.thenByDescending { it.sourceId })
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     init {
         observeContextForIntel()
+        observeContentForBriefing()
     }
 
-    // RENAMED from fetchDailyIntel to observeContextForIntel
     private fun observeContextForIntel() {
         viewModelScope.launch {
-            // FIX: combine ensures we listen to BOTH the workout changing AND subscriptions changing
-            combine(
-                dailyWorkout,
-                workoutDao.getAllSubscriptions()
-            ) { workout, subscriptions ->
-                Pair(workout, subscriptions)
-            }.collectLatest { (workout, subscriptions) ->
-                try {
-                    val workoutTerm = workout?.title ?: ""
-                    val subTerms = subscriptions.joinToString(" ") { it.tagName }
-
-                    // Construct query: e.g. "Chest Strength Hyrox fitness"
-                    val query = if (workoutTerm.isNotEmpty()) "$workoutTerm $subTerms fitness" else "$subTerms fitness"
-
-                    Log.d("HomeViewModel", "Auto-crawling for: $query")
-
-                    if (query.trim() == "fitness") {
-                        _dailyIntel.value = null
-                        return@collectLatest
+            subscriptions.collectLatest { subs ->
+                if (subs.isNotEmpty()) {
+                    subs.forEach { sub ->
+                        try {
+                            contentRepository.fetchRealContent(sub.tagName)
+                            
+                            // Mock "Social" content logic remains here if needed
+                            if (sub.tagName.contains("Hyrox", true) || sub.tagName.contains("CrossFit", true) || sub.tagName.contains("Athlete", true)) {
+                                val cleanTag = sub.tagName.replace(" ", "").lowercase()
+                                workoutDao.insertContentSource(
+                                    ContentSourceEntity(
+                                        title = "Recent updates for #${sub.tagName}",
+                                        summary = "Tap to view the latest training and competition posts for ${sub.tagName} on Instagram.",
+                                        url = "https://www.instagram.com/explore/tags/$cleanTag/",
+                                        mediaType = "Social",
+                                        sportTag = sub.tagName,
+                                        dateFetched = 1700000000000L
+                                    )
+                                )
+                            }
+                        } catch (e: Exception) {
+                            Log.e("HomeViewModel", "Error fetching content for ${sub.tagName}: ${e.message}")
+                        }
                     }
-
-                    // 1. CRAWL (Real Data)
-                    val realContent = contentRepository.fetchRealContent(query)
-
-                    // 2. AI SELECTION
-                    if (realContent.isNotEmpty()) {
-                        val context = workout?.title ?: "General Fitness"
-                        _dailyIntel.value = bedrockClient.selectDailyIntel(context, realContent)
-                    } else {
-                        Log.w("HomeViewModel", "No content found for $query")
-                        _dailyIntel.value = null
-                    }
-                } catch (e: Exception) {
-                    Log.e("HomeViewModel", "Intel Error: ${e.message}")
                 }
             }
         }
+    }
+
+    private fun observeContentForBriefing() {
+        viewModelScope.launch {
+            combine(
+                subscriptions,
+                dailyWorkout,
+                _rawSubscribedContent
+            ) { subs, workout, content ->
+                Triple(subs, workout, content)
+            }.collectLatest { (subs, workout, content) ->
+                if (subs.isEmpty() || content.isEmpty()) {
+                    _knowledgeBriefing.value = ""
+                    return@collectLatest
+                }
+
+                val interestNames = subs.map { it.tagName }
+                val workoutTitle = workout?.title
+                
+                val cached = contentRepository.getCachedBriefing(interestNames, workoutTitle)
+                if (cached != null) {
+                    _knowledgeBriefing.value = cached
+                } else {
+                    generateKnowledgeBriefing(content, interestNames, workoutTitle)
+                }
+            }
+        }
+    }
+
+    private fun generateKnowledgeBriefing(
+        content: List<ContentSourceEntity>,
+        interests: List<String>,
+        workoutTitle: String?
+    ) {
+        if (_isBriefingLoading.value) return
+        
+        viewModelScope.launch {
+            _isBriefingLoading.value = true
+            val briefing = bedrockClient.generateKnowledgeBriefing(content.take(10), workoutTitle)
+            contentRepository.updateBriefingCache(briefing, interests, workoutTitle)
+            _knowledgeBriefing.value = briefing
+            _isBriefingLoading.value = false
+        }
+    }
+
+    fun forceRefreshBriefing() {
+        viewModelScope.launch {
+            val content = _rawSubscribedContent.first()
+            generateKnowledgeBriefing(content, subscriptions.value.map { it.tagName }, dailyWorkout.value?.title)
+        }
+    }
+
+    fun setCategory(category: String) {
+        _selectedCategory.value = category
     }
 
     fun updateSelectedDate(date: LocalDate) {
@@ -117,32 +184,25 @@ class HomeViewModel @Inject constructor(
     fun generateRecoverySession(type: String) {
         viewModelScope.launch {
             _isGenerating.value = true
-            Log.d("HomeViewModel", "Starting generation for: $type")
             try {
-                // FIX: Fallback to latest plan if no active plan
                 var activePlan = repository.getActivePlan() ?: repository.getLatestPlan()
                 if (activePlan == null) {
-                    Log.e("HomeViewModel", "No plan found to link the workout to.")
                     _isGenerating.value = false
                     return@launch
                 }
-                Log.d("HomeViewModel", ">>> STEP 2: Fetching DB context...")
+
                 val history = repository.getWorkoutHistory().take(1).first()
                 val availableExercises = repository.getAllExercises().take(1).first()
                 val dateMillis = _selectedDate.value.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
-                Log.d("HomeViewModel", ">>> STEP 3: Requesting AI response for goal: ${activePlan.goal}")
-                // ROUTING LOGIC: Call the appropriate workflow
                 val aiResponse = if (type == "Stretching") {
                     bedrockClient.generateStretchingFlow(activePlan.goal, history, availableExercises)
                 } else {
                     bedrockClient.generateAccessoryWorkout(activePlan.goal, history, availableExercises)
                 }
-                Log.d("HomeViewModel", ">>> STEP 4: AI Response explanation: ${aiResponse.explanation}")
+
                 if (aiResponse.schedule.isNotEmpty()) {
                     val generatedDay = aiResponse.schedule.first()
-                    Log.d("HomeViewModel", ">>> STEP 5: Saving workout: ${generatedDay.title}")
-                    // Capture workoutId
                     val workoutId = repository.saveSingleDayWorkout(
                         planId = activePlan.planId,
                         date = dateMillis,
@@ -150,13 +210,12 @@ class HomeViewModel @Inject constructor(
                         exercises = generatedDay.exercises
                     )
 
-                    // Emit Navigation Event
-                    Log.d("HomeViewModel", ">>> STEP 6: Navigating to ID: $workoutId")
                     val route = if (type == "Stretching") {
-                        _navigationEvents.emit(Screen.StretchingSession.createRoute(workoutId))
+                        Screen.StretchingSession.createRoute(workoutId)
                     } else {
-                        _navigationEvents.emit(Screen.ActiveWorkout.createRoute(workoutId))
+                        Screen.ActiveWorkout.createRoute(workoutId)
                     }
+                    _navigationEvents.emit(route)
                 }
             } catch (e: Exception) {
                 Log.e("HomeViewModel", "Generation error: ${e.message}")
