@@ -8,6 +8,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.example.myapplication.ui.workout.ContentDiscoveryScreen
 import com.example.myapplication.ui.auth.LoginScreen
 import com.example.myapplication.ui.auth.SignUpScreen
 import com.example.myapplication.ui.exercise.ExerciseListScreen
@@ -77,7 +78,13 @@ fun NavGraph(
                 onNavigateToSettings = { navController.navigate(Screen.Settings.route) }
             )
         }
-
+        composable(
+            route = Screen.ContentDiscovery.route,
+            arguments = listOf(navArgument("contentId") { type = NavType.LongType })
+        ) { backStackEntry ->
+            val contentId = backStackEntry.arguments?.getLong("contentId") ?: 0L
+            ContentDiscoveryScreen(contentId = contentId, onBack = { navController.popBackStack() })
+        }
         composable(Screen.Settings.route) {
             SettingsScreen(
                 onBack = { navController.popBackStack() },

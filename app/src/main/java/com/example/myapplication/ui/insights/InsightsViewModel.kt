@@ -3,19 +3,24 @@ package com.example.myapplication.ui.insights
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.ExerciseEntity
+import com.example.myapplication.data.local.UserSubscriptionEntity
+import com.example.myapplication.data.local.WorkoutDao
 import com.example.myapplication.data.repository.PlanRepository
 import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class InsightsViewModel @Inject constructor(
     private val planRepository: PlanRepository,
-    private val executionRepository: WorkoutExecutionRepository
+    private val executionRepository: WorkoutExecutionRepository,
+    private val workoutDao: WorkoutDao
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(InsightsUiState())
@@ -77,6 +82,20 @@ class InsightsViewModel @Inject constructor(
                     Pair(it.completedWorkout.date, estimated1RM.toFloat())
                 }
                 _uiState.value = _uiState.value.copy(oneRepMaxHistory = oneRepMaxHistory)
+            }
+        }
+    }
+
+    val subscriptions = workoutDao.getAllSubscriptions()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun toggleSubscription(tagName: String, type: String) {
+        viewModelScope.launch {
+            val current = subscriptions.value.find { it.tagName == tagName }
+            if (current != null) {
+                workoutDao.deleteSubscription(tagName)
+            } else {
+                workoutDao.insertSubscription(UserSubscriptionEntity(tagName, type))
             }
         }
     }

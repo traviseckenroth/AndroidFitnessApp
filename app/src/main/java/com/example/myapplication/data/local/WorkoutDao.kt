@@ -119,6 +119,14 @@ interface WorkoutDao {
     @Query("UPDATE workout_plans SET nutritionJson = :nutritionJson WHERE planId = :planId")
     suspend fun updateNutrition(planId: Long, nutritionJson: String): Int
 
+    @Query("""
+    SELECT * FROM content_sources 
+    WHERE sportTag IN (SELECT tagName FROM user_subscriptions)
+    OR athleteTag IN (SELECT tagName FROM user_subscriptions)
+    ORDER BY dateFetched DESC
+""")
+
+    fun getSubscribedContent(): Flow<List<ContentSourceEntity>>
     @Query("UPDATE daily_workouts SET isCompleted = 1 WHERE workoutId = :workoutId")
     suspend fun markWorkoutAsComplete(workoutId: Long): Int
 
@@ -132,6 +140,18 @@ interface WorkoutDao {
     // FIX: Add ": Int" return type
     @Query("UPDATE workout_plans SET isActive = 1 WHERE planId = :planId")
     suspend fun activatePlan(planId: Long): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSubscription(subscription: UserSubscriptionEntity): Long
+
+    @Query("DELETE FROM user_subscriptions WHERE tagName = :tagName")
+    suspend fun deleteSubscription(tagName: String): Int
+
+    @Query("SELECT * FROM user_subscriptions")
+    fun getAllSubscriptions(): Flow<List<UserSubscriptionEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertContentSource(content: ContentSourceEntity): Long
 
     @Query("SELECT * FROM workout_plans WHERE isActive = 1 LIMIT 1")
     suspend fun getActivePlan(): WorkoutPlanEntity?

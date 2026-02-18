@@ -9,10 +9,13 @@ import com.example.myapplication.data.remote.BedrockClient
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
+import com.example.myapplication.data.repository.ContentRepository // NEW IMPORT
 import kotlinx.coroutines.launch
+import com.example.myapplication.data.local.ContentSourceEntity
 import java.time.Instant
 import android.util.Log
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
+import com.example.myapplication.data.local.WorkoutDao
 import com.example.myapplication.ui.navigation.Screen
 import java.time.LocalDate
 import java.time.ZoneId
@@ -21,7 +24,9 @@ import javax.inject.Inject
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val repository: PlanRepository,
-    private val bedrockClient: BedrockClient
+    private val bedrockClient: BedrockClient,
+    private val workoutDao: WorkoutDao,
+    private val contentRepository: ContentRepository
 ) : ViewModel() {
 
     private val _selectedDate = MutableStateFlow(LocalDate.now())
@@ -29,6 +34,9 @@ class HomeViewModel @Inject constructor(
 
     private val _isGenerating = MutableStateFlow(false)
     val isGenerating: StateFlow<Boolean> = _isGenerating.asStateFlow()
+
+    private val _dailyIntel = MutableStateFlow<ContentSourceEntity?>(null)
+    val dailyIntel: StateFlow<ContentSourceEntity?> = _dailyIntel.asStateFlow()
 
     // NEW: Navigation Events
     private val _navigationEvents = MutableSharedFlow<String>()
@@ -55,6 +63,52 @@ class HomeViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = null
         )
+
+    init {
+        observeContextForIntel()
+    }
+
+    // RENAMED from fetchDailyIntel to observeContextForIntel
+    private fun observeContextForIntel() {
+        viewModelScope.launch {
+            // FIX: combine ensures we listen to BOTH the workout changing AND subscriptions changing
+            combine(
+                dailyWorkout,
+                workoutDao.getAllSubscriptions()
+            ) { workout, subscriptions ->
+                Pair(workout, subscriptions)
+            }.collectLatest { (workout, subscriptions) ->
+                try {
+                    val workoutTerm = workout?.title ?: ""
+                    val subTerms = subscriptions.joinToString(" ") { it.tagName }
+
+                    // Construct query: e.g. "Chest Strength Hyrox fitness"
+                    val query = if (workoutTerm.isNotEmpty()) "$workoutTerm $subTerms fitness" else "$subTerms fitness"
+
+                    Log.d("HomeViewModel", "Auto-crawling for: $query")
+
+                    if (query.trim() == "fitness") {
+                        _dailyIntel.value = null
+                        return@collectLatest
+                    }
+
+                    // 1. CRAWL (Real Data)
+                    val realContent = contentRepository.fetchRealContent(query)
+
+                    // 2. AI SELECTION
+                    if (realContent.isNotEmpty()) {
+                        val context = workout?.title ?: "General Fitness"
+                        _dailyIntel.value = bedrockClient.selectDailyIntel(context, realContent)
+                    } else {
+                        Log.w("HomeViewModel", "No content found for $query")
+                        _dailyIntel.value = null
+                    }
+                } catch (e: Exception) {
+                    Log.e("HomeViewModel", "Intel Error: ${e.message}")
+                }
+            }
+        }
+    }
 
     fun updateSelectedDate(date: LocalDate) {
         _selectedDate.value = date

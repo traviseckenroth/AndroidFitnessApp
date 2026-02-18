@@ -3,6 +3,7 @@
 package com.example.myapplication.data.remote
 
 import android.util.Log
+import com.example.myapplication.data.local.ContentSourceEntity // ADD THIS IMPORT
 import aws.sdk.kotlin.services.bedrockruntime.BedrockRuntimeClient
 import aws.sdk.kotlin.services.bedrockruntime.model.InvokeModelRequest
 import aws.smithy.kotlin.runtime.http.engine.okhttp.OkHttpEngine
@@ -366,6 +367,33 @@ class BedrockClient @Inject constructor(
         } catch (e: Exception) {
             Log.e("Bedrock", "Stretching parse failed", e)
             GeneratedPlanResponse(explanation = "Failed to generate mobility flow.")
+        }
+    }
+    suspend fun selectDailyIntel(
+        currentWorkout: String,
+        availableContent: List<ContentSourceEntity>
+    ): ContentSourceEntity? = withContext(Dispatchers.Default) {
+        if (availableContent.isEmpty()) return@withContext null
+
+        val contentListString = availableContent.joinToString("\n") { intel ->
+            "${intel.sourceId}: ${intel.title} (${intel.sportTag})"
+        }
+
+        val systemPrompt = """
+            You are a Fitness Content Curator. Given the user's scheduled workout and a list of articles/videos, 
+            select the SINGLE most relevant item ID that will help them today.
+            Return ONLY the ID number.
+        """.trimIndent()
+
+        val userPrompt = "Today's Workout: $currentWorkout\n\nAvailable Content:\n$contentListString"
+
+        try {
+            val responseText = invokeClaude(systemPrompt, userPrompt)
+            val selectedId = responseText.filter { it.isDigit() }.toLongOrNull()
+            availableContent.find { it.sourceId == selectedId }
+        } catch (e: Exception) {
+            Log.e("BedrockClient", "Intel selection failed", e)
+            null
         }
     }
 

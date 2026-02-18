@@ -11,10 +11,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.ui.Modifier
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -28,10 +31,40 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
+import com.example.myapplication.data.local.UserSubscriptionEntity // Added missing import
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
+
+@Composable
+fun SubscriptionChips(viewModel: InsightsViewModel) {
+    val subscriptions by viewModel.subscriptions.collectAsState()
+    val suggestedTags = listOf("Hyrox", "CrossFit", "Powerlifting") // Expandable list
+
+    Column {
+        Text("Your Interests", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            suggestedTags.forEach { tag ->
+                val isSubscribed = subscriptions.any { it.tagName == tag }
+                FilterChip(
+                    selected = isSubscribed,
+                    onClick = { viewModel.toggleSubscription(tag, "Sport") },
+                    label = { Text(tag) },
+                    leadingIcon = {
+                        if (isSubscribed) {
+                            Icon(Icons.Default.Check, contentDescription = null)
+                        } else {
+                            Icon(Icons.Default.Add, contentDescription = null)
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
 
 @Composable
 fun InsightsScreen(
@@ -143,6 +176,19 @@ fun InsightsScreen(
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onBackground
                 )
+            }
+
+            item {
+                InsightCard(title = "Knowledge Hub") {
+                    Column {
+                        Text("Followed Sports & Athletes", style = MaterialTheme.typography.titleSmall)
+                        // Implementation for adding/removing tags like "Hyrox"
+                        SubscriptionChips(viewModel = viewModel)
+                        Button(onClick = { /* Navigate to Full Feed */ }) {
+                            Text("Browse All Discovery Content")
+                        }
+                    }
+                }
             }
 
             if (state.recentWorkouts.isEmpty()) {

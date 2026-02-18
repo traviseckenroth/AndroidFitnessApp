@@ -29,4 +29,7 @@ sealed class Screen(val route: String, val title: String? = null, val icon: Imag
     object StretchingSession : Screen("stretching_session/{workoutId}") {
         fun createRoute(workoutId: Long) = "stretching_session/$workoutId"
     }
+    object ContentDiscovery : Screen("content_discovery/{contentId}") {
+        fun createRoute(contentId: Long) = "content_discovery/$contentId"
+    }
 } // FIXED: Added missing closing brace

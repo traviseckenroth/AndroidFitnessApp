@@ -14,9 +14,11 @@ import com.example.myapplication.data.local.FoodLogEntity
         WorkoutSetEntity::class,
         CompletedWorkoutEntity::class,
         FoodLogEntity::class,
-        WorkoutEntity::class
+        WorkoutEntity::class,
+        ContentSourceEntity::class,
+        UserSubscriptionEntity::class
     ],
-    version = 29,
+    version = 30,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

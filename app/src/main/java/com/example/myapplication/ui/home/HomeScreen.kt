@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.local.DailyWorkoutEntity
+import com.example.myapplication.data.local.ContentSourceEntity
 import com.example.myapplication.ui.navigation.Screen
 import com.example.myapplication.ui.theme.PrimaryIndigo
 import com.example.myapplication.ui.theme.SecondaryIndigo
@@ -42,6 +43,7 @@ fun HomeScreen(
     val workoutDates by viewModel.workoutDates.collectAsState()
     val isGenerating by viewModel.isGenerating.collectAsState()
 
+    val dailyIntel by viewModel.dailyIntel.collectAsState()
     // NEW: Observe navigation events
     LaunchedEffect(Unit) {
         viewModel.navigationEvents.collect { route ->
@@ -77,6 +79,16 @@ fun HomeScreen(
                         onGenerateStretching = { viewModel.generateRecoverySession("Stretching") },
                         onGenerateAccessory = { viewModel.generateRecoverySession("Accessory") },
                         isGenerating = isGenerating
+                    )
+                }
+            }
+
+            item {
+                val dailyIntel by viewModel.dailyIntel.collectAsState()
+                dailyIntel?.let { intel ->
+                    DailyIntelCard(
+                        intel = intel,
+                        onClick = { onNavigate(Screen.ContentDiscovery.createRoute(intel.sourceId)) }
                     )
                 }
             }
@@ -294,6 +306,40 @@ fun WorkoutCard(workout: DailyWorkoutEntity, onNavigate: (String) -> Unit) {
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
+            }
+        }
+    }
+}
+
+@Composable
+fun DailyIntelCard(intel: ContentSourceEntity, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Icon based on type
+            Text(if (intel.mediaType == "Video") "📺" else "📰", fontSize = 32.sp)
+            Spacer(Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Recommended for You",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = intel.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "${intel.sportTag} • ${intel.summary.take(20)}...",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
