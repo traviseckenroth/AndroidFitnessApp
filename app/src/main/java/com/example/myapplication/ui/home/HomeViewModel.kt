@@ -11,6 +11,8 @@ import com.example.myapplication.data.repository.ContentRepository
 import com.example.myapplication.data.local.ContentSourceEntity
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.local.WorkoutDao
+import com.example.myapplication.data.repository.CommunityRepository
+import com.example.myapplication.data.remote.CommunityPick
 import com.example.myapplication.ui.navigation.Screen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -20,6 +22,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
+import java.net.URLEncoder
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -27,6 +30,7 @@ class HomeViewModel @Inject constructor(
     private val bedrockClient: BedrockClient,
     private val workoutDao: WorkoutDao,
     private val contentRepository: ContentRepository,
+    private val communityRepository: CommunityRepository,
     private val userPrefs: UserPreferencesRepository
 ) : ViewModel() {
 
@@ -48,6 +52,9 @@ class HomeViewModel @Inject constructor(
 
     private val _isBriefingLoading = MutableStateFlow(false)
     val isBriefingLoading: StateFlow<Boolean> = _isBriefingLoading.asStateFlow()
+
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
     val userName: StateFlow<String> = userPrefs.userName.stateIn(
         scope = viewModelScope,
@@ -78,7 +85,7 @@ class HomeViewModel @Inject constructor(
         )
 
     val subscriptions = workoutDao.getAllSubscriptions()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), initialValue = emptyList())
 
     private val _rawSubscribedContent = workoutDao.getSubscribedContent()
     
@@ -95,6 +102,9 @@ class HomeViewModel @Inject constructor(
         filtered.sortedWith(compareByDescending<ContentSourceEntity> { it.dateFetched }.thenByDescending { it.sourceId })
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val communityPick: StateFlow<CommunityPick?> = communityRepository.getTopCommunityPick()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     init {
         observeContextForIntel()
         observeContentForBriefing()
@@ -102,7 +112,6 @@ class HomeViewModel @Inject constructor(
 
     private fun observeContextForIntel() {
         viewModelScope.launch {
-            // OPTIMIZATION: Only react when the list of tags actually changes
             subscriptions
                 .map { it.map { s -> s.tagName }.toSet() }
                 .distinctUntilChanged()
@@ -112,20 +121,59 @@ class HomeViewModel @Inject constructor(
                             try {
                                 contentRepository.fetchRealContent(tagName)
                                 
-                                // Mock "Social" content logic remains here if needed
-                                if (tagName.contains("Hyrox", true) || tagName.contains("CrossFit", true) || tagName.contains("Athlete", true)) {
-                                    val cleanTag = tagName.replace(" ", "").lowercase()
-                                    workoutDao.insertContentSource(
-                                        ContentSourceEntity(
-                                            title = "Recent updates for #$tagName",
-                                            summary = "Tap to view the latest training and competition posts for $tagName on Instagram.",
-                                            url = "https://www.instagram.com/explore/tags/$cleanTag/",
-                                            mediaType = "Social",
-                                            sportTag = tagName,
-                                            dateFetched = 1700000000000L
-                                        )
+                                // --- Expanded Social Media Sources ---
+                                val cleanTag = tagName.replace(" ", "").lowercase()
+                                val encodedTag = URLEncoder.encode(tagName, "UTF-8")
+
+                                // 1. Instagram
+                                workoutDao.insertContentSource(
+                                    ContentSourceEntity(
+                                        title = "Instagram: #$tagName",
+                                        summary = "Latest trending posts and training reels for $tagName.",
+                                        url = "https://www.instagram.com/explore/tags/$cleanTag/",
+                                        mediaType = "Social",
+                                        sportTag = tagName,
+                                        dateFetched = System.currentTimeMillis()
                                     )
-                                }
+                                )
+
+                                // 2. Reddit Community
+                                val redditSub = if (tagName.contains("Hyrox", true)) "hyrox" else if (tagName.contains("CrossFit", true)) "crossfit" else "fitness"
+                                workoutDao.insertContentSource(
+                                    ContentSourceEntity(
+                                        title = "Reddit: r/$redditSub",
+                                        summary = "Join the community discussion and see what's trending in $tagName.",
+                                        url = "https://www.reddit.com/r/$redditSub/new/",
+                                        mediaType = "Social",
+                                        sportTag = tagName,
+                                        dateFetched = System.currentTimeMillis()
+                                    )
+                                )
+
+                                // 3. YouTube Training Clips
+                                workoutDao.insertContentSource(
+                                    ContentSourceEntity(
+                                        title = "YouTube: $tagName Training",
+                                        summary = "Watch recent training footage and competition highlights for $tagName.",
+                                        url = "https://www.youtube.com/results?search_query=$encodedTag+training+highlights",
+                                        mediaType = "Video",
+                                        sportTag = tagName,
+                                        dateFetched = System.currentTimeMillis()
+                                    )
+                                )
+
+                                // 4. X (Twitter) Hashtag
+                                workoutDao.insertContentSource(
+                                    ContentSourceEntity(
+                                        title = "X: #$tagName Updates",
+                                        summary = "Real-time news and athlete updates for $tagName.",
+                                        url = "https://twitter.com/hashtag/$cleanTag",
+                                        mediaType = "Social",
+                                        sportTag = tagName,
+                                        dateFetched = System.currentTimeMillis()
+                                    )
+                                )
+
                             } catch (e: Exception) {
                                 Log.e("HomeViewModel", "Error fetching content for $tagName: ${e.message}")
                             }
@@ -137,12 +185,10 @@ class HomeViewModel @Inject constructor(
 
     private fun observeContentForBriefing() {
         viewModelScope.launch {
-            // OPTIMIZATION: Use distinctUntilChanged on tags and workout title
-            // to prevent regeneration unless interests or the workout plan itself changes.
             combine(
                 subscriptions.map { it.map { s -> s.tagName }.toSet() }.distinctUntilChanged(),
                 dailyWorkout.map { it?.title }.distinctUntilChanged(),
-                _rawSubscribedContent.map { it.size }.distinctUntilChanged() // Only if content count changes
+                _rawSubscribedContent.map { it.size }.distinctUntilChanged()
             ) { interestTags, workoutTitle, contentSize ->
                 Triple(interestTags, workoutTitle, contentSize)
             }.collectLatest { (interestTags, workoutTitle, contentSize) ->
@@ -157,7 +203,6 @@ class HomeViewModel @Inject constructor(
                 if (cached != null) {
                     _knowledgeBriefing.value = cached
                 } else {
-                    // Fetch content once for the briefing
                     val currentContent = _rawSubscribedContent.first()
                     if (currentContent.isNotEmpty()) {
                         generateKnowledgeBriefing(currentContent, interestList, workoutTitle)
@@ -198,13 +243,40 @@ class HomeViewModel @Inject constructor(
         _selectedDate.value = date
     }
 
+    fun clearErrorMessage() {
+        _errorMessage.value = null
+    }
+
+    fun upvoteCommunityPick() {
+        val pickId = communityPick.value?.id ?: return
+        viewModelScope.launch {
+            try {
+                communityRepository.upvoteExistingPick(pickId)
+            } catch (e: Exception) {
+                Log.e("HomeViewModel", "Failed to upvote: ${e.message}")
+            }
+        }
+    }
+
+    fun upvoteContent(content: ContentSourceEntity) {
+        viewModelScope.launch {
+            try {
+                communityRepository.upvoteContent(content)
+            } catch (e: Exception) {
+                Log.e("HomeViewModel", "Failed to upvote content: ${e.message}")
+            }
+        }
+    }
+
     fun generateRecoverySession(type: String) {
         viewModelScope.launch {
             _isGenerating.value = true
+            _errorMessage.value = null
             try {
                 var activePlan = repository.getActivePlan() ?: repository.getLatestPlan()
                 if (activePlan == null) {
                     _isGenerating.value = false
+                    _errorMessage.value = "An AI generated plan is required to generate stretching and accessory workouts."
                     return@launch
                 }
 
@@ -236,6 +308,7 @@ class HomeViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 Log.e("HomeViewModel", "Generation error: ${e.message}")
+                _errorMessage.value = "Failed to generate workout: ${e.message}"
             } finally {
                 _isGenerating.value = false
             }

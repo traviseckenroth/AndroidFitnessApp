@@ -225,17 +225,26 @@ class PlanRepository @Inject constructor(
             )
         )
 
+        val isMobility = title.contains("Recovery", ignoreCase = true) || title.contains("Stretching", ignoreCase = true)
+
         val allExercises = workoutDao.getAllExercisesOneShot()
         val sets = exercises.flatMap { aiEx ->
             var realEx = allExercises.find {
                 it.name.trim().equals(aiEx.name.trim(), ignoreCase = true)
             }
 
+            // FIX: If it's a mobility session, enforce a minimum of 30 seconds hold time if AI returns something lower
+            val adjustedSuggestedReps = if (isMobility && aiEx.suggestedReps < 30) {
+                if (aiEx.suggestedReps <= 2) 60 else 30 // If it's 1 or 2, maybe it meant minutes? Otherwise use 30s.
+            } else {
+                aiEx.suggestedReps
+            }
+
             // 1. Clean the instructions of redundant time text for the session
             val cleanedNotes = cleanMobilityDescription(aiEx.notes)
 
-            // 2. Dynamically calculate time per set based on AI prescribed hold time
-            val holdTimeInMinutes = aiEx.suggestedReps.toDouble() / 60.0
+            // 2. Dynamically calculate time per set based on prescribed hold time
+            val holdTimeInMinutes = adjustedSuggestedReps.toDouble() / 60.0
 
             if (realEx == null) {
                 // Create a new exercise entry with cleaned instructions
@@ -269,9 +278,9 @@ class PlanRepository @Inject constructor(
                     notes = cleanedNotes
                 )
             } else {
-                // FIX: If exercise exists, check if the master record needs to be cleaned
+                // FIX: If exercise exists, check if the master record needs to be cleaned or duration updated
                 val durationRegex = Regex("(?i)\\d+\\s*(second|s|minute)")
-                if (realEx.notes.contains(durationRegex) || realEx.description.contains(durationRegex)) {
+                if (isMobility || realEx.notes.contains(durationRegex) || realEx.description.contains(durationRegex)) {
                     val updatedEx = realEx.copy(
                         notes = cleanedNotes,
                         description = cleanedNotes,
@@ -288,7 +297,7 @@ class PlanRepository @Inject constructor(
                     workoutId = workoutId,
                     exerciseId = realEx!!.exerciseId,
                     setNumber = setNum + 1,
-                    suggestedReps = aiEx.suggestedReps, // Used as hold time in seconds
+                    suggestedReps = adjustedSuggestedReps, // Used as hold time in seconds
                     suggestedRpe = aiEx.suggestedRpe,
                     suggestedLbs = aiEx.suggestedLbs.toInt(),
                     isCompleted = false

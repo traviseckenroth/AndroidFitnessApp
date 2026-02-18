@@ -4,30 +4,40 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.myapplication.data.repository.WorkoutSummaryResult // Ensure this is imported
+import com.example.myapplication.data.repository.WorkoutSummaryResult
 import com.example.myapplication.ui.theme.PrimaryIndigo
+import com.example.myapplication.ui.theme.SecondaryIndigo
 import com.example.myapplication.ui.workout.ActiveSessionViewModel
 import kotlinx.coroutines.launch
 import java.io.File
@@ -44,23 +54,18 @@ fun WorkoutSummaryScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val graphicsLayer = rememberGraphicsLayer()
+    val summary by viewModel.workoutSummary.collectAsState()
 
-    // NEW: Trigger load when screen opens
     LaunchedEffect(workoutId) {
         viewModel.loadSummary(workoutId)
     }
 
-    val summary by viewModel.workoutSummary.collectAsState()
-
-    // Root Box
     Box(modifier = Modifier.fillMaxSize()) {
-
-        // 1. The "Receipt" - Rendered BEHIND the Scaffold (z-index 0)
-        // Only render if summary exists.
+        // 1. HIDDEN LAYER FOR CAPTURING (Full Story size)
         if (summary != null) {
             Box(
                 modifier = Modifier
-                    .wrapContentSize()
+                    .size(width = 1080.dp / 3f, height = 1920.dp / 3f)
                     .align(Alignment.Center)
                     .zIndex(0f)
                     .drawWithCache {
@@ -68,153 +73,227 @@ fun WorkoutSummaryScreen(
                             graphicsLayer.record {
                                 this@onDrawWithContent.drawContent()
                             }
-                            this@onDrawWithContent.drawContent()
                         }
                     }
             ) {
-                WorkoutReceiptCard(summary!!)
+                ShareableWorkoutCard(summary!!)
             }
         }
 
-        // 2. Main UI - Rendered ON TOP (z-index 1)
+        // 2. MAIN UI
         Scaffold(
             modifier = Modifier.zIndex(1f),
             containerColor = MaterialTheme.colorScheme.background,
             bottomBar = {
-                Button(
-                    onClick = onNavigateHome,
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Text("DONE")
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                if (summary != null) {
+                                    val bitmap = graphicsLayer.toImageBitmap()
+                                    shareToStory(context, bitmap.asAndroidBitmap())
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Black),
+                        enabled = summary != null
+                    ) {
+                        Icon(Icons.Default.Share, null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("SHARE TO STORY")
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = onNavigateHome,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("DONE")
+                    }
                 }
             }
         ) { padding ->
             Column(
                 modifier = Modifier.padding(padding).fillMaxSize().padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = PrimaryIndigo, modifier = Modifier.size(64.dp))
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Dynamic Text from Summary
+                Spacer(modifier = Modifier.height(24.dp))
+                Icon(Icons.Default.CheckCircle, null, tint = PrimaryIndigo, modifier = Modifier.size(64.dp))
                 Text(
                     text = summary?.title ?: "Workout Complete!",
                     style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Black
                 )
                 Text(
-                    text = summary?.subtitle ?: "Great job sticking to the plan.",
+                    text = summary?.subtitle ?: "Great effort today.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.Gray
+                    color = Color.Gray,
+                    textAlign = TextAlign.Center
                 )
+
                 Spacer(modifier = Modifier.height(32.dp))
 
-                Button(
-                    onClick = {
-                        scope.launch {
-                            try {
-                                if (summary != null) {
-                                    val bitmap = graphicsLayer.toImageBitmap()
-                                    shareToInstagramStory(context, bitmap.asAndroidBitmap())
-                                }
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                            }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.Black),
-                    // Disable button until summary is loaded to prevent empty capture
-                    enabled = summary != null
+                // Preview Card (Scrollable in UI, but static for sharing)
+                Card(
+                    modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 24.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    elevation = CardDefaults.cardElevation(4.dp)
                 ) {
-                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Share to Instagram Story")
+                    if (summary != null) {
+                        // In the UI preview, we make it scrollable so user can see all items
+                        Box(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                            ShareableWorkoutCard(summary!!, isPreview = true)
+                        }
+                    } else {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                    }
                 }
+                Spacer(modifier = Modifier.height(24.dp))
             }
         }
     }
 }
 
 @Composable
-fun WorkoutReceiptCard(data: WorkoutSummaryResult) {
-    // ... (Keep existing implementation) ...
-    Card(
-        modifier = Modifier.width(350.dp).padding(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(8.dp)
+fun ShareableWorkoutCard(data: WorkoutSummaryResult, isPreview: Boolean = false) {
+    // If we're not in preview mode (i.e., we are capturing), we use a fixed height and fit content
+    val containerModifier = if (isPreview) Modifier.fillMaxWidth() else Modifier.fillMaxSize()
+    
+    Box(
+        modifier = containerModifier
+            .background(Brush.verticalGradient(listOf(Color(0xFF1A1A1A), Color(0xFF000000))))
     ) {
-        Column(
-            modifier = Modifier.padding(24.dp).fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text("MY APPLICATION", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, letterSpacing = 2.sp, color = Color.Gray)
-            Spacer(modifier = Modifier.height(8.dp))
-            HorizontalDivider()
-            Spacer(modifier = Modifier.height(16.dp))
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val step = 40.dp.toPx()
+            for (x in 0..size.width.toInt() step step.toInt()) {
+                for (y in 0..size.height.toInt() step step.toInt()) {
+                    drawCircle(Color.White.copy(alpha = 0.03f), radius = 1.5.dp.toPx(), center = Offset(x.toFloat(), y.toFloat()))
+                }
+            }
+        }
 
-            Text(data.title.uppercase(), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = PrimaryIndigo)
+        Column(
+            modifier = Modifier.padding(24.dp).then(if (isPreview) Modifier.wrapContentHeight() else Modifier.fillMaxSize()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = if (isPreview) Arrangement.Top else Arrangement.Center
+        ) {
             Text(
-                LocalDate.now().format(DateTimeFormatter.ofPattern("MMM dd, yyyy")),
+                "WORKOUT SUMMARY",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                letterSpacing = 3.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMM dd")),
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.Gray
             )
+            
+            Spacer(modifier = Modifier.height(32.dp))
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Volume", fontWeight = FontWeight.Bold)
-                Text("${data.totalVolume} lbs")
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                BigStatItem("VOLUME MOVED", "${data.totalVolume}", "LBS")
+                BigStatItem("PRS BROKEN", "${data.prsBroken}", "RECORDS")
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Exercises", fontWeight = FontWeight.Bold)
-                Text("${data.totalExercises}")
+
+            if (data.topPR != null) {
+                Spacer(modifier = Modifier.height(32.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(16.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.EmojiEvents, null, tint = Color(0xFFFFD700), modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("TOP HIGHLIGHT", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                            Text(data.topPR, style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(32.dp))
-            Row(modifier = Modifier.fillMaxWidth().height(40.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                repeat(20) {
-                    Box(modifier = Modifier.width(if (it % 3 == 0) 4.dp else 2.dp).fillMaxHeight().background(Color.Black))
+
+            // Lifts Summary - Show ALL exercises
+            // If there are many, we reduce the font size slightly
+            val liftFontSize = if (data.highlights.size > 8) 12.sp else 14.sp
+            
+            Column(horizontalAlignment = Alignment.Start, modifier = Modifier.fillMaxWidth()) {
+                data.highlights.forEach { highlight ->
+                    Text(
+                        text = "• $highlight",
+                        color = Color.White.copy(alpha = 0.8f),
+                        fontSize = liftFontSize,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(vertical = 2.dp)
+                    )
                 }
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text("Powered by AndroidFitnessApp", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+
+            Spacer(modifier = Modifier.height(48.dp))
+            
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.FitnessCenter, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(12.dp))
+                Text("AI COACH", style = MaterialTheme.typography.titleSmall, color = Color.White, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+            }
+            
+            if (isPreview) {
+                Spacer(modifier = Modifier.height(24.dp))
+            }
         }
     }
 }
 
-private fun shareToInstagramStory(context: Context, bitmap: Bitmap) {
+@Composable
+fun BigStatItem(label: String, value: String, unit: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+        Text(
+            text = value,
+            style = MaterialTheme.typography.headlineMedium,
+            color = Color.White,
+            fontWeight = FontWeight.Black,
+            fontSize = 36.sp
+        )
+        Text(unit, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+    }
+}
+
+private fun shareToStory(context: Context, bitmap: Bitmap) {
     try {
         val cachePath = File(context.cacheDir, "images")
         cachePath.mkdirs()
-        val stream = FileOutputStream("$cachePath/workout_receipt.png")
+        val file = File(cachePath, "workout_story.png")
+        val stream = FileOutputStream(file)
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
         stream.close()
 
-        val newFile = File(cachePath, "workout_receipt.png")
-        val contentUri: Uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.provider",
-            newFile
-        )
+        val contentUri: Uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
 
-        val storiesIntent = Intent("com.instagram.share.ADD_TO_STORY").apply {
+        val storyIntent = Intent("com.instagram.share.ADD_TO_STORY").apply {
             setDataAndType(contentUri, "image/*")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            putExtra("content_url", "https://www.yourwebsite.com")
         }
 
-        if (context.packageManager.resolveActivity(storiesIntent, 0) != null) {
-            context.startActivity(storiesIntent)
+        if (context.packageManager.resolveActivity(storyIntent, 0) != null) {
+            context.startActivity(storyIntent)
         } else {
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "image/*"
                 putExtra(Intent.EXTRA_STREAM, contentUri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            context.startActivity(Intent.createChooser(shareIntent, "Share Workout"))
+            context.startActivity(Intent.createChooser(shareIntent, "Share Your Workout"))
         }
     } catch (e: Exception) {
         e.printStackTrace()

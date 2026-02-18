@@ -16,8 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.*
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -33,6 +32,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.local.DailyWorkoutEntity
 import com.example.myapplication.data.local.ContentSourceEntity
 import com.example.myapplication.data.local.UserSubscriptionEntity
+import com.example.myapplication.data.remote.CommunityPick
 import com.example.myapplication.ui.navigation.Screen
 import com.example.myapplication.ui.theme.PrimaryIndigo
 import com.example.myapplication.ui.theme.SecondaryIndigo
@@ -57,6 +57,9 @@ fun HomeScreen(
     val briefing by viewModel.knowledgeBriefing.collectAsState()
     val isBriefingLoading by viewModel.isBriefingLoading.collectAsState()
 
+    val communityPick by viewModel.communityPick.collectAsState()
+    val errorMessage by viewModel.errorMessage.collectAsState()
+
     val userName by viewModel.userName.collectAsState()
 
     LaunchedEffect(Unit) {
@@ -65,10 +68,23 @@ fun HomeScreen(
         }
     }
 
+    if (errorMessage != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearErrorMessage() },
+            title = { Text("AI Plan Required") },
+            text = { Text(errorMessage!!) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearErrorMessage() }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+            verticalArrangement = Arrangement.spacedBy(32.dp)
         ) {
             item {
                 Spacer(modifier = Modifier.height(16.dp))
@@ -132,48 +148,62 @@ fun HomeScreen(
                         )
                     }
 
-                    if (contentFeed.isNotEmpty()) {
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            items(contentFeed, key = { it.sourceId }) { item ->
-                                KnowledgeFeedCard(
-                                    item = item,
-                                    onClick = { onNavigate(Screen.ContentDiscovery.createRoute(item.sourceId)) }
+                    // Discovery Feed Row
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        // Community Pick First
+                        if (communityPick != null && selectedCategory == "All") {
+                            item {
+                                CommunityPickCard(
+                                    pick = communityPick!!,
+                                    onUpvote = { viewModel.upvoteCommunityPick() }
                                 )
                             }
                         }
-                    } else if (subscriptions.isNotEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(100.dp)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "No ${selectedCategory.lowercase()} found for your interests.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color.Gray,
-                                textAlign = TextAlign.Center
+
+                        items(contentFeed, key = { it.sourceId }) { item ->
+                            KnowledgeFeedCard(
+                                item = item,
+                                onClick = { onNavigate(Screen.ContentDiscovery.createRoute(item.sourceId)) },
+                                onUpvote = { viewModel.upvoteContent(item) }
                             )
                         }
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(140.dp)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Follow some interests to see your intelligence feed.", 
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color.Gray,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(16.dp)
-                            )
+                    }
+
+                    if (contentFeed.isEmpty() && communityPick == null) {
+                        if (subscriptions.isNotEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(100.dp)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "No ${selectedCategory.lowercase()} found for your interests.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.Gray,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(140.dp)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Follow some interests to see your intelligence feed.", 
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.Gray,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(16.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -182,6 +212,160 @@ fun HomeScreen(
             item { QuickActionsSection(onNavigate = onNavigate) }
             
             item { Spacer(modifier = Modifier.height(24.dp)) }
+        }
+    }
+}
+
+@Composable
+fun CommunityPickCard(pick: CommunityPick, onUpvote: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .width(240.dp)
+            .height(140.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        text = "COMMUNITY PICK",
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                
+                IconButton(onClick = onUpvote, modifier = Modifier.size(24.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "${pick.upvotes}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.Default.ThumbUp, contentDescription = "Upvote", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text(
+                text = pick.title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            
+            Spacer(modifier = Modifier.height(4.dp))
+            
+            Text(
+                text = pick.summary,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+fun KnowledgeFeedCard(item: ContentSourceEntity, onClick: () -> Unit, onUpvote: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .width(240.dp)
+            .height(140.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable { onClick() }
+                    .padding(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = item.sportTag.uppercase(),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                Text(
+                    text = item.summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+                
+                Spacer(modifier = Modifier.weight(1f))
+                
+                val icon = when (item.mediaType) {
+                    "Video" -> Icons.Default.PlayCircle
+                    "Social" -> Icons.Default.Share
+                    else -> Icons.AutoMirrored.Filled.Article
+                }
+                
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    modifier = Modifier.size(14.dp).align(Alignment.End)
+                )
+            }
+
+            IconButton(
+                onClick = onUpvote,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
+                    .size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ThumbUp,
+                    contentDescription = "Upvote",
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
     }
 }
@@ -289,72 +473,6 @@ fun KnowledgeCategorySelector(
 }
 
 @Composable
-fun KnowledgeFeedCard(item: ContentSourceEntity, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .width(240.dp)
-            .height(160.dp)
-            .clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Text(
-                        text = item.sportTag.uppercase(),
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                
-                val icon = when (item.mediaType) {
-                    "Video" -> Icons.Default.PlayCircle
-                    "Social" -> Icons.Default.Share
-                    else -> Icons.AutoMirrored.Filled.Article
-                }
-                
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-            )
-            
-            Spacer(modifier = Modifier.height(4.dp))
-            
-            Text(
-                text = item.summary,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-@Composable
 fun RestDayRecoveryCard(
     onGenerateStretching: () -> Unit,
     onGenerateAccessory: () -> Unit,
@@ -374,6 +492,13 @@ fun RestDayRecoveryCard(
             Spacer(modifier = Modifier.height(12.dp))
             Text("Your body grows while you rest. Use today to stay mobile.",
                 style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            
+            Text(
+                text = "Note: An AI generated plan is required to generate stretching and accessory workouts.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
 

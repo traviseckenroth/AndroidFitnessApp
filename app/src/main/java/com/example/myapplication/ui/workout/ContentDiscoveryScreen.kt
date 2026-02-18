@@ -7,6 +7,7 @@ import android.net.Uri
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebSettings
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -40,7 +41,7 @@ fun ContentDiscoveryScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = content?.title ?: "Loading...",
+                        text = content?.title ?: "Discovery",
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1
                     )
@@ -52,13 +53,13 @@ fun ContentDiscoveryScreen(
                 },
                 actions = {
                     content?.url?.let { url ->
-                        val isInstagram = url.contains("instagram.com")
+                        val isSocial = url.contains("instagram.com") || url.contains("reddit.com") || url.contains("twitter.com") || url.contains("x.com")
                         IconButton(onClick = {
                             openUrlExternally(context, url)
                         }) {
                             Icon(
-                                imageVector = if (isInstagram) Icons.Default.OpenInNew else Icons.Default.OpenInBrowser,
-                                contentDescription = if (isInstagram) "Open in Instagram" else "Open in Browser"
+                                imageVector = if (isSocial) Icons.Default.OpenInNew else Icons.Default.OpenInBrowser,
+                                contentDescription = "Open in External App"
                             )
                         }
                     }
@@ -77,8 +78,13 @@ fun ContentDiscoveryScreen(
                                 setSupportZoom(true)
                                 builtInZoomControls = true
                                 displayZoomControls = false
-                                // Set a mobile user agent to avoid some desktop-only issues
-                                userAgentString = "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.99 Mobile Safari/537.36"
+                                databaseEnabled = true
+                                loadWithOverviewMode = true
+                                useWideViewPort = true
+                                cacheMode = WebSettings.LOAD_DEFAULT
+                                
+                                // FIX: Updated to a modern User-Agent to prevent "Browser not supported" on Instagram/Social sites
+                                userAgentString = "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36"
                             }
                             
                             webViewClient = object : WebViewClient() {
@@ -88,8 +94,8 @@ fun ContentDiscoveryScreen(
                                 ): Boolean {
                                     val url = request?.url?.toString() ?: return false
                                     
-                                    // Specifically handle instagram:// schemes which web pages often use for deep linking
-                                    if (url.startsWith("instagram://")) {
+                                    // Deep link handling for social apps
+                                    if (url.startsWith("instagram://") || url.startsWith("reddit://") || url.startsWith("twitter://")) {
                                         return try {
                                             ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                                             true
@@ -98,16 +104,19 @@ fun ContentDiscoveryScreen(
                                         }
                                     }
 
-                                    // Handle non-http/https schemes (like intent://, etc.)
+                                    // Force external browser for login/auth pages which often fail in WebView
+                                    if (url.contains("accounts.google.com") || url.contains("facebook.com/login") || url.contains("instagram.com/accounts/login")) {
+                                        openUrlExternally(ctx, url)
+                                        return true
+                                    }
+
                                     if (!url.startsWith("http://") && !url.startsWith("https://")) {
                                         return try {
                                             val intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
-                                            // Ensure the intent can be handled before starting
                                             if (intent.resolveActivity(ctx.packageManager) != null) {
                                                 ctx.startActivity(intent)
                                                 true
                                             } else {
-                                                // If it's an intent:// but no app found, try the fallback URL if present
                                                 val fallbackUrl = intent.getStringExtra("browser_fallback_url")
                                                 if (fallbackUrl != null) {
                                                     view?.loadUrl(fallbackUrl)
@@ -117,17 +126,15 @@ fun ContentDiscoveryScreen(
                                                 }
                                             }
                                         } catch (e: Exception) {
-                                            Log.e("WebView", "Could not handle custom scheme: $url", e)
                                             try {
-                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                                ctx.startActivity(intent)
+                                                ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                                                 true
                                             } catch (e2: Exception) {
                                                 false
                                             }
                                         }
                                     }
-                                    return false // Let WebView handle regular http/https
+                                    return false 
                                 }
                             }
                             loadUrl(content!!.url)
@@ -145,43 +152,20 @@ fun ContentDiscoveryScreen(
 private fun openUrlExternally(context: Context, url: String) {
     try {
         val uri = Uri.parse(url)
-        var intent: Intent? = null
-
-        // Improved deep linking for Instagram
-        if (uri.host?.contains("instagram.com") == true) {
-            val pathSegments = uri.pathSegments
-            // Handle tags: /explore/tags/{tag}/
-            if (pathSegments.size >= 3 && pathSegments[0] == "explore" && pathSegments[1] == "tags") {
-                val tag = pathSegments[2]
-                val instagramUri = Uri.parse("instagram://tag?name=$tag")
-                intent = Intent(Intent.ACTION_VIEW, instagramUri)
-            }
-            // Handle posts: /p/{shortcode}/
-            else if (pathSegments.size >= 2 && pathSegments[0] == "p") {
-                val shortcode = pathSegments[1]
-                val instagramUri = Uri.parse("instagram://media?id=$shortcode") // Note: some versions use media?id, some use p/
-                intent = Intent(Intent.ACTION_VIEW, instagramUri)
-            }
-            // Handle profiles: /{username}/
-            else if (pathSegments.size == 1) {
-                val username = pathSegments[0]
-                val instagramUri = Uri.parse("instagram://user?username=$username")
-                intent = Intent(Intent.ACTION_VIEW, instagramUri)
-            }
-            
-            // If we created a specific instagram intent, set package to ensure it opens in the app
-            if (intent != null) {
-                intent.setPackage("com.instagram.android")
-                // Verify if Instagram app can handle this intent
-                if (intent.resolveActivity(context.packageManager) == null) {
-                    intent = null // Fallback to browser if app not installed or can't handle
-                }
-            }
+        val intent = Intent(Intent.ACTION_VIEW, uri)
+        
+        // Attempt to find a specific app to handle social links
+        if (url.contains("instagram.com")) {
+            intent.setPackage("com.instagram.android")
+        } else if (url.contains("reddit.com")) {
+            intent.setPackage("com.reddit.frontpage")
+        } else if (url.contains("twitter.com") || url.contains("x.com")) {
+            intent.setPackage("com.twitter.android")
         }
 
-        // Default fallback to browser if no specific app intent was created or it failed
-        if (intent == null) {
-            intent = Intent(Intent.ACTION_VIEW, uri)
+        // If specific app is not available, reset package to use system chooser
+        if (intent.resolveActivity(context.packageManager) == null) {
+            intent.setPackage(null)
         }
         
         context.startActivity(intent)

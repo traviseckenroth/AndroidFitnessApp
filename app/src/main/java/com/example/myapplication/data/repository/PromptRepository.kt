@@ -168,7 +168,7 @@ class PromptRepository @Inject constructor() {
             1. Suggest actual stretches and mobility drills (e.g., Pigeon Pose, World's Greatest Stretch, Cat-Cow).
             2. If an appropriate stretch is in the ALLOWED LIST below, use it.
             3. If not, you may INVENT/SUGGEST specific mobility exercises.
-            4. 'suggestedReps' should represent hold time in SECONDS.
+            4. 'suggestedReps' MUST represent hold time in SECONDS. Hold times MUST be either 30 or 60 seconds per stretch. NEVER use values below 30.
             
             IMPORTANT:
             - Do NOT include the hold time, duration, or repetitions inside the 'notes', 'description', or 'explanation' fields. 

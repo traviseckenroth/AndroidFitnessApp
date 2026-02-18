@@ -87,7 +87,7 @@ dependencies {
     // --- Architecture & Navigation ---
     implementation(libs.androidx.lifecycle.viewmodel)
     implementation(libs.androidx.navigation.compose)
-
+    implementation("com.google.firebase:firebase-firestore")
     // --- Room Database ---
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
