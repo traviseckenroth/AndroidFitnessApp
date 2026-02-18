@@ -102,57 +102,66 @@ class HomeViewModel @Inject constructor(
 
     private fun observeContextForIntel() {
         viewModelScope.launch {
-            subscriptions.collectLatest { subs ->
-                if (subs.isNotEmpty()) {
-                    subs.forEach { sub ->
-                        try {
-                            contentRepository.fetchRealContent(sub.tagName)
-                            
-                            // Mock "Social" content logic remains here if needed
-                            if (sub.tagName.contains("Hyrox", true) || sub.tagName.contains("CrossFit", true) || sub.tagName.contains("Athlete", true)) {
-                                val cleanTag = sub.tagName.replace(" ", "").lowercase()
-                                workoutDao.insertContentSource(
-                                    ContentSourceEntity(
-                                        title = "Recent updates for #${sub.tagName}",
-                                        summary = "Tap to view the latest training and competition posts for ${sub.tagName} on Instagram.",
-                                        url = "https://www.instagram.com/explore/tags/$cleanTag/",
-                                        mediaType = "Social",
-                                        sportTag = sub.tagName,
-                                        dateFetched = 1700000000000L
+            // OPTIMIZATION: Only react when the list of tags actually changes
+            subscriptions
+                .map { it.map { s -> s.tagName }.toSet() }
+                .distinctUntilChanged()
+                .collectLatest { tagSet ->
+                    if (tagSet.isNotEmpty()) {
+                        tagSet.forEach { tagName ->
+                            try {
+                                contentRepository.fetchRealContent(tagName)
+                                
+                                // Mock "Social" content logic remains here if needed
+                                if (tagName.contains("Hyrox", true) || tagName.contains("CrossFit", true) || tagName.contains("Athlete", true)) {
+                                    val cleanTag = tagName.replace(" ", "").lowercase()
+                                    workoutDao.insertContentSource(
+                                        ContentSourceEntity(
+                                            title = "Recent updates for #$tagName",
+                                            summary = "Tap to view the latest training and competition posts for $tagName on Instagram.",
+                                            url = "https://www.instagram.com/explore/tags/$cleanTag/",
+                                            mediaType = "Social",
+                                            sportTag = tagName,
+                                            dateFetched = 1700000000000L
+                                        )
                                     )
-                                )
+                                }
+                            } catch (e: Exception) {
+                                Log.e("HomeViewModel", "Error fetching content for $tagName: ${e.message}")
                             }
-                        } catch (e: Exception) {
-                            Log.e("HomeViewModel", "Error fetching content for ${sub.tagName}: ${e.message}")
                         }
                     }
                 }
-            }
         }
     }
 
     private fun observeContentForBriefing() {
         viewModelScope.launch {
+            // OPTIMIZATION: Use distinctUntilChanged on tags and workout title
+            // to prevent regeneration unless interests or the workout plan itself changes.
             combine(
-                subscriptions,
-                dailyWorkout,
-                _rawSubscribedContent
-            ) { subs, workout, content ->
-                Triple(subs, workout, content)
-            }.collectLatest { (subs, workout, content) ->
-                if (subs.isEmpty() || content.isEmpty()) {
+                subscriptions.map { it.map { s -> s.tagName }.toSet() }.distinctUntilChanged(),
+                dailyWorkout.map { it?.title }.distinctUntilChanged(),
+                _rawSubscribedContent.map { it.size }.distinctUntilChanged() // Only if content count changes
+            ) { interestTags, workoutTitle, contentSize ->
+                Triple(interestTags, workoutTitle, contentSize)
+            }.collectLatest { (interestTags, workoutTitle, contentSize) ->
+                if (interestTags.isEmpty()) {
                     _knowledgeBriefing.value = ""
                     return@collectLatest
                 }
 
-                val interestNames = subs.map { it.tagName }
-                val workoutTitle = workout?.title
+                val interestList = interestTags.toList()
+                val cached = contentRepository.getCachedBriefing(interestList, workoutTitle)
                 
-                val cached = contentRepository.getCachedBriefing(interestNames, workoutTitle)
                 if (cached != null) {
                     _knowledgeBriefing.value = cached
                 } else {
-                    generateKnowledgeBriefing(content, interestNames, workoutTitle)
+                    // Fetch content once for the briefing
+                    val currentContent = _rawSubscribedContent.first()
+                    if (currentContent.isNotEmpty()) {
+                        generateKnowledgeBriefing(currentContent, interestList, workoutTitle)
+                    }
                 }
             }
         }

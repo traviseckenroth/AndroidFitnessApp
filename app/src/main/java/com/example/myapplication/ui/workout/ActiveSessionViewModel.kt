@@ -366,11 +366,12 @@ class ActiveSessionViewModel @Inject constructor(
                 transcribeJob?.cancel()
             }
 
-            val currentExercises = _exerciseStates.value.filter {
+            val currentExercisesList = _exerciseStates.value.filter {
                 it.sets.any { set -> !set.isCompleted }
-            }.joinToString { it.exercise.name }
+            }.map { it.exercise.name }
+            
             val available = repository.getAllExercises().first()
-            val response = bedrockClient.coachInteraction(currentExercises, userText, available)
+            val response = bedrockClient.coachInteraction(currentExercisesList.joinToString("\n"), userText, available)
 
             val newHistory = _chatHistory.value.toMutableList()
             newHistory.add(ChatMessage("Coach", response.explanation))
@@ -386,35 +387,53 @@ class ActiveSessionViewModel @Inject constructor(
 
             if (response.exercises.isNotEmpty()) {
                 val workoutId = _workoutId.value
-                val incompleteSets = _sets.value.filter { !it.isCompleted }
-                repository.deleteSets(incompleteSets)
+                
+                // Identify all exercises to replace (explicitly named OR matching new suggestions)
+                val suggestedNames = response.exercises.map { it.name.lowercase().trim() }
+                
+                val exercisesToReplace = _exerciseStates.value.filter { existing ->
+                    val existingName = existing.exercise.name.lowercase().trim()
+                    val isExplicitlyNamed = response.replacingExerciseName?.lowercase()?.trim() == existingName
+                    val matchesSuggested = suggestedNames.any { it == existingName || it.contains(existingName) || existingName.contains(it) }
+                    isExplicitlyNamed || matchesSuggested
+                }
 
-                val newSets = response.exercises.mapNotNull { genEx ->
+                // Remove uncompleted sets for identified exercises
+                exercisesToReplace.forEach { ex ->
+                    val incompleteSets = ex.sets.filter { !it.isCompleted }
+                    if (incompleteSets.isNotEmpty()) {
+                        repository.deleteSets(incompleteSets)
+                    }
+                }
+
+                // Insert NEW suggested sets
+                val setsToInsert = response.exercises.mapNotNull { genEx ->
                     val match = available.find {
                         it.name.equals(genEx.name, ignoreCase = true) ||
-                                it.name.contains(genEx.name, ignoreCase = true) ||
-                                genEx.name.contains(it.name, ignoreCase = true)
+                        it.name.contains(genEx.name, ignoreCase = true)
                     }
 
                     if (match != null) {
-                        List(genEx.sets) { setNum ->
+                        // Find if we already had completed sets for this exercise to keep numbering correct
+                        val completedCountForThisExercise = _exerciseStates.value
+                            .find { it.exercise.exerciseId == match.exerciseId }
+                            ?.sets?.count { it.isCompleted } ?: 0
+
+                        List(genEx.sets) { setIdx ->
                             WorkoutSetEntity(
                                 workoutId = workoutId,
                                 exerciseId = match.exerciseId,
-                                setNumber = setNum + 1,
+                                setNumber = completedCountForThisExercise + setIdx + 1,
                                 suggestedReps = genEx.suggestedReps,
                                 suggestedLbs = genEx.suggestedLbs.toInt(),
                                 suggestedRpe = 8
                             )
                         }
-                    } else {
-                        Log.e("ActiveSession", "AI suggested '${genEx.name}' but no match found in DB.")
-                        null
-                    }
+                    } else null
                 }.flatten()
 
-                if (newSets.isNotEmpty()) {
-                    repository.insertSets(newSets)
+                if (setsToInsert.isNotEmpty()) {
+                    repository.insertSets(setsToInsert)
                 }
             }
         }

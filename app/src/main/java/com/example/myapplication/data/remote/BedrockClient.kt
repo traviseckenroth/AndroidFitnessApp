@@ -3,7 +3,7 @@
 package com.example.myapplication.data.remote
 
 import android.util.Log
-import com.example.myapplication.data.local.ContentSourceEntity // ADD THIS IMPORT
+import com.example.myapplication.data.local.ContentSourceEntity
 import aws.sdk.kotlin.services.bedrockruntime.BedrockRuntimeClient
 import aws.sdk.kotlin.services.bedrockruntime.model.InvokeModelRequest
 import aws.smithy.kotlin.runtime.http.engine.okhttp.OkHttpEngine
@@ -14,7 +14,6 @@ import okhttp3.internal.http2.StreamResetException
 import kotlinx.coroutines.CancellationException
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.repository.AuthRepository
-// 1. ADD IMPORT
 import com.example.myapplication.data.repository.PromptRepository
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -27,12 +26,11 @@ import kotlinx.serialization.json.Json
 import java.util.Date
 
 // --- AI RESPONSE DATA MODELS ---
-// --- 1. NEW DATA MODELS FOR FOOD LOGGING ---
 @Serializable
 data class FoodLogResponse(
     val foodItems: List<FoodItem>,
     val totalMacros: MacroSummary,
-    val analysis: String, // Brief comment like "High protein meal!"
+    val analysis: String,
     val mealType: String = "Snack"
 )
 
@@ -128,7 +126,6 @@ class BedrockClient @Inject constructor(
     private val promptRepository: PromptRepository
 ) {
 
-    // Initialize client using your Custom Cognito Provider
     private val client by lazy {
         val cognitoProvider = CognitoCredentialsProvider(
             authRepository = authRepository,
@@ -182,21 +179,17 @@ class BedrockClient @Inject constructor(
             responseBody.getJSONArray("results").getJSONObject(0).getString("outputText").trim()
 
         } catch (e: StreamResetException) {
-            // FIX: Handle stream reset safely
             Log.w("BedrockClient", "Cue generation cancelled: ${e.message}")
             throw CancellationException("Request cancelled")
         } catch (e: Exception) {
             Log.e("BedrockClient", "AI Generation failed", e)
-            "Keep pushing!" // Fallback
+            "Keep pushing!"
         }
     }
 
-    // --- NEW FUNCTION: PARSE NATURAL LANGUAGE FOOD ---
     suspend fun parseFoodLog(userQuery: String): FoodLogResponse = withContext(Dispatchers.Default) {
         try {
-            // 3. FETCH PROMPT (No variables to replace in this one)
             val systemPrompt = promptRepository.getFoodLogSystemPrompt()
-
             val cleanJson = invokeClaude(systemPrompt, userQuery)
             jsonConfig.decodeFromString<FoodLogResponse>(cleanJson)
         } catch (e: Exception) {
@@ -204,7 +197,7 @@ class BedrockClient @Inject constructor(
             FoodLogResponse(emptyList(), MacroSummary(0, 0, 0, 0), "Error: ${e.message}")
         }
     }
-    // --- 1. GENERATE WORKOUT PLAN (Exercise Only) ---
+
     suspend fun generateWorkoutPlan(
         goal: String,
         programType: String,
@@ -224,7 +217,6 @@ class BedrockClient @Inject constructor(
                 - Tier 3: Isolation or machine-based exercises.
             """.trimIndent()
 
-            // FIX 1: Group flat history list by Date -> then by Exercise Name
             val historySummary = workoutHistory
                 .groupBy { it.completedWorkout.date }
                 .entries.joinToString("\n") { (date, sessionSets) ->
@@ -236,7 +228,6 @@ class BedrockClient @Inject constructor(
                     "On ${Date(date)}, you did: $sessionDetails."
                 }
 
-            // FIX 2: Use correct property '.name' instead of '.exerciseName'
             val exerciseListString = availableExercises.joinToString("\n") {
                 "- ${it.name} (Muscle: ${it.muscleGroup ?: "General"}, Equipment: ${it.equipment ?: "None"}, Tier: ${it.tier})"
             }
@@ -245,9 +236,6 @@ class BedrockClient @Inject constructor(
 
             val rawPrompt = promptRepository.getWorkoutSystemPrompt()
             
-            // VERIFICATION LOG: Confirming prompt source
-            Log.d("BedrockPromptTest", "WORKOUT PROMPT TEMPLATE: $rawPrompt")
-
             val systemPrompt = rawPrompt
                 .replace("{userAge}", userAge.toString())
                 .replace("{userHeight}", userHeight.toString())
@@ -260,11 +248,7 @@ class BedrockClient @Inject constructor(
                 .replace("{tierDefinitions}", tierDefinitions)
                 .replace("{totalMinutesMinus5}", (totalMinutes - 5).toString())
             
-            Log.d("BedrockPromptTest", "RESOLVED SYSTEM PROMPT: $systemPrompt")
-
             val userPrompt = "Generate plan for ${userAge}year old, ${userWeight}kg, Goal: ${goal}."
-            Log.d("BedrockPromptTest", "USER PROMPT: $userPrompt")
-
             val cleanJson = invokeClaude(systemPrompt, userPrompt)
             jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
 
@@ -273,10 +257,12 @@ class BedrockClient @Inject constructor(
             GeneratedPlanResponse(explanation = "Error: ${e.localizedMessage}")
         }
     }
+
     @Serializable
     data class NegotiationResponse(
         val explanation: String,
-        val exercises: List<GeneratedExercise>
+        val exercises: List<GeneratedExercise>,
+        val replacingExerciseName: String? = null
     )
 
     suspend fun coachInteraction(
@@ -286,30 +272,11 @@ class BedrockClient @Inject constructor(
     ): NegotiationResponse = withContext(Dispatchers.Default) {
         val exerciseList = availableExercises.joinToString("\n") { "- ${it.name}" }
 
-        val systemPrompt = """
-        You are an expert, supportive Fitness Coach. The user is currently performing a workout.
+        val rawPrompt = promptRepository.getCoachInteractionPrompt()
         
-        YOUR GOALS:
-        1. BE CONVERSATIONAL: If the user asks for advice, form tips, or motivation, answer them directly and concisely (max 3 sentences).
-        2. ADAPT THE PLAN: If the user mentions pain (e.g., "my knee hurts"), extreme fatigue, or missing equipment, provide empathy AND modify the remaining exercises.
-        
-        RULES FOR EXERCISE MODIFICATION:
-        - Only modify the plan if the user's message warrants it.
-        - ONLY use exercises from the ALLOWED LIST below.
-        - If no modification is needed, return an empty list for "exercises".
-        
-        CURRENT WORKOUT CONTEXT:
-        $currentWorkout
-        
-        ALLOWED LIST:
-        $exerciseList
-        
-        OUTPUT FORMAT (JSON OBJECT ONLY):
-        {
-          "explanation": "Your spoken response to the user (advice or explanation of changes).",
-          "exercises": [ { "name": "...", "sets": 3, "suggestedReps": 10, "suggestedLbs": 0.0, "tier": 1 } ]
-        }
-    """.trimIndent()
+        val systemPrompt = rawPrompt
+            .replace("{currentWorkout}", currentWorkout)
+            .replace("{exerciseList}", exerciseList)
 
         try {
             val cleanJson = invokeClaude(systemPrompt, userMessage)
@@ -319,7 +286,7 @@ class BedrockClient @Inject constructor(
             NegotiationResponse("I'm here, but I'm having trouble processing that. Keep going!", emptyList())
         }
     }
-    // --- 2. GENERATE NUTRITION PLAN (Separate Call) ---
+
     suspend fun generateNutritionPlan(
         userAge: Int,
         userHeight: Int,
@@ -331,7 +298,6 @@ class BedrockClient @Inject constructor(
         avgWorkoutDurationMins: Int
     ): RemoteNutritionPlan = withContext(Dispatchers.Default) {
         try {
-            // 6. FETCH AND REPLACE VARIABLES FOR NUTRITION
             val rawPrompt = promptRepository.getNutritionSystemPrompt()
 
             val systemPrompt = rawPrompt
@@ -350,6 +316,7 @@ class BedrockClient @Inject constructor(
             RemoteNutritionPlan(explanation = "Error generating plan. Please try again.")
         }
     }
+
     suspend fun generateStretchingFlow(
         currentGoal: String,
         history: List<CompletedWorkoutWithExercise>,
@@ -369,6 +336,7 @@ class BedrockClient @Inject constructor(
             GeneratedPlanResponse(explanation = "Failed to generate mobility flow.")
         }
     }
+
     suspend fun selectDailyIntel(
         currentWorkout: String,
         availableContent: List<ContentSourceEntity>
@@ -396,12 +364,12 @@ class BedrockClient @Inject constructor(
             null
         }
     }
+
     suspend fun getInterestRecommendations(currentInterests: List<String>): List<String> = withContext(Dispatchers.Default) {
         if (currentInterests.isEmpty()) {
             return@withContext listOf("CrossFit", "Powerlifting", "Hyrox", "Olympic Weightlifting", "Yoga")
         }
 
-        // Local fast-path for "CrossFit" as requested by user
         if (currentInterests.any { it.equals("CrossFit", ignoreCase = true) }) {
             return@withContext listOf("Mat Fraser", "Rich Froning", "Tia-Clair Toomey", "Justin Medeiros", "Mal O'Brien")
         }
@@ -430,7 +398,7 @@ class BedrockClient @Inject constructor(
             return@withContext emptyList()
         }
     }
-    // --- WORKFLOW 2: ACCESSORY WORKOUT ---
+
     suspend fun generateAccessoryWorkout(
         currentGoal: String,
         history: List<CompletedWorkoutWithExercise>,
@@ -444,11 +412,10 @@ class BedrockClient @Inject constructor(
 
         try {
             val cleanJson = invokeClaude(prompt, "Generate Accessory")
-            Log.d("BedrockClient", "Accessory JSON: $cleanJson") // Log the raw JSON
             jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
         } catch (e: Exception) {
-            Log.e("Bedrock", "Accessory parse failed: ${e.localizedMessage}", e)
-            GeneratedPlanResponse(explanation = "Failed to generate accessory work. Error: ${e.localizedMessage}")
+            Log.e("Bedrock", "Accessory parse failed", e)
+            GeneratedPlanResponse(explanation = "Failed to generate accessory work.")
         }
     }
 
@@ -480,7 +447,6 @@ class BedrockClient @Inject constructor(
         }
     }
 
-    // --- SHARED API HELPER ---
     private suspend fun invokeClaude(systemPrompt: String, userPrompt: String): String {
         val requestBody = ClaudeRequest(
             max_tokens = 6000,
@@ -499,20 +465,12 @@ class BedrockClient @Inject constructor(
         try {
             val response = client.invokeModel(request)
             val responseBody = response.body?.decodeToString() ?: ""
-            Log.d("BedrockClient", "Raw Response: $responseBody")
-
             val outerResponse = jsonConfig.decodeFromString<ClaudeResponse>(responseBody)
             val rawText = outerResponse.content.firstOrNull()?.text ?: ""
-
-            // Extract JSON from potential Markdown wrapper
             val jsonRegex = Regex("\\{.*\\}", setOf(RegexOption.DOT_MATCHES_ALL))
             val match = jsonRegex.find(rawText)
-
             return match?.value ?: throw Exception("AI returned invalid format: $rawText")
-
         } catch (e: StreamResetException) {
-            Log.w("BedrockClient", "Stream cancelled safely during request: ${e.message}")
-            // Throwing CancellationException ensures the coroutine scope cancels gracefully without crashing
             throw CancellationException("Bedrock request cancelled")
         }
     }

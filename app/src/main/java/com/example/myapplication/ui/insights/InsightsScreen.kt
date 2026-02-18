@@ -1,14 +1,13 @@
 // File: app/src/main/java/com/example/myapplication/ui/insights/InsightsScreen.kt
 package com.example.myapplication.ui.insights
 
-import android.graphics.Paint // Explicit import
+import android.graphics.Paint
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,29 +23,30 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
-import com.example.myapplication.data.local.ContentSourceEntity
-import com.example.myapplication.data.local.UserSubscriptionEntity
-import com.example.myapplication.ui.navigation.Screen
+import com.example.myapplication.data.local.ExerciseEntity
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun InsightsScreen(
     onNavigate: (String) -> Unit,
     viewModel: InsightsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
-    val subscriptions by viewModel.subscriptions.collectAsState()
     var showExerciseDropdown by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        if (state.isLoading) {
+            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+        }
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -63,59 +63,76 @@ fun InsightsScreen(
 
             item { AIStatusCard() }
 
+            // 1. Progress Graph
             item {
                 InsightCard(title = "Estimated 1 Rep Max") {
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { showExerciseDropdown = true }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = state.selectedExercise?.name ?: "Select Exercise",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Select")
-                        }
+                    Column {
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { showExerciseDropdown = true }
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                                color = Color.Transparent
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = state.selectedExercise?.name ?: "Select Exercise",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Select")
+                                }
+                            }
 
-                        DropdownMenu(
-                            expanded = showExerciseDropdown,
-                            onDismissRequest = { showExerciseDropdown = false }
-                        ) {
-                            state.availableExercises.forEach { exercise ->
-                                DropdownMenuItem(
-                                    text = { Text(exercise.name) },
-                                    onClick = {
-                                        viewModel.selectExercise(exercise)
-                                        showExerciseDropdown = false
-                                    }
-                                )
+                            DropdownMenu(
+                                expanded = showExerciseDropdown,
+                                onDismissRequest = { showExerciseDropdown = false },
+                                modifier = Modifier.fillMaxWidth(0.8f)
+                            ) {
+                                state.availableExercises.forEach { exercise ->
+                                    DropdownMenuItem(
+                                        text = { Text(exercise.name) },
+                                        onClick = {
+                                            viewModel.selectExercise(exercise)
+                                            showExerciseDropdown = false
+                                        }
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
 
-                    if (state.oneRepMaxHistory.isNotEmpty()) {
-                        OneRepMaxGraph(
-                            dataPoints = state.oneRepMaxHistory,
-                            lineColor = MaterialTheme.colorScheme.primary
-                        )
-                    } else {
-                        Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                            Text("No history for this exercise.", color = Color.Gray)
+                        if (state.oneRepMaxHistory.isNotEmpty()) {
+                            OneRepMaxGraph(
+                                dataPoints = state.oneRepMaxHistory,
+                                lineColor = MaterialTheme.colorScheme.primary
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(200.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("No history for this exercise.", color = Color.Gray)
+                            }
                         }
                     }
                 }
             }
 
+            // 2. Muscle Distribution
             item {
                 InsightCard(title = "Volume Distribution") {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         val maxVol = state.muscleVolumeDistribution.values.maxOrNull() ?: 1.0
                         state.muscleVolumeDistribution.entries
                             .sortedByDescending { it.value }
@@ -129,38 +146,29 @@ fun InsightsScreen(
                 }
             }
 
-            // --- KNOWLEDGE HUB SECTION (INTERESTS ONLY) ---
+            // 3. Knowledge Hub (Interests)
             item {
                 Column {
                     Text(
                         "Knowledge Hub",
-                        style = MaterialTheme.typography.headlineMedium,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
-                    Text(
-                        "Personalized intelligence from your favorite sports and athletes.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            item {
-                InsightCard(title = "Manage Interests") {
+                    Spacer(modifier = Modifier.height(4.dp))
                     KnowledgeHubControl(viewModel)
                 }
             }
 
+            // 4. Recent Activity
             item {
                 Text(
                     "Recent Activity",
                     style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onBackground
+                    fontWeight = FontWeight.SemiBold
                 )
             }
 
-            if (state.recentWorkouts.isEmpty()) {
+            if (state.recentWorkouts.isEmpty() && !state.isLoading) {
                 item { Text("No recent workouts logged.", color = Color.Gray) }
             } else {
                 items(state.recentWorkouts) { item ->
@@ -173,32 +181,33 @@ fun InsightsScreen(
     }
 }
 
-// --- COMPONENTS ---
-
 @Composable
 fun AIStatusCard() {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
+        shape = RoundedCornerShape(16.dp)
     ) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Default.AutoAwesome,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "Hybrid Optimization Active",
-                    style = MaterialTheme.typography.labelLarge,
+                    "AI-Optimized Training",
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    "AI designs your macro-cycle. Local algorithms auto-regulate your weights weekly based on RPE.",
-                    style = MaterialTheme.typography.bodySmall
+                    "Your performance data is being analyzed locally to refine your next session's RPE targets.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary)
-            )
         }
     }
 }
@@ -210,7 +219,8 @@ fun CompletedWorkoutCard(item: CompletedWorkoutWithExercise) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+        shape = RoundedCornerShape(12.dp)
     ) {
         Row(
             modifier = Modifier
@@ -244,7 +254,7 @@ fun VerticalStat(label: String, value: String) {
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.Bold
         )
-        Text(value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.ExtraBold)
+        Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
     }
 }
 
@@ -252,11 +262,13 @@ fun VerticalStat(label: String, value: String) {
 fun InsightCard(title: String, content: @Composable () -> Unit) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Spacer(modifier = Modifier.height(12.dp))
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(16.dp))
             content()
         }
     }
@@ -268,19 +280,29 @@ fun MuscleVolumeRow(muscle: String, volume: Double, maxVolume: Double) {
 
     Column {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(muscle, style = MaterialTheme.typography.bodyMedium)
-            Text("${(volume / 1000).roundToInt()}k lbs", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+            Text(muscle, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text("${(volume / 1000).roundToInt()}k lbs", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Spacer(modifier = Modifier.height(4.dp))
-        LinearProgressIndicator(
-            progress = { percentage },
+        Spacer(modifier = Modifier.height(6.dp))
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(8.dp)
-                .clip(RoundedCornerShape(4.dp)),
-            color = MaterialTheme.colorScheme.primary,
-            trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
-        )
+                .height(10.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(percentage)
+                    .fillMaxHeight()
+                    .clip(CircleShape)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary)
+                        )
+                    )
+            )
+        }
     }
 }
 
@@ -291,38 +313,27 @@ fun OneRepMaxGraph(dataPoints: List<Pair<Long, Float>>, lineColor: Color) {
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(250.dp)
-            .padding(16.dp)
+            .height(200.dp)
     ) {
         val values = dataPoints.map { it.second }
         val maxVal = values.maxOrNull() ?: 100f
         val minVal = values.minOrNull() ?: 0f
         val range = (maxVal - minVal).coerceAtLeast(10f)
+        val padding = 20f
 
         val width = size.width
-        val height = size.height
+        val height = size.height - padding * 2
         val pointSpacing = width / (dataPoints.size - 1).coerceAtLeast(1)
 
+        // Draw helper lines
         for (i in 0..2) {
             val yRatio = i / 2f
-            val yPos = height * (1 - yRatio)
-            val labelValue = (minVal + (range * yRatio)).roundToInt()
-
+            val yPos = height * (1 - yRatio) + padding
             drawLine(
-                color = Color.Gray.copy(alpha = 0.2f),
+                color = Color.Gray.copy(alpha = 0.1f),
                 start = Offset(0f, yPos),
                 end = Offset(width, yPos),
                 strokeWidth = 1.dp.toPx()
-            )
-
-            drawContext.canvas.nativeCanvas.drawText(
-                labelValue.toString(),
-                0f,
-                yPos - 10f,
-                android.graphics.Paint().apply {
-                    color = textColor
-                    textSize = 32f
-                }
             )
         }
 
@@ -331,29 +342,31 @@ fun OneRepMaxGraph(dataPoints: List<Pair<Long, Float>>, lineColor: Color) {
             val value = pair.second
             val normalizedY = (value - minVal) / range
             val x = index * pointSpacing
-            val y = height - (normalizedY * height)
+            val y = height - (normalizedY * height) + padding
 
             if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
-            drawCircle(color = lineColor, center = Offset(x, y), radius = 4.dp.toPx())
+            drawCircle(color = lineColor, center = Offset(x, y), radius = 3.dp.toPx())
         }
 
         drawPath(path = path, color = lineColor, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
 
-        val fillPath = Path()
-        fillPath.addPath(path)
-        fillPath.lineTo(width, height)
-        fillPath.lineTo(0f, height)
-        fillPath.close()
-
+        // Fill area
+        val fillPath = Path().apply {
+            addPath(path)
+            lineTo(width, size.height)
+            lineTo(0f, size.height)
+            close()
+        }
         drawPath(
             path = fillPath,
             brush = Brush.verticalGradient(
-                colors = listOf(lineColor.copy(alpha = 0.3f), Color.Transparent)
+                colors = listOf(lineColor.copy(alpha = 0.2f), Color.Transparent)
             )
         )
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun KnowledgeHubControl(viewModel: InsightsViewModel) {
     val subscriptions by viewModel.subscriptions.collectAsState()
@@ -361,47 +374,51 @@ fun KnowledgeHubControl(viewModel: InsightsViewModel) {
     var customInterest by remember { mutableStateOf("") }
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-
-        // 1. ADD CUSTOM INTEREST
         OutlinedTextField(
             value = customInterest,
             onValueChange = { customInterest = it },
-            label = { Text("Add Sport or Athlete") },
+            placeholder = { Text("Search sports, athletes, topics...") },
             trailingIcon = {
                 IconButton(onClick = {
-                    viewModel.addInterest(customInterest)
-                    customInterest = ""
+                    if (customInterest.isNotBlank()) {
+                        viewModel.addInterest(customInterest)
+                        customInterest = ""
+                    }
                 }) {
-                    Icon(Icons.Default.Add, "Add")
+                    Icon(Icons.Default.Search, "Add")
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            singleLine = true
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp)
         )
 
-        // 2. ACTIVE SUBSCRIPTIONS
         if (subscriptions.isNotEmpty()) {
-            Text("Following", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 subscriptions.forEach { sub ->
-                    InputChip(
+                    FilterChip(
                         selected = true,
                         onClick = { viewModel.toggleSubscription(sub.tagName, sub.type) },
                         label = { Text(sub.tagName) },
-                        trailingIcon = { Icon(Icons.Default.Close, "Remove", modifier = Modifier.size(16.dp)) }
+                        trailingIcon = { Icon(Icons.Default.Close, "Remove", modifier = Modifier.size(16.dp)) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer
+                        )
                     )
                 }
             }
         }
 
-        // 3. AI RECOMMENDATIONS
         if (recommendations.isNotEmpty()) {
-            Text("Recommended for You", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.tertiary)
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(recommendations) { rec ->
+            Text("Suggested for you", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                recommendations.forEach { rec ->
                     AssistChip(
                         onClick = { viewModel.addInterest(rec) },
                         label = { Text(rec) },
