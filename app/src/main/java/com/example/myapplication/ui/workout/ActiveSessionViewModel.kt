@@ -366,6 +366,10 @@ class ActiveSessionViewModel @Inject constructor(
                 transcribeJob?.cancel()
             }
 
+            // --- LOCAL INTENT INTERCEPTION ---
+            if (handleLocalIntent(userText)) return@launch
+
+            // --- CLOUD AI FALLBACK ---
             val currentExercisesList = _exerciseStates.value.filter {
                 it.sets.any { set -> !set.isCompleted }
             }.map { it.exercise.name }
@@ -436,6 +440,73 @@ class ActiveSessionViewModel @Inject constructor(
                     repository.insertSets(setsToInsert)
                 }
             }
+        }
+    }
+
+    private suspend fun handleLocalIntent(userText: String): Boolean {
+        val lowerText = userText.lowercase()
+
+        // 1. Swap Intent
+        if (lowerText.contains("swap") || lowerText.contains("alternative") || lowerText.contains("different")) {
+            val exerciseToSwap = _exerciseStates.value.find { state ->
+                lowerText.contains(state.exercise.name.lowercase())
+            } ?: _exerciseStates.value.firstOrNull { state ->
+                state.sets.any { !it.isCompleted }
+            }
+
+            if (exerciseToSwap != null) {
+                val alternatives = repository.getBestAlternatives(exerciseToSwap.exercise)
+                if (alternatives.isNotEmpty()) {
+                    val bestAlt = alternatives.first()
+                    val coachMsg = "Swapping ${exerciseToSwap.exercise.name} for ${bestAlt.name}. It targets the same muscle groups and fits your plan's tier."
+                    addCoachResponse(coachMsg)
+                    swapExercise(exerciseToSwap.exercise.exerciseId, bestAlt.exerciseId)
+                    return true
+                }
+            }
+        }
+
+        // 2. Plate Math Intent
+        if (lowerText.contains("plate") || lowerText.contains("math") || lowerText.contains("weight")) {
+            val weightMatch = Regex("(\\d+(\\.\\d+)?)").find(userText)
+            if (weightMatch != null) {
+                val targetWeight = weightMatch.value.toDouble()
+                val mathResult = calculatePlateMath(targetWeight)
+                addCoachResponse(mathResult)
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private fun addCoachResponse(text: String) {
+        val newHistory = _chatHistory.value.toMutableList()
+        newHistory.add(ChatMessage("Coach", text))
+        _chatHistory.value = newHistory
+        voiceManager.speak(text) {}
+    }
+
+    private fun calculatePlateMath(target: Double): String {
+        val bar = barWeight.value
+        if (target <= bar) return "That's just the bar ($bar lbs)."
+
+        var remaining = (target - bar) / 2.0
+        val plates = listOf(45.0, 35.0, 25.0, 10.0, 5.0, 2.5)
+        val result = mutableListOf<String>()
+
+        for (plate in plates) {
+            val count = (remaining / plate).toInt()
+            if (count > 0) {
+                result.add("$count x ${if (plate % 1.0 == 0.0) plate.toInt() else plate}")
+                remaining -= count * plate
+            }
+        }
+
+        return if (result.isEmpty()) {
+            "Load the bar ($bar lbs)."
+        } else {
+            "Per side: ${result.joinToString(", ")}."
         }
     }
 
