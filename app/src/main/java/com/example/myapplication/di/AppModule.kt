@@ -26,9 +26,7 @@ object AppModule {
             AppDatabase::class.java,
             "workout_database"
         )
-            // FIXED: Removed undefined 'MIGRATION_22_23'.
-            // fallbackToDestructiveMigration handles version mismatches (e.g. 12 vs 22) by resetting the DB.
-            .fallbackToDestructiveMigration(true)
+            .fallbackToDestructiveMigration()
             .build()
     }
 

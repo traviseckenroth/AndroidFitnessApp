@@ -4,6 +4,11 @@ package com.example.myapplication.data.local
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
+data class MuscleVolumeAggregation(
+    val muscleGroup: String,
+    val totalVolume: Double
+)
+
 @Dao
 interface WorkoutDao {
 
@@ -71,8 +76,21 @@ interface WorkoutDao {
     fun getCompletedWorkoutsWithExercise(): Flow<List<CompletedWorkoutWithExercise>>
 
     @Transaction
+    @Query("SELECT * FROM completed_workouts WHERE date >= :startTime")
+    fun getCompletedWorkoutsRecent(startTime: Long): Flow<List<CompletedWorkoutWithExercise>>
+
+    @Transaction
     @Query("SELECT * FROM completed_workouts WHERE exerciseId = :exerciseId")
     fun getCompletedWorkoutsForExercise(exerciseId: Long): Flow<List<CompletedWorkoutWithExercise>>
+
+    @Query("""
+        SELECT e.muscleGroup, SUM(c.reps * c.weight) as totalVolume
+        FROM completed_workouts c
+        JOIN exercises e ON c.exerciseId = e.exerciseId
+        WHERE e.muscleGroup IS NOT NULL
+        GROUP BY e.muscleGroup
+    """)
+    fun getLifetimeMuscleVolume(): Flow<List<MuscleVolumeAggregation>>
 
     // --- PLAN / NUTRITION ---
     @Query("SELECT * FROM workout_plans ORDER BY startDate DESC LIMIT 1")

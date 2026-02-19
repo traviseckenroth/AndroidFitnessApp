@@ -35,7 +35,7 @@ android {
             useSupportLibrary = true
         }
 
-        // --- FIX: ADD COGNITO KEYS HERE ---
+        // --- AWS CONFIG ---
         val awsRegion = localProperties.getProperty("AWS_REGION") ?: "us-east-1"
         val cognitoPoolId = localProperties.getProperty("COGNITO_IDENTITY_POOL_ID") ?: ""
 
@@ -58,7 +58,7 @@ android {
 
     buildFeatures {
         compose = true
-        buildConfig = true // Required for the buildConfigField above to work
+        buildConfig = true
     }
 
     packaging {
@@ -75,7 +75,8 @@ dependencies {
     implementation(libs.material)
     implementation(libs.androidx.lifecycle.runtime)
     implementation(libs.androidx.activity.compose)
-    implementation("aws.sdk.kotlin:cognitoidentityprovider:1.0.41") // or matching your other aws versions
+    implementation("aws.sdk.kotlin:cognitoidentityprovider:1.0.41")
+
     // --- Compose ---
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
@@ -83,38 +84,36 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.compose.material.icons)
-    implementation("org.jsoup:jsoup:1.17.2") // ADD THIS for Web Crawling
+    implementation("org.jsoup:jsoup:1.17.2")
+
     // --- Architecture & Navigation ---
     implementation(libs.androidx.lifecycle.viewmodel)
     implementation(libs.androidx.navigation.compose)
     implementation("com.google.firebase:firebase-firestore")
+
     // --- Room Database ---
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
-    implementation(libs.androidx.compose.runtime)
-    implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.media3.common.ktx)
-    implementation(libs.androidx.compose.foundation.layout)
     ksp(libs.androidx.room.compiler)
-    val room_version = "2.6.1" // Update this to the latest stable version
-    implementation("androidx.room:room-runtime:$room_version")
-    ksp("androidx.room:room-compiler:$room_version")
 
     // --- Hilt (Dependency Injection) ---
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.androidx.hilt.navigation.compose)
-    implementation("androidx.health.connect:connect-client:1.1.0-alpha07") // Check for latest version
+    implementation("androidx.hilt:hilt-work:1.2.0")
+    ksp("androidx.hilt:hilt-compiler:1.2.0")
+
+    // --- WorkManager ---
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+
+    // --- Health Connect ---
+    implementation("androidx.health.connect:connect-client:1.1.0-alpha07")
+
     // --- AWS SDK for Kotlin ---
     implementation(platform(libs.aws.sdk.kotlin.bom))
-
-    // 1. Bedrock Runtime (for AI)
     implementation(libs.aws.bedrock.runtime)
     implementation("aws.sdk.kotlin:transcribestreaming:1.0.41")
-    // 2. Cognito Identity (for Guest Credentials) -> THIS REPLACES 'auth'
     implementation(libs.aws.cognito.identity)
-
-    // 3. HTTP Client Engine
     implementation(libs.http.client.engine.okhttp)
 
     // --- Serialization ---
@@ -132,7 +131,6 @@ dependencies {
     implementation("com.google.firebase:firebase-config-ktx")
     implementation(libs.play.services.coroutines)
 
-
     // --- CameraX ---
     val cameraxVersion = "1.3.1"
     implementation("androidx.camera:camera-core:$cameraxVersion")
@@ -142,7 +140,7 @@ dependencies {
 
     // --- ML Kit ---
     implementation("com.google.mlkit:pose-detection-accurate:18.0.0-beta5")
-    implementation("androidx.compose.material:material-icons-extended")
+
     // --- Testing ---
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

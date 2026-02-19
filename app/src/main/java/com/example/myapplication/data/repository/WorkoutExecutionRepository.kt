@@ -7,6 +7,7 @@ import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutDao
 import com.example.myapplication.data.local.WorkoutEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
+import com.example.myapplication.data.local.MuscleVolumeAggregation
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.flow.*
@@ -37,8 +38,13 @@ class WorkoutExecutionRepository @Inject constructor(
 
     fun getAllCompletedWorkouts(): Flow<List<CompletedWorkoutWithExercise>> = workoutDao.getCompletedWorkoutsWithExercise()
 
+    fun getCompletedWorkoutsRecent(startTime: Instant): Flow<List<CompletedWorkoutWithExercise>> =
+        workoutDao.getCompletedWorkoutsRecent(startTime.toEpochMilli())
+
     fun getCompletedWorkoutsForExercise(exerciseId: Long): Flow<List<CompletedWorkoutWithExercise>> =
         workoutDao.getCompletedWorkoutsForExercise(exerciseId)
+
+    fun getLifetimeMuscleVolume(): Flow<List<MuscleVolumeAggregation>> = workoutDao.getLifetimeMuscleVolume()
 
     // --- WRITES ---
     suspend fun updateSet(set: WorkoutSetEntity) = workoutDao.updateSet(set)
@@ -231,6 +237,12 @@ class WorkoutExecutionRepository @Inject constructor(
             isCompleted = false
         )
         workoutDao.insertSets(listOf(newSet))
+    }
+
+    suspend fun syncWithHealthConnect(workoutId: Long, startTime: Instant, endTime: Instant, calories: Double) {
+        val workout = workoutDao.getWorkoutById(workoutId)
+        val title = workout?.title ?: "Workout"
+        healthConnectManager.writeWorkout(workoutId, startTime, endTime, calories, title)
     }
 
     private suspend fun checkRecoveryNeeded(): Boolean {

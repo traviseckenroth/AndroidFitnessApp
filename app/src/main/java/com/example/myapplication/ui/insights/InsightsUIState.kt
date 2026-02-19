@@ -11,8 +11,10 @@ data class InsightsUiState(
     val selectedExercise: ExerciseEntity? = null,
     // Data points for the 1RM Graph
     val oneRepMaxHistory: List<Pair<Long, Float>> = emptyList(),
-    // Data for Muscle Balance
+    // Data for Muscle Balance (Filtered by date range)
     val muscleVolumeDistribution: Map<String, Double> = emptyMap(),
+    // Lifetime stats aggregated in SQL
+    val lifetimeMuscleVolume: Map<String, Double> = emptyMap(),
     // Recent History (Limited to last 5-10 items)
     val recentWorkouts: List<CompletedWorkoutWithExercise> = emptyList(),
     

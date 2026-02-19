@@ -29,6 +29,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import kotlinx.coroutines.flow.first
 
@@ -118,8 +120,11 @@ class InsightsViewModel @Inject constructor(
     }
 
     private fun observeWorkoutHistory() {
+        val sixMonthsAgo = Instant.now().minus(180, ChronoUnit.DAYS)
+
         viewModelScope.launch {
-            executionRepository.getAllCompletedWorkouts().collect { completedWorkouts ->
+            // 1. Observe Recent Workouts (last 6 months) for graphs and lists
+            executionRepository.getCompletedWorkoutsRecent(sixMonthsAgo).collect { completedWorkouts ->
                 val volumeByMuscle = completedWorkouts
                     .filter { it.exercise.muscleGroup != null }
                     .groupBy { it.exercise.muscleGroup!! }
@@ -136,6 +141,14 @@ class InsightsViewModel @Inject constructor(
                     muscleVolumeDistribution = volumeByMuscle,
                     recentWorkouts = sortedHistory
                 ) }
+            }
+        }
+
+        viewModelScope.launch {
+            // 2. Observe Lifetime Stats via SQL aggregation
+            executionRepository.getLifetimeMuscleVolume().collect { aggregations ->
+                val lifetimeMap = aggregations.associate { it.muscleGroup to it.totalVolume }
+                _uiState.update { it.copy(lifetimeMuscleVolume = lifetimeMap) }
             }
         }
     }
