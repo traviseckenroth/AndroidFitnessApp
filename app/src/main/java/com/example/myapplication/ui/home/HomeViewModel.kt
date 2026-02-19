@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.DailyWorkoutEntity
 import com.example.myapplication.data.repository.PlanRepository
+import com.example.myapplication.data.repository.PlanProgress
 import com.example.myapplication.data.remote.BedrockClient
 import com.example.myapplication.data.repository.ContentRepository
 import com.example.myapplication.data.local.ContentSourceEntity
@@ -55,6 +56,10 @@ class HomeViewModel @Inject constructor(
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+    // Reactive Flow for Active Plan Progress
+    val planProgress: StateFlow<PlanProgress?> = repository.getActivePlanProgressFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val userName: StateFlow<String> = userPrefs.userName.stateIn(
         scope = viewModelScope,

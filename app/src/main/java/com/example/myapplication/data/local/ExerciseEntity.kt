@@ -46,7 +46,7 @@ data class WorkoutPlanEntity(
     val nutritionJson: String? = null,
     val isActive: Boolean = false,
     val aiExplanation: String? = null,
-    val phase: Int = 1 // Added for Iterative Mesocycle Phase Tracking
+    val block: Int = 1 // Renamed from phase
 )
 
 @Entity(

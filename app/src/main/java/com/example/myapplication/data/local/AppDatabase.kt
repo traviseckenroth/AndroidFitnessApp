@@ -18,7 +18,7 @@ import com.example.myapplication.data.local.FoodLogEntity
         ContentSourceEntity::class,
         UserSubscriptionEntity::class
     ],
-    version = 32,
+    version = 33,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

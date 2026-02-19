@@ -35,6 +35,7 @@ import com.example.myapplication.data.local.DailyWorkoutEntity
 import com.example.myapplication.data.local.ContentSourceEntity
 import com.example.myapplication.data.local.UserSubscriptionEntity
 import com.example.myapplication.data.remote.CommunityPick
+import com.example.myapplication.data.repository.PlanProgress
 import com.example.myapplication.ui.navigation.Screen
 import com.example.myapplication.ui.theme.PrimaryIndigo
 import com.example.myapplication.ui.theme.SecondaryIndigo
@@ -61,6 +62,7 @@ fun HomeScreen(
 
     val communityPick by viewModel.communityPick.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    val planProgress by viewModel.planProgress.collectAsState()
 
     val userName by viewModel.userName.collectAsState()
 
@@ -103,7 +105,7 @@ fun HomeScreen(
             item {
                 Text("Today's Session", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 if (workout != null) {
-                    WorkoutCard(workout = workout!!, onNavigate = onNavigate)
+                    WorkoutCard(workout = workout!!, progress = planProgress, onNavigate = onNavigate)
                 } else {
                     RestDayRecoveryCard(
                         onGenerateStretching = { viewModel.generateRecoverySession("Stretching") },
@@ -695,7 +697,11 @@ fun HeaderSection(userName: String) {
 }
 
 @Composable
-fun WorkoutCard(workout: DailyWorkoutEntity, onNavigate: (String) -> Unit) {
+fun WorkoutCard(
+    workout: DailyWorkoutEntity,
+    progress: PlanProgress?,
+    onNavigate: (String) -> Unit
+) {
     val isStretching = workout.title.contains("Recovery", ignoreCase = true) ||
             workout.title.contains("Stretching", ignoreCase = true)
 
@@ -705,26 +711,61 @@ fun WorkoutCard(workout: DailyWorkoutEntity, onNavigate: (String) -> Unit) {
         shape = RoundedCornerShape(20.dp)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.background.copy(alpha = 0.5f),
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(if (isStretching) "🧘" else "💪", fontSize = 24.sp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.background.copy(alpha = 0.5f),
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(if (isStretching) "🧘" else "💪", fontSize = 24.sp)
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text(workout.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = if (isStretching) "Mobility Session" else "Scheduled Session",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
-                Spacer(modifier = Modifier.width(16.dp))
-                Column {
-                    Text(workout.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text(
-                        text = if (isStretching) "Mobility Session" else "Scheduled Session",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                
+                // Progress Counter Badge
+                progress?.let {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = "${it.completedWorkouts}/${it.totalWorkouts}",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
+            
+            // Progress Bar
+            progress?.let {
+                Spacer(modifier = Modifier.height(16.dp))
+                LinearProgressIndicator(
+                    progress = it.percentage,
+                    modifier = Modifier.fillMaxWidth().height(6.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                    strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+                )
+            }
+
             Spacer(modifier = Modifier.height(20.dp))
             Button(
                 onClick = {

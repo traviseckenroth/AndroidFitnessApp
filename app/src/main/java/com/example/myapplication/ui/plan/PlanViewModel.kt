@@ -4,11 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.WorkoutPlan
 import com.example.myapplication.data.repository.PlanRepository
+import com.example.myapplication.data.repository.PlanProgress
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -31,22 +30,17 @@ class PlanViewModel @Inject constructor(
     private val _isPlanAccepted = MutableStateFlow(false)
     val isPlanAccepted = _isPlanAccepted.asStateFlow()
 
-    private val _nextPhaseNumber = MutableStateFlow<Int?>(null)
-    val nextPhaseNumber = _nextPhaseNumber.asStateFlow()
+    // Reactive Flow for Next Block Eligibility
+    val nextBlockNumber: StateFlow<Int?> = repository.getNextBlockNumberFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    // Reactive Flow for Active Plan Progress
+    val planProgress: StateFlow<PlanProgress?> = repository.getActivePlanProgressFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     private var currentPlanId: Long = -1L
 
-    init {
-        checkNextPhaseEligibility()
-    }
-
-    private fun checkNextPhaseEligibility() {
-        viewModelScope.launch {
-            _nextPhaseNumber.value = repository.getNextPhaseNumber()
-        }
-    }
-
-    fun generatePlan(goal: String, program: String, duration: Float, days: List<String>, phase: Int = 1) {
+    fun generatePlan(goal: String, program: String, duration: Float, days: List<String>, block: Int = 1) {
         if (goal.isBlank()) {
             _uiState.value = PlanUiState.Error("Please enter a goal.")
             return
@@ -62,7 +56,7 @@ class PlanViewModel @Inject constructor(
                         duration = duration.toInt(),
                         days = days,
                         programType = program,
-                        phase = phase
+                        block = block
                     )
                 }
                 currentPlanId = planId
@@ -77,9 +71,9 @@ class PlanViewModel @Inject constructor(
         }
     }
 
-    fun generateNextPhase() {
+    fun generateNextBlock() {
         viewModelScope.launch {
-            val nextPhase = _nextPhaseNumber.value ?: return@launch
+            val nextBlock = nextBlockNumber.value ?: return@launch
             val activePlan = repository.getActivePlan()
             if (activePlan != null) {
                 generatePlan(
@@ -87,7 +81,7 @@ class PlanViewModel @Inject constructor(
                     program = activePlan.programType,
                     duration = 1f, 
                     days = listOf("Mon", "Wed", "Fri"),
-                    phase = nextPhase
+                    block = nextBlock
                 )
             }
         }
@@ -98,7 +92,6 @@ class PlanViewModel @Inject constructor(
             viewModelScope.launch {
                 repository.activatePlan(currentPlanId)
                 _isPlanAccepted.value = true
-                _nextPhaseNumber.value = null // Reset until nearing end of this new phase
             }
         }
     }

@@ -148,6 +148,9 @@ interface WorkoutDao {
     @Query("SELECT * FROM workout_plans WHERE isActive = 1 LIMIT 1")
     suspend fun getActivePlan(): WorkoutPlanEntity?
 
+    @Query("SELECT * FROM workout_plans WHERE isActive = 1 LIMIT 1")
+    fun getActivePlanFlow(): Flow<WorkoutPlanEntity?>
+
     @Query("DELETE FROM exercises")
     suspend fun deleteAllExercises(): Int
 
@@ -206,5 +209,20 @@ interface WorkoutDao {
     suspend fun getFutureSetsForExercise(exerciseId: Long, currentDate: Long): List<WorkoutSetEntity>
 
     @Query("SELECT COUNT(*) FROM daily_workouts WHERE planId = :planId AND isCompleted = 0")
+    fun getUncompletedWorkoutsCountFlow(planId: Long): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM daily_workouts WHERE planId = :planId AND isCompleted = 0")
     suspend fun getUncompletedWorkoutsCount(planId: Long): Int
+
+    @Query("SELECT COUNT(*) FROM daily_workouts WHERE planId = :planId")
+    fun getTotalWorkoutsCountFlow(planId: Long): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM daily_workouts WHERE planId = :planId")
+    suspend fun getTotalWorkoutsCount(planId: Long): Int
+
+    @Query("SELECT COUNT(*) FROM daily_workouts WHERE planId = :planId AND isCompleted = 1")
+    fun getCompletedWorkoutsCountFlow(planId: Long): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM daily_workouts WHERE planId = :planId AND isCompleted = 1")
+    suspend fun getCompletedWorkoutsCount(planId: Long): Int
 }

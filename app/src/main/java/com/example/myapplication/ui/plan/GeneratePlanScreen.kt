@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.Sync
+import com.example.myapplication.data.repository.PlanProgress
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -30,7 +31,8 @@ fun GeneratePlanScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isAccepted by viewModel.isPlanAccepted.collectAsState()
-    val nextPhaseNumber by viewModel.nextPhaseNumber.collectAsState()
+    val nextBlockNumber by viewModel.nextBlockNumber.collectAsState()
+    val planProgress by viewModel.planProgress.collectAsState()
     val context = LocalContext.current
 
     // -- LOCAL UI STATE --
@@ -72,8 +74,8 @@ fun GeneratePlanScreen(
             CycleInformationBlock(goalInput, selectedProgram)
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 1. NEXT PHASE OFFER (If Eligible)
-            if (nextPhaseNumber != null && uiState !is PlanUiState.Loading) {
+            // 1. NEXT BLOCK OFFER (If Eligible)
+            if (nextBlockNumber != null && uiState !is PlanUiState.Loading) {
                 ElevatedCard(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                     colors = CardDefaults.elevatedCardColors(
@@ -84,19 +86,19 @@ fun GeneratePlanScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(8.dp))
-                            Text("Phase $nextPhaseNumber Ready!", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("Block $nextBlockNumber Ready!", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            "You are nearing the end of your current block. Generate Phase $nextPhaseNumber to automatically apply Progressive Overload and Variation based on your performance.",
+                            "You are nearing the end of your current mesocycle. Generate Block $nextBlockNumber to automatically apply Progressive Overload and Variation based on your performance.",
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(
-                            onClick = { viewModel.generateNextPhase() },
+                            onClick = { viewModel.generateNextBlock() },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Generate Phase $nextPhaseNumber with AI")
+                            Text("Generate Block $nextBlockNumber with AI")
                         }
                     }
                 }
@@ -141,8 +143,44 @@ fun GeneratePlanScreen(
                     colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Workout Schedule", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Workout Schedule", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            
+                            // Progress Counter
+                            planProgress?.let {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                    shape = MaterialTheme.shapes.small
+                                ) {
+                                    Text(
+                                        text = "${it.completedWorkouts}/${it.totalWorkouts}",
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                        
                         Text(plan.explanation, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
+                        
+                        // Progress Bar
+                        planProgress?.let {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            LinearProgressIndicator(
+                                progress = it.percentage,
+                                modifier = Modifier.fillMaxWidth().height(8.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f),
+                                strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+                            )
+                        }
+
                         Spacer(modifier = Modifier.height(8.dp))
                         Text("Tap to view details", style = MaterialTheme.typography.labelSmall)
                     }
@@ -161,7 +199,7 @@ fun GeneratePlanScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = if (!isAccepted) "Phase Preview" else "Workout Details",
+                            text = if (!isAccepted) "Block Preview" else "Workout Details",
                             style = MaterialTheme.typography.headlineSmall
                         )
                         Spacer(modifier = Modifier.height(8.dp))
@@ -180,7 +218,7 @@ fun GeneratePlanScreen(
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Accept Phase")
+                                Text("Accept Block")
                             }
                         } else {
                             TextButton(onClick = { showExerciseDialog = false }, modifier = Modifier.fillMaxWidth()) {
@@ -229,7 +267,7 @@ fun CycleInformationBlock(goal: String, programType: String) {
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "A long-term training journey (typically 6-12 months) focused on achieving your ultimate objective through progressive phases.",
+                text = "A long-term training journey (typically 6-12 months) focused on achieving your ultimate objective through progressive blocks.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -252,7 +290,7 @@ fun CycleInformationBlock(goal: String, programType: String) {
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Forma automatically splits your journey into 4-6 week blocks. Each block is analyzed to calculate your next phase, ensuring continuous overload and adaptation.",
+                        text = "Forma automatically splits your journey into 4-6 week blocks. Each block is analyzed to calculate your next block, ensuring continuous overload and adaptation.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -338,31 +376,12 @@ fun PlanInputForm(
             FilterChip(selected = selectedDays.contains(day), onClick = { onDaySelected(day) }, label = { Text(day) })
         }
     }
-    Spacer(modifier = Modifier.height(24.dp))
-    
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Sync, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Continuous Training Enabled", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-            }
-            Text(
-                "Phase 1 will be generated now. Forma will automatically calculate and append iterative mesocycles as you progress.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-    
+
     Spacer(modifier = Modifier.height(16.dp))
 
     Button(onClick = onGenerateClick, enabled = !isLoading, modifier = Modifier.fillMaxWidth()) {
         if (isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
-        else Text("Generate Phase 1 with AI")
+        else Text("Generate Block 1 with AI")
     }
     Spacer(modifier = Modifier.height(16.dp))
     TextButton(onClick = onManualCreateClick, modifier = Modifier.fillMaxWidth()) {

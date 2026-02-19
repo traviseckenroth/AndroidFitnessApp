@@ -67,7 +67,8 @@ data class RemoteNutritionPlan(
 data class GeneratedPlanResponse(
     val explanation: String = "",
     val schedule: List<GeneratedDay> = emptyList(),
-    val nutrition: RemoteNutritionPlan? = null
+    val nutrition: RemoteNutritionPlan? = null,
+    val mesocycleLengthWeeks: Int = 4 
 )
 
 @Serializable
@@ -221,7 +222,7 @@ class BedrockClient @Inject constructor(
         userAge: Int,
         userHeight: Int,
         userWeight: Double,
-        phase: Int = 1
+        block: Int = 1
     ): GeneratedPlanResponse = withContext(Dispatchers.Default) {
 
         try {
@@ -255,7 +256,7 @@ class BedrockClient @Inject constructor(
                 .replace("{userHeight}", userHeight.toString())
                 .replace("{userWeight}", userWeight.toString())
                 .replace("{goal}", goal)
-                .replace("{phase}", phase.toString())
+                .replace("{block}", block.toString())
                 .replace("{days}", days.joinToString())
                 .replace("{totalMinutes}", totalMinutes.toString())
                 .replace("{historySummary}", if (historySummary.isBlank()) "No previous history." else historySummary)
@@ -263,7 +264,7 @@ class BedrockClient @Inject constructor(
                 .replace("{tierDefinitions}", tierDefinitions)
                 .replace("{totalMinutesMinus5}", (totalMinutes - 5).toString())
             
-            val userPrompt = "Generate Phase $phase plan for ${userAge}y/o, Goal: $goal."
+            val userPrompt = "Generate Block $block plan for ${userAge}y/o, Goal: $goal."
             val cleanJson = invokeClaude(systemPrompt, userPrompt)
             jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
 

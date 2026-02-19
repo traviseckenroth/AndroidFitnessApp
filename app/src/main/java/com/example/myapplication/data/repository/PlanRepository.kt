@@ -17,14 +17,19 @@ import com.example.myapplication.data.remote.BedrockClient
 import com.example.myapplication.data.remote.GeneratedDay
 import com.example.myapplication.data.remote.GeneratedExercise
 import com.example.myapplication.data.remote.RemoteNutritionPlan
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.Json
 import java.util.Calendar
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.roundToInt
+
+data class PlanProgress(
+    val completedWorkouts: Int,
+    val totalWorkouts: Int,
+    val percentage: Float
+)
 
 @Singleton
 class PlanRepository @Inject constructor(
@@ -37,14 +42,14 @@ class PlanRepository @Inject constructor(
         duration: Int,
         days: List<String>,
         programType: String = "Hypertrophy",
-        phase: Int = 1
+        block: Int = 1
     ): Long {
-        Log.d("PlanRepo", "Generating Plan for: $goal, Phase: $phase")
-        val previousPlan = if (phase > 1) workoutDao.getLatestPlan() else null
+        Log.d("PlanRepo", "Generating Plan for: $goal, Block: $block")
+        val previousPlan = if (block > 1) workoutDao.getLatestPlan() else null
         val existingNutritionJson = previousPlan?.nutritionJson
 
-        // If Phase 1, we start fresh. If Phase 2+, we transition.
-        if (phase == 1) {
+        // If Block 1, we start fresh. If Block 2+, we transition.
+        if (block == 1) {
             workoutDao.deleteFutureUncompletedWorkouts(System.currentTimeMillis())
         }
 
@@ -71,10 +76,10 @@ class PlanRepository @Inject constructor(
             userAge = age,
             userHeight = height,
             userWeight = weight,
-            phase = phase
+            block = block
         )
 
-        val startDate = if (phase > 1 && previousPlan != null) {
+        val startDate = if (block > 1 && previousPlan != null) {
             val lastWorkout = workoutDao.getWorkoutsForPlan(previousPlan.planId).maxByOrNull { it.scheduledDate }
             (lastWorkout?.scheduledDate ?: System.currentTimeMillis()) + (24 * 60 * 60 * 1000)
         } else {
@@ -82,23 +87,26 @@ class PlanRepository @Inject constructor(
         }
 
         val planEntity = WorkoutPlanEntity(
-            name = if (phase > 1) "$programType for $goal (Phase $phase)" else "$programType for $goal",
+            name = if (block > 1) "$programType for $goal (Block $block)" else "$programType for $goal",
             startDate = startDate,
             goal = goal,
             programType = programType,
             aiExplanation = aiResponse.explanation,
             nutritionJson = existingNutritionJson,
-            phase = phase,
+            block = block,
             isActive = true
         )
 
-        if (phase > 1) {
+        if (block > 1) {
             workoutDao.deactivateAllPlans()
         }
 
         val adjustedSchedule = enforceTimeConstraints(aiResponse.schedule, duration.toFloat())
-        val totalWeeks = if (programType == "Endurance") 4 else 5
-        val deloadWeekIndex = if (programType == "Endurance") 4 else 5
+        
+        // Use AI determined mesocycle length (4-6 weeks)
+        val totalWeeks = aiResponse.mesocycleLengthWeeks.coerceIn(4, 6)
+        val deloadWeekIndex = totalWeeks 
+
         val fullPlanData = mutableMapOf<DailyWorkoutEntity, List<WorkoutSetEntity>>()
 
         for (weekNum in 1..totalWeeks) {
@@ -140,10 +148,47 @@ class PlanRepository @Inject constructor(
         return workoutDao.saveFullWorkoutPlan(planEntity, fullPlanData)
     }
 
-    suspend fun getNextPhaseNumber(): Int? {
+    /**
+     * Reactive eligibility for next block.
+     * Returns the next block number if user has <= 3 uncompleted workouts in current active plan.
+     */
+    fun getNextBlockNumberFlow(): Flow<Int?> = workoutDao.getActivePlanFlow().flatMapLatest { activePlan ->
+        if (activePlan == null) flowOf(null)
+        else {
+            workoutDao.getUncompletedWorkoutsCountFlow(activePlan.planId).map { remaining ->
+                if (remaining <= 3) activePlan.block + 1 else null
+            }
+        }
+    }
+
+    suspend fun getNextBlockNumber(): Int? {
         val activePlan = workoutDao.getActivePlan() ?: return null
         val remaining = workoutDao.getUncompletedWorkoutsCount(activePlan.planId)
-        return if (remaining in 1..3) activePlan.phase + 1 else null
+        return if (remaining <= 3) activePlan.block + 1 else null
+    }
+
+    /**
+     * Reactive progress for the current active plan.
+     */
+    fun getActivePlanProgressFlow(): Flow<PlanProgress?> = workoutDao.getActivePlanFlow().flatMapLatest { activePlan ->
+        if (activePlan == null) flowOf(null)
+        else {
+            combine(
+                workoutDao.getTotalWorkoutsCountFlow(activePlan.planId),
+                workoutDao.getCompletedWorkoutsCountFlow(activePlan.planId)
+            ) { total, completed ->
+                val percentage = if (total > 0) completed.toFloat() / total.toFloat() else 0f
+                PlanProgress(completed, total, percentage)
+            }
+        }
+    }
+
+    suspend fun getActivePlanProgress(): PlanProgress? {
+        val activePlan = workoutDao.getActivePlan() ?: return null
+        val total = workoutDao.getTotalWorkoutsCount(activePlan.planId)
+        val completed = workoutDao.getCompletedWorkoutsCount(activePlan.planId)
+        val percentage = if (total > 0) completed.toFloat() / total.toFloat() else 0f
+        return PlanProgress(completed, total, percentage)
     }
 
     fun getWorkoutHistory(): Flow<List<CompletedWorkoutWithExercise>> {
