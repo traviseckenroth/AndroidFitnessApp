@@ -6,6 +6,9 @@ import android.content.Intent
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.remote.BedrockClient
@@ -14,6 +17,7 @@ import com.example.myapplication.data.repository.HealthConnectManager
 import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import com.example.myapplication.data.repository.WorkoutSummaryResult
 import com.example.myapplication.service.WorkoutTimerService
+import com.example.myapplication.service.WorkoutSyncWorker
 import com.example.myapplication.util.SpeechToTextManager
 import com.example.myapplication.util.VoiceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -215,6 +219,7 @@ class ActiveSessionViewModel @Inject constructor(
     fun finishWorkout(workoutId: Long) {
         stopTimerService()
         viewModelScope.launch {
+            // 1. Mark as complete in Room (Critical & Fast)
             val report = repository.completeWorkout(workoutId)
             _workoutSummary.value = report
 
@@ -222,19 +227,18 @@ class ActiveSessionViewModel @Inject constructor(
             val durationMin = ChronoUnit.MINUTES.between(workoutStartTime, endTime)
             val estimatedCalories = (durationMin * 4.5).coerceAtLeast(10.0)
 
-            try {
-                if (healthConnectManager.hasPermissions()) {
-                    healthConnectManager.writeWorkout(
-                        workoutId = workoutId,
-                        startTime = workoutStartTime,
-                        endTime = endTime,
-                        calories = estimatedCalories,
-                        title = "Strength Workout"
-                    )
-                }
-            } catch (e: Exception) {
-                Log.e("Workout", "Failed to sync with Health Connect", e)
-            }
+            // 2. Offload Health Connect Sync to WorkManager (Background)
+            val syncRequest = OneTimeWorkRequestBuilder<WorkoutSyncWorker>()
+                .setInputData(workDataOf(
+                    "workoutId" to workoutId,
+                    "startTime" to workoutStartTime.toString(),
+                    "endTime" to endTime.toString(),
+                    "calories" to estimatedCalories
+                ))
+                .build()
+
+            WorkManager.getInstance(application).enqueue(syncRequest)
+            Log.d("Workout", "Enqueued background sync for workout $workoutId")
         }
     }
 

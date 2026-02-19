@@ -141,6 +141,9 @@ dependencies {
     // --- ML Kit ---
     implementation("com.google.mlkit:pose-detection-accurate:18.0.0-beta5")
 
+    // --- Image Loading ---
+    implementation(libs.coil.compose)
+
     // --- Testing ---
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

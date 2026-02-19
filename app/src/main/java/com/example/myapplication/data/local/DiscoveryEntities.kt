@@ -18,6 +18,7 @@ data class ContentSourceEntity(
     val title: String,
     val summary: String,
     val url: String,
+    val imageUrl: String? = null, // Added for buttery smooth image caching
     val mediaType: String, // "Video", "Article", "Social"
     val sportTag: String,  // e.g., "Hyrox"
     val athleteTag: String? = null, // e.g., "Hunter McIntyre"

@@ -24,11 +24,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
 import com.example.myapplication.data.local.DailyWorkoutEntity
 import com.example.myapplication.data.local.ContentSourceEntity
 import com.example.myapplication.data.local.UserSubscriptionEntity
@@ -286,7 +288,7 @@ fun KnowledgeFeedCard(item: ContentSourceEntity, onClick: () -> Unit, onUpvote: 
     Card(
         modifier = Modifier
             .width(240.dp)
-            .height(140.dp),
+            .height(180.dp), // Increased height for image
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -295,61 +297,77 @@ fun KnowledgeFeedCard(item: ContentSourceEntity, onClick: () -> Unit, onUpvote: 
                 modifier = Modifier
                     .fillMaxSize()
                     .clickable { onClick() }
-                    .padding(12.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                        shape = RoundedCornerShape(4.dp)
+                // AsyncImage with caching from Coil
+                if (item.imageUrl != null) {
+                    AsyncImage(
+                        model = item.imageUrl,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(100.dp),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(100.dp)
+                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = item.sportTag.uppercase(),
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                        Icon(
+                            imageVector = when (item.mediaType) {
+                                "Video" -> Icons.Default.PlayCircle
+                                else -> Icons.AutoMirrored.Filled.Article
+                            },
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
+                            modifier = Modifier.size(40.dp)
                         )
                     }
                 }
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                )
-                
-                Spacer(modifier = Modifier.height(4.dp))
-                
-                Text(
-                    text = item.summary,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                )
-                
-                Spacer(modifier = Modifier.weight(1f))
-                
-                val icon = when (item.mediaType) {
-                    "Video" -> Icons.Default.PlayCircle
-                    "Social" -> Icons.Default.Share
-                    else -> Icons.AutoMirrored.Filled.Article
+
+                Column(modifier = Modifier.padding(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = item.sportTag.uppercase(),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(6.dp))
+                    
+                    Text(
+                        text = item.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    
+                    Spacer(modifier = Modifier.height(2.dp))
+                    
+                    Text(
+                        text = item.summary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
                 }
-                
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    modifier = Modifier.size(14.dp).align(Alignment.End)
-                )
             }
 
             IconButton(
@@ -357,13 +375,14 @@ fun KnowledgeFeedCard(item: ContentSourceEntity, onClick: () -> Unit, onUpvote: 
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(4.dp)
-                    .size(32.dp)
+                    .size(28.dp)
+                    .background(Color.White.copy(alpha = 0.7f), CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.ThumbUp,
                     contentDescription = "Upvote",
-                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
-                    modifier = Modifier.size(16.dp)
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(14.dp)
                 )
             }
         }
