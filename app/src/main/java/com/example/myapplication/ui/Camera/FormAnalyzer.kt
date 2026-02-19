@@ -10,7 +10,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.pose.Pose
 import com.google.mlkit.vision.pose.PoseDetection
 import com.google.mlkit.vision.pose.PoseLandmark
-import com.google.mlkit.vision.pose.accurate.AccuratePoseDetectorOptions
+import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
 import kotlin.math.abs
 import kotlin.math.atan2
 
@@ -32,24 +32,34 @@ class FormAnalyzer(
     private var framesStable = 0
     private val STABILITY_THRESHOLD = 20f
     private var lastTriggerTime = 0L
+    
+    // Optimization: Throttle
+    private var lastProcessedTime = 0L
+    private val FRAME_INTERVAL_MS = 100L // 10 FPS limit
 
+    // Optimization: Use Standard detection instead of Accurate for speed
     private val detector = PoseDetection.getClient(
-        AccuratePoseDetectorOptions.Builder()
-            .setDetectorMode(AccuratePoseDetectorOptions.STREAM_MODE)
+        PoseDetectorOptions.Builder()
+            .setDetectorMode(PoseDetectorOptions.STREAM_MODE)
             .build()
     )
 
     @OptIn(ExperimentalGetImage::class)
     fun analyze(imageProxy: ImageProxy) {
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastProcessedTime < FRAME_INTERVAL_MS) {
+            imageProxy.close()
+            return
+        }
+        lastProcessedTime = currentTime
+
         val mediaImage = imageProxy.image
         if (mediaImage != null) {
             val rotation = imageProxy.imageInfo.rotationDegrees
 
-            val (rotatedWidth, rotatedHeight) = if (rotation == 90 || rotation == 270) {
-                imageProxy.height to imageProxy.width
-            } else {
-                imageProxy.width to imageProxy.height
-            }
+            // Optimization: Only swap dimensions if needed, avoid complex tuple destructuring if speed critical
+            val rotatedWidth = if (rotation == 90 || rotation == 270) imageProxy.height else imageProxy.width
+            val rotatedHeight = if (rotation == 90 || rotation == 270) imageProxy.width else imageProxy.height
 
             val inputImage = InputImage.fromMediaImage(mediaImage, rotation)
 
@@ -58,7 +68,6 @@ class FormAnalyzer(
                     if (isPoseHighConfidence(pose)) {
                         onPoseUpdated(pose, rotatedWidth, rotatedHeight)
 
-                        // FIX: Logic now depends strictly on stability
                         if (isStable(pose)) {
                             processPose(pose)
                         } else {
@@ -68,6 +77,9 @@ class FormAnalyzer(
                         onVisualFeedback("Align full body")
                     }
                 }
+                .addOnFailureListener { e ->
+                    Log.e("FormAnalyzer", "Detection failed", e)
+                }
                 .addOnCompleteListener { imageProxy.close() }
         } else {
             imageProxy.close()
@@ -75,7 +87,6 @@ class FormAnalyzer(
     }
 
     private fun isStable(pose: Pose): Boolean {
-        // FIX: Check BOTH Hip and Knee to ensure entire body isn't drifting
         val hip = pose.getPoseLandmark(PoseLandmark.RIGHT_HIP) ?: return false
         val knee = pose.getPoseLandmark(PoseLandmark.RIGHT_KNEE) ?: return false
 
@@ -85,10 +96,10 @@ class FormAnalyzer(
         lastHipX = hip.position.x
         lastKneeX = knee.position.x
 
-        // Must be stable (movement < 20px) for 10 frames (~300ms)
+        // Reduced stability count due to frame throttling (5 frames @ 10fps = 0.5s)
         return if (deltaHip < STABILITY_THRESHOLD && deltaKnee < STABILITY_THRESHOLD) {
             framesStable++
-            framesStable > 10
+            framesStable > 5
         } else {
             framesStable = 0
             false
@@ -96,18 +107,27 @@ class FormAnalyzer(
     }
 
     private fun isPoseHighConfidence(pose: Pose): Boolean {
-        val criticalLandmarks = listOf(PoseLandmark.RIGHT_HIP, PoseLandmark.RIGHT_KNEE)
-        return criticalLandmarks.all {
-            val lm = pose.getPoseLandmark(it)
-            lm != null && lm.inFrameLikelihood > 0.7f
-        }
+        val hip = pose.getPoseLandmark(PoseLandmark.RIGHT_HIP)
+        val knee = pose.getPoseLandmark(PoseLandmark.RIGHT_KNEE)
+        return (hip != null && hip.inFrameLikelihood > 0.7f && knee != null && knee.inFrameLikelihood > 0.7f)
     }
 
     private fun processPose(pose: Pose) {
-        val landMarks = profile.landmarks.map { pose.getPoseLandmark(it) }
-        if (landMarks.any { it == null }) return
+        // Optimization: Access landmarks directly instead of mapping a list every frame
+        val landmarks = arrayOfNulls<PoseLandmark>(3)
+        var allFound = true
+        for (i in profile.landmarks.indices) {
+            val lm = pose.getPoseLandmark(profile.landmarks[i])
+            if (lm == null) {
+                allFound = false
+                break
+            }
+            landmarks[i] = lm
+        }
 
-        val angle = calculateAngle(landMarks[0]!!, landMarks[1]!!, landMarks[2]!!)
+        if (!allFound) return
+
+        val angle = calculateAngle(landmarks[0]!!, landmarks[1]!!, landmarks[2]!!)
 
         onVisualFeedback("Reps: $repCount | Angle: ${angle}°")
         trackRepProgress(angle)
@@ -115,7 +135,7 @@ class FormAnalyzer(
 
     private fun trackRepProgress(angle: Int) {
         val now = System.currentTimeMillis()
-        if (now - lastTriggerTime < 2000) return
+        if (now - lastTriggerTime < 1500) return // 1.5s lockout
 
         if (angle >= profile.extensionThreshold) {
             if (isInRep && hasHitDepth) {
@@ -131,7 +151,7 @@ class FormAnalyzer(
 
             if (!hasHitDepth) {
                 hasHitDepth = true
-                Log.d("FormAnalyzer", "Depth Hit: Triggering AI") // Debug Log
+                Log.d("FormAnalyzer", "Depth Hit")
                 onFormIssueDetected(FormFeedback.GOOD_DEPTH)
                 lastTriggerTime = now
             }
@@ -142,7 +162,6 @@ class FormAnalyzer(
         return when {
             name.contains("Squat", true) -> MotionProfile(
                 landmarks = listOf(PoseLandmark.RIGHT_HIP, PoseLandmark.RIGHT_KNEE, PoseLandmark.RIGHT_ANKLE),
-                // FIX: Relaxed depth to 95 degrees to ensure it triggers easier
                 flexionThreshold = 95,
                 extensionThreshold = 160
             )
@@ -167,6 +186,14 @@ class FormAnalyzer(
         var angle = abs(result)
         if (angle > 180) angle = 360.0 - angle
         return angle.toInt()
+    }
+
+    fun shutdown() {
+        try {
+            detector.close()
+        } catch (e: Exception) {
+            Log.e("FormAnalyzer", "Error closing detector", e)
+        }
     }
 
     companion object {

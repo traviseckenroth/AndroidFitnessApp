@@ -6,6 +6,7 @@ import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import java.util.Locale
+import kotlin.random.Random
 
 enum class FormFeedback {
     TOO_HIGH, TOO_LOW, BAD_LOCKOUT, GOOD_DEPTH, NEUTRAL
@@ -15,6 +16,16 @@ class VoiceCoach(context: Context) {
     private var tts: TextToSpeech? = null
     private var isReady = false
     private var lastSpeakTime = 0L
+    private val motivators = listOf(
+        "Strong push!", 
+        "Easy money!", 
+        "Keep the tension!", 
+        "Drive through!", 
+        "Light weight!", 
+        "Perfect form!", 
+        "Don't stop now!",
+        "Control it!"
+    )
 
     init {
         tts = TextToSpeech(context) { status ->
@@ -64,7 +75,9 @@ class VoiceCoach(context: Context) {
 
     fun onGoodRep(repCount: Int) {
         // Always flush rep counts so they are immediate
-        speak("$repCount", force = true, flush = true)
+        // Every 3rd rep, add motivation
+        val suffix = if (repCount % 3 == 0) " ${motivators.random()}" else ""
+        speak("$repCount.$suffix", force = true, flush = true)
     }
 
     fun onSetComplete() {

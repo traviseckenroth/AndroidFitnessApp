@@ -4,8 +4,10 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.speech.RecognizerIntent
-import android.util.Log
+import android.view.KeyEvent
+import android.view.View
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
@@ -28,7 +30,6 @@ import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -65,7 +66,7 @@ fun ActiveWorkoutScreen(
     val exerciseStates by viewModel.exerciseStates.collectAsState()
     val coachBriefing by viewModel.coachBriefing.collectAsState()
     val workoutSummary by viewModel.workoutSummary.collectAsState()
-    
+
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showChatSheet by remember { mutableStateOf(false) }
     var userText by remember { mutableStateOf("") }
@@ -85,10 +86,60 @@ fun ActiveWorkoutScreen(
     val completedSets = remember(exerciseStates) { exerciseStates.sumOf { it.sets.count { s -> s.isCompleted } } }
     val progress = if (totalSets > 0) completedSets.toFloat() / totalSets else 0f
 
+    // Auto-Scroll Logic: Triggered whenever a set is completed
+    LaunchedEffect(completedSets) {
+        if (exerciseStates.isNotEmpty()) {
+            val activeExerciseIndex = exerciseStates.indexOfFirst { state ->
+                state.sets.any { !it.isCompleted }
+            }
+            if (activeExerciseIndex != -1) {
+                workoutListState.animateScrollToItem(activeExerciseIndex + 1)
+            }
+        }
+    }
+
     DisposableEffect(Unit) {
         currentView.keepScreenOn = true
+
+        // Intercept Media Button Events (Headphones)
+        val originalOnKeyListener: View.OnKeyListener? = if (Build.VERSION.SDK_INT >= 33) {
+            try {
+                View::class.java.getMethod("getOnKeyListener").invoke(currentView) as? View.OnKeyListener
+            } catch (e: Exception) {
+                null
+            }
+        } else {
+            null
+        }
+
+        currentView.setOnKeyListener { v, keyCode, event ->
+            if (event.action == KeyEvent.ACTION_DOWN &&
+                (keyCode == KeyEvent.KEYCODE_HEADSETHOOK || keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)) {
+
+                // Earbud Control Logic: Toggle Timer if running, else Log next set
+                val activeExercise = viewModel.exerciseStates.value.firstOrNull { state ->
+                    state.sets.any { !it.isCompleted }
+                }
+
+                if (activeExercise != null) {
+                    if (activeExercise.timerState.isRunning) {
+                        viewModel.startSetTimer(activeExercise.exercise.exerciseId) // Toggles pause/resume
+                    } else {
+                        val nextSet = activeExercise.sets.firstOrNull { !it.isCompleted }
+                        if (nextSet != null) {
+                            viewModel.updateSetCompletion(nextSet, true)
+                            viewModel.startSetTimer(activeExercise.exercise.exerciseId)
+                        }
+                    }
+                    return@setOnKeyListener true // Consume event
+                }
+            }
+            originalOnKeyListener?.onKey(v, keyCode, event) ?: false
+        }
+
         onDispose {
             currentView.keepScreenOn = false
+            currentView.setOnKeyListener(originalOnKeyListener)
         }
     }
 
@@ -208,13 +259,13 @@ fun ActiveWorkoutScreen(
                     modifier = Modifier.padding(bottom = 16.dp),
                     shape = CircleShape
                 ) { Icon(Icons.Default.Add, "Add Exercise") }
-                
+
                 FloatingActionButton(
                     onClick = { showChatSheet = true },
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     shape = CircleShape
-                ) { 
+                ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Chat, "AI Coach")
                         if (isListening) {
@@ -231,8 +282,8 @@ fun ActiveWorkoutScreen(
     ) { padding ->
         if (showChatSheet) {
             ModalBottomSheet(
-                onDismissRequest = { 
-                    showChatSheet = false 
+                onDismissRequest = {
+                    showChatSheet = false
                     if (isListening) viewModel.toggleLiveCoaching()
                 },
                 sheetState = sheetState,
@@ -285,9 +336,12 @@ fun ActiveWorkoutScreen(
                 }
 
                 exerciseStates.forEach { exerciseState ->
+                    val isActiveExercise = exerciseState.sets.any { !it.isCompleted }
+                    val headerAlpha = if (isActiveExercise) 1.0f else 0.6f
+
                     stickyHeader {
                         Surface(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().alpha(headerAlpha),
                             color = MaterialTheme.colorScheme.surface,
                             tonalElevation = 2.dp
                         ) {
@@ -301,7 +355,9 @@ fun ActiveWorkoutScreen(
                     }
 
                     item {
-                        AnimatedVisibility(visible = exerciseState.areSetsVisible) {
+                        val shouldShowSets = exerciseState.areSetsVisible && (isActiveExercise || exerciseState == exerciseStates.last())
+
+                        AnimatedVisibility(visible = shouldShowSets) {
                             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                                 SetsTable(
                                     exerciseId = exerciseState.exercise.exerciseId,
@@ -346,7 +402,7 @@ fun CoachChatContent(
     onDismiss: () -> Unit
 ) {
     val chatListState = rememberLazyListState()
-    
+
     LaunchedEffect(chatHistory.size) {
         if (chatHistory.isNotEmpty()) {
             chatListState.animateScrollToItem(chatHistory.size - 1)
@@ -363,7 +419,7 @@ fun CoachChatContent(
             IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Close") }
         }
         Spacer(modifier = Modifier.height(8.dp))
-        
+
         LazyColumn(modifier = Modifier.weight(1f), state = chatListState) {
             items(chatHistory) { msg ->
                 val isCoach = msg.sender == "Coach"
@@ -414,9 +470,9 @@ fun CoachChatContent(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { onSend() })
             )
-            
+
             Spacer(modifier = Modifier.width(8.dp))
-            
+
             Surface(
                 onClick = onToggleLive,
                 shape = CircleShape,
@@ -505,7 +561,7 @@ fun ExerciseHeader(
         }) {
             Icon(Icons.Default.SwapHoriz, "Swap")
         }
-        
+
         Icon(
             imageVector = if (exerciseState.areSetsVisible) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
             contentDescription = null,
@@ -538,7 +594,8 @@ fun SetsTable(
                 isBarbell = equipment?.contains("Barbell", ignoreCase = true) == true,
                 viewModel = viewModel,
                 barWeight = barWeight,
-                userGender = userGender
+                userGender = userGender,
+                exerciseId = exerciseId
             )
         }
 
@@ -555,9 +612,17 @@ fun SetsTable(
 }
 
 @Composable
-fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel: ActiveSessionViewModel, barWeight: Double, userGender: String) {
+fun SetRow(
+    setNumber: Int,
+    set: WorkoutSetEntity,
+    isBarbell: Boolean,
+    viewModel: ActiveSessionViewModel,
+    barWeight: Double,
+    userGender: String,
+    exerciseId: Long
+) {
     val focusManager = LocalFocusManager.current
-    
+
     var weightText by remember(set.actualLbs) { mutableStateOf(set.actualLbs?.toInt()?.toString() ?: "") }
     var repsText by remember(set.actualReps) { mutableStateOf(set.actualReps?.toString() ?: "") }
     var rpeText by remember(set.actualRpe) { mutableStateOf(set.actualRpe?.toInt()?.toString() ?: "") }
@@ -591,7 +656,17 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
             TextField(
                 value = weightText,
                 onValueChange = { weightText = it },
-                modifier = Modifier.fillMaxWidth().onFocusChanged { if (!it.isFocused && weightText.isNotBlank()) viewModel.updateSetWeight(set, weightText) },
+                modifier = Modifier.fillMaxWidth().onFocusChanged { focusState ->
+                    if (focusState.isFocused) {
+                        weightText = ""
+                    } else {
+                        if (weightText.isNotBlank()) {
+                            viewModel.updateSetWeight(set, weightText)
+                        } else {
+                            weightText = set.actualLbs?.toInt()?.toString() ?: ""
+                        }
+                    }
+                },
                 placeholder = { Text(set.suggestedLbs.toString(), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
                 textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
@@ -607,7 +682,17 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
         TextField(
             value = repsText,
             onValueChange = { repsText = it },
-            modifier = Modifier.weight(1f).onFocusChanged { if (!it.isFocused && repsText.isNotBlank()) viewModel.updateSetReps(set, repsText) },
+            modifier = Modifier.weight(1f).onFocusChanged { focusState ->
+                if (focusState.isFocused) {
+                    repsText = ""
+                } else {
+                    if (repsText.isNotBlank()) {
+                        viewModel.updateSetReps(set, repsText)
+                    } else {
+                        repsText = set.actualReps?.toString() ?: ""
+                    }
+                }
+            },
             placeholder = { Text(set.suggestedReps.toString(), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
             textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
@@ -617,7 +702,17 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
         TextField(
             value = rpeText,
             onValueChange = { rpeText = it },
-            modifier = Modifier.weight(1f).onFocusChanged { if (!it.isFocused && rpeText.isNotBlank()) viewModel.updateSetRpe(set, rpeText) },
+            modifier = Modifier.weight(1f).onFocusChanged { focusState ->
+                if (focusState.isFocused) {
+                    rpeText = ""
+                } else {
+                    if (rpeText.isNotBlank()) {
+                        viewModel.updateSetRpe(set, rpeText)
+                    } else {
+                        rpeText = set.actualRpe?.toInt()?.toString() ?: ""
+                    }
+                }
+            },
             placeholder = { Text(set.suggestedRpe.toString(), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
             textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
@@ -632,8 +727,13 @@ fun SetRow(setNumber: Int, set: WorkoutSetEntity, isBarbell: Boolean, viewModel:
                     if (isChecked && weightText.isEmpty()) viewModel.updateSetWeight(set, set.suggestedLbs.toString())
                     if (isChecked && repsText.isEmpty()) viewModel.updateSetReps(set, set.suggestedReps.toString())
                     if (isChecked && rpeText.isEmpty()) viewModel.updateSetRpe(set, set.suggestedRpe.toString())
-                    
+
                     viewModel.updateSetCompletion(set, isChecked)
+
+                    // Auto-Timer: Start timer if set marked as complete
+                    if (isChecked) {
+                        viewModel.startSetTimer(exerciseId)
+                    }
                 }
             )
         }

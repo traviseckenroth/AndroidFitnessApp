@@ -137,9 +137,10 @@ dependencies {
     implementation("androidx.camera:camera-camera2:$cameraxVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
     implementation("androidx.camera:camera-view:$cameraxVersion")
+    implementation("androidx.camera:camera-video:$cameraxVersion") // Added for VideoCapture
 
     // --- ML Kit ---
-    implementation("com.google.mlkit:pose-detection-accurate:18.0.0-beta5")
+    implementation("com.google.mlkit:pose-detection:18.0.0-beta3")
 
     // --- Image Loading ---
     implementation(libs.coil.compose)
