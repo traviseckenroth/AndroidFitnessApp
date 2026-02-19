@@ -204,4 +204,7 @@ interface WorkoutDao {
         LIMIT 10
     """)
     suspend fun getFutureSetsForExercise(exerciseId: Long, currentDate: Long): List<WorkoutSetEntity>
+
+    @Query("SELECT COUNT(*) FROM daily_workouts WHERE planId = :planId AND isCompleted = 0")
+    suspend fun getUncompletedWorkoutsCount(planId: Long): Int
 }

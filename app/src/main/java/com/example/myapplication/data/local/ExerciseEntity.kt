@@ -36,7 +36,6 @@ data class ExerciseEntity(
     val videoUrl: String? = null
 )
 
-// FIX: Table name changed to "workout_plans" to match DAO queries
 @Entity(tableName = "workout_plans")
 data class WorkoutPlanEntity(
     @PrimaryKey(autoGenerate = true) val planId: Long = 0,
@@ -46,7 +45,8 @@ data class WorkoutPlanEntity(
     val programType: String,
     val nutritionJson: String? = null,
     val isActive: Boolean = false,
-    val aiExplanation: String? = null
+    val aiExplanation: String? = null,
+    val phase: Int = 1 // Added for Iterative Mesocycle Phase Tracking
 )
 
 @Entity(

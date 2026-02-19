@@ -154,7 +154,7 @@ class WorkoutExecutionRepository @Inject constructor(
             totalExercises = exercises.size,
             prsBroken = prsCount,
             topPR = topPRString,
-            highlights = highlights // FIX: Removed .take(3) to include all exercises
+            highlights = highlights 
         )
     }
 
@@ -163,6 +163,7 @@ class WorkoutExecutionRepository @Inject constructor(
         val workout = workoutDao.getWorkoutById(workoutId) ?: return summary
         val sets = workoutDao.getSetsForWorkoutList(workoutId).filter { it.isCompleted }
 
+        // 1. Save results to persistent history
         val historyEntries = sets.map { set ->
             CompletedWorkoutEntity(
                 exerciseId = set.exerciseId,
@@ -175,7 +176,44 @@ class WorkoutExecutionRepository @Inject constructor(
         if (historyEntries.isNotEmpty()) workoutDao.insertCompletedWorkouts(historyEntries)
         workoutDao.markWorkoutAsComplete(workoutId)
 
+        // 2. Continuous Planning: Propagate progress to future sessions
+        propagateProgressToFuture(workout.scheduledDate, sets)
+
         return summary
+    }
+
+    /**
+     * Iterative Mesocycle Logic:
+     * Analyzes performance in the completed workout and adjusts future instances of those exercises.
+     */
+    private suspend fun propagateProgressToFuture(currentDate: Long, completedSets: List<WorkoutSetEntity>) {
+        val exerciseGroups = completedSets.groupBy { it.exerciseId }
+        
+        for ((exerciseId, sets) in exerciseGroups) {
+            val futureSets = workoutDao.getFutureSetsForExercise(exerciseId, currentDate)
+            if (futureSets.isEmpty()) continue
+
+            // Determine Progression based on average performance of this exercise today
+            val avgActualLbs = sets.mapNotNull { it.actualLbs?.toDouble() }.average()
+            val avgSuggestedLbs = sets.map { it.suggestedLbs.toDouble() }.average()
+            val avgRpe = sets.mapNotNull { it.actualRpe?.toDouble() }.average()
+            
+            // Core Progression Logic
+            val weightIncrease = when {
+                avgRpe <= 7.0 && !avgRpe.isNaN() && avgActualLbs >= avgSuggestedLbs -> 5 // Too easy, add weight
+                avgActualLbs > avgSuggestedLbs && !avgActualLbs.isNaN() -> (avgActualLbs - avgSuggestedLbs).toInt().coerceAtLeast(0) // User manually went up
+                else -> 0
+            }
+
+            if (weightIncrease > 0 || avgActualLbs > avgSuggestedLbs) {
+                val updatedFutureSets = futureSets.map { futureSet ->
+                    val baseWeight = if (avgActualLbs > avgSuggestedLbs && !avgActualLbs.isNaN()) avgActualLbs.toInt() else futureSet.suggestedLbs
+                    futureSet.copy(suggestedLbs = baseWeight + weightIncrease)
+                }
+                workoutDao.insertSets(updatedFutureSets)
+                Log.d("IterativePlan", "Propagated +$weightIncrease lbs for exercise $exerciseId")
+            }
+        }
     }
 
     suspend fun injectWarmUpSets(workoutId: Long, exerciseId: Long, workingWeight: Int) {

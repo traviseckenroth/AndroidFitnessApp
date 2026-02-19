@@ -8,6 +8,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.example.myapplication.ui.about.AboutFormaScreen
 import com.example.myapplication.ui.workout.ContentDiscoveryScreen
 import com.example.myapplication.ui.auth.LoginScreen
 import com.example.myapplication.ui.auth.SignUpScreen
@@ -93,12 +94,17 @@ fun NavGraph(
                         popUpTo(0) { inclusive = true }
                     }
                 },
-                onNavigateToGymSettings = { navController.navigate("gym_settings") }
+                onNavigateToGymSettings = { navController.navigate("gym_settings") },
+                onNavigateToAbout = { navController.navigate(Screen.About.route) }
             )
         }
 
         composable("gym_settings") {
             GymSettingsScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Screen.About.route) {
+            AboutFormaScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Screen.GeneratePlan.route) {

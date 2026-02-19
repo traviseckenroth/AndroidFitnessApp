@@ -8,7 +8,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FitnessCenter // FIXED: Import
+import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,7 +25,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 fun SettingsScreen(
     onBack: () -> Unit,
     onLogoutSuccess: () -> Unit,
-    onNavigateToGymSettings: () -> Unit, // FIXED: Added missing parameter
+    onNavigateToGymSettings: () -> Unit,
+    onNavigateToAbout: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -63,7 +65,6 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.primary
             )
 
-            // FIXED: SettingsTile now works
             SettingsTile(
                 title = "Gym Settings",
                 subtitle = "Customize equipment and gym type",
@@ -116,6 +117,22 @@ fun SettingsScreen(
 
             HorizontalDivider()
 
+            // --- SECTION: APP INFO ---
+            Text(
+                "App Info",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            SettingsTile(
+                title = "About Forma",
+                subtitle = "Explore the features and technology",
+                icon = Icons.Default.Info,
+                onClick = onNavigateToAbout
+            )
+
+            HorizontalDivider()
+
             Text("Account", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
 
             Button(
@@ -129,7 +146,6 @@ fun SettingsScreen(
     }
 }
 
-// FIXED: Added missing Composable
 @Composable
 fun SettingsTile(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit) {
     Card(

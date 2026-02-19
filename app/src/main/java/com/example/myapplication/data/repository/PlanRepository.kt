@@ -14,7 +14,6 @@ import com.example.myapplication.data.local.CompletedWorkoutWithExercise
 import com.example.myapplication.data.local.WorkoutPlanEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.remote.BedrockClient
-// FIX: Ensure these imports exactly match the package in BedrockClient.kt
 import com.example.myapplication.data.remote.GeneratedDay
 import com.example.myapplication.data.remote.GeneratedExercise
 import com.example.myapplication.data.remote.RemoteNutritionPlan
@@ -37,28 +36,26 @@ class PlanRepository @Inject constructor(
         goal: String,
         duration: Int,
         days: List<String>,
-        programType: String = "Hypertrophy"
+        programType: String = "Hypertrophy",
+        phase: Int = 1
     ): Long {
-        Log.d("PlanRepo", "Generating Plan for: $goal")
-        val previousPlan = workoutDao.getLatestPlan()
+        Log.d("PlanRepo", "Generating Plan for: $goal, Phase: $phase")
+        val previousPlan = if (phase > 1) workoutDao.getLatestPlan() else null
         val existingNutritionJson = previousPlan?.nutritionJson
 
-        workoutDao.deleteFutureUncompletedWorkouts(System.currentTimeMillis())
+        // If Phase 1, we start fresh. If Phase 2+, we transition.
+        if (phase == 1) {
+            workoutDao.deleteFutureUncompletedWorkouts(System.currentTimeMillis())
+        }
 
         val workoutHistory = workoutDao.getCompletedWorkoutsWithExercise().first()
         val allExercises = workoutDao.getAllExercises().first()
+        val excludedEquipment = userPrefs.excludedEquipment.first()
 
-        // FIX 1: Fetch Excluded Equipment
-        val excludedEquipment = userPrefs.excludedEquipment.first() // Returns Set<String> e.g. {"Barbell", "Cable"}
-
-        // FIX 2: Filter the exercises before sending to AI
         val availableExercises = allExercises.filter { exercise ->
-            // Keep exercise if its equipment is NOT in the excluded list
-            // (If equipment is null/blank, assume it's bodyweight and keep it)
             val eq = exercise.equipment
             eq.isNullOrBlank() || !excludedEquipment.contains(eq)
         }
-        Log.d("PlanRepo", "Filtered ${allExercises.size} down to ${availableExercises.size} exercises. Excluded: $excludedEquipment")
 
         val height = userPrefs.userHeight.first()
         val weight = userPrefs.userWeight.first()
@@ -73,18 +70,31 @@ class PlanRepository @Inject constructor(
             availableExercises = availableExercises,
             userAge = age,
             userHeight = height,
-            userWeight = weight
+            userWeight = weight,
+            phase = phase
         )
 
-        val startDate = System.currentTimeMillis()
+        val startDate = if (phase > 1 && previousPlan != null) {
+            val lastWorkout = workoutDao.getWorkoutsForPlan(previousPlan.planId).maxByOrNull { it.scheduledDate }
+            (lastWorkout?.scheduledDate ?: System.currentTimeMillis()) + (24 * 60 * 60 * 1000)
+        } else {
+            System.currentTimeMillis()
+        }
+
         val planEntity = WorkoutPlanEntity(
-            name = "$programType for $goal",
+            name = if (phase > 1) "$programType for $goal (Phase $phase)" else "$programType for $goal",
             startDate = startDate,
             goal = goal,
             programType = programType,
             aiExplanation = aiResponse.explanation,
-            nutritionJson = existingNutritionJson
+            nutritionJson = existingNutritionJson,
+            phase = phase,
+            isActive = true
         )
+
+        if (phase > 1) {
+            workoutDao.deactivateAllPlans()
+        }
 
         val adjustedSchedule = enforceTimeConstraints(aiResponse.schedule, duration.toFloat())
         val totalWeeks = if (programType == "Endurance") 4 else 5
@@ -128,6 +138,12 @@ class PlanRepository @Inject constructor(
             }
         }
         return workoutDao.saveFullWorkoutPlan(planEntity, fullPlanData)
+    }
+
+    suspend fun getNextPhaseNumber(): Int? {
+        val activePlan = workoutDao.getActivePlan() ?: return null
+        val remaining = workoutDao.getUncompletedWorkoutsCount(activePlan.planId)
+        return if (remaining in 1..3) activePlan.phase + 1 else null
     }
 
     fun getWorkoutHistory(): Flow<List<CompletedWorkoutWithExercise>> {
@@ -191,7 +207,6 @@ class PlanRepository @Inject constructor(
         )
     }
     private fun cleanMobilityDescription(text: String): String {
-        // Improved regex to catch "Hold for...", "for 30 seconds", "30s hold", "30-second hold", etc.
         val patterns = listOf(
             "(?i)hold\\s+for\\s+\\d+\\s*(seconds?|s|minutes?|m)",
             "(?i)(for\\s+)?\\d+\\s*(seconds?|s|minutes?|m)\\s*hold",
@@ -204,9 +219,8 @@ class PlanRepository @Inject constructor(
             cleaned = cleaned.replace(Regex(pattern), "")
         }
 
-        // Clean up trailing punctuation, extra spaces, and ensure sentence case
-        return cleaned.replace(Regex("[.,;:]\\s*$"), "") // Remove trailing punctuation
-            .replace(Regex("\\s+"), " ")                // Normalize spaces
+        return cleaned.replace(Regex("[.,;:]\\s*$"), "")
+            .replace(Regex("\\s+"), " ")
             .trim()
             .replaceFirstChar { it.uppercase() }
     }
@@ -233,21 +247,16 @@ class PlanRepository @Inject constructor(
                 it.name.trim().equals(aiEx.name.trim(), ignoreCase = true)
             }
 
-            // FIX: If it's a mobility session, enforce a minimum of 30 seconds hold time if AI returns something lower
             val adjustedSuggestedReps = if (isMobility && aiEx.suggestedReps < 30) {
-                if (aiEx.suggestedReps <= 2) 60 else 30 // If it's 1 or 2, maybe it meant minutes? Otherwise use 30s.
+                if (aiEx.suggestedReps <= 2) 60 else 30
             } else {
                 aiEx.suggestedReps
             }
 
-            // 1. Clean the instructions of redundant time text for the session
             val cleanedNotes = cleanMobilityDescription(aiEx.notes)
-
-            // 2. Dynamically calculate time per set based on prescribed hold time
             val holdTimeInMinutes = adjustedSuggestedReps.toDouble() / 60.0
 
             if (realEx == null) {
-                // Create a new exercise entry with cleaned instructions
                 val newExerciseId = workoutDao.insertExercise(
                     ExerciseEntity(
                         name = aiEx.name,
@@ -278,7 +287,6 @@ class PlanRepository @Inject constructor(
                     notes = cleanedNotes
                 )
             } else {
-                // FIX: If exercise exists, check if the master record needs to be cleaned or duration updated
                 val durationRegex = Regex("(?i)\\d+\\s*(second|s|minute)")
                 if (isMobility || realEx.notes.contains(durationRegex) || realEx.description.contains(durationRegex)) {
                     val updatedEx = realEx.copy(
@@ -291,13 +299,12 @@ class PlanRepository @Inject constructor(
                 }
             }
 
-            // Generate the sets for this specific workout session
             List(aiEx.sets) { setNum ->
                 WorkoutSetEntity(
                     workoutId = workoutId,
                     exerciseId = realEx!!.exerciseId,
                     setNumber = setNum + 1,
-                    suggestedReps = adjustedSuggestedReps, // Used as hold time in seconds
+                    suggestedReps = adjustedSuggestedReps,
                     suggestedRpe = aiEx.suggestedRpe,
                     suggestedLbs = aiEx.suggestedLbs.toInt(),
                     isCompleted = false

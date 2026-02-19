@@ -17,6 +17,7 @@ sealed class Screen(val route: String, val title: String? = null, val icon: Imag
     object GeneratePlan : Screen("generate_plan")
     object ManualPlan : Screen("manual_plan")
     object Settings : Screen("settings", "Settings", Icons.Default.Settings)
+    object About : Screen("about", "About Forma", Icons.Default.Info)
 
     object ActiveWorkout : Screen("active_workout/{workoutId}") {
         fun createRoute(workoutId: Long) = "active_workout/$workoutId"
@@ -32,4 +33,4 @@ sealed class Screen(val route: String, val title: String? = null, val icon: Imag
     object ContentDiscovery : Screen("content_discovery/{contentId}") {
         fun createRoute(contentId: Long) = "content_discovery/$contentId"
     }
-} // FIXED: Added missing closing brace
+}

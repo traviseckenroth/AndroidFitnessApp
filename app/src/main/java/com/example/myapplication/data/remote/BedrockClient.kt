@@ -220,7 +220,8 @@ class BedrockClient @Inject constructor(
         availableExercises: List<ExerciseEntity>,
         userAge: Int,
         userHeight: Int,
-        userWeight: Double
+        userWeight: Double,
+        phase: Int = 1
     ): GeneratedPlanResponse = withContext(Dispatchers.Default) {
 
         try {
@@ -254,6 +255,7 @@ class BedrockClient @Inject constructor(
                 .replace("{userHeight}", userHeight.toString())
                 .replace("{userWeight}", userWeight.toString())
                 .replace("{goal}", goal)
+                .replace("{phase}", phase.toString())
                 .replace("{days}", days.joinToString())
                 .replace("{totalMinutes}", totalMinutes.toString())
                 .replace("{historySummary}", if (historySummary.isBlank()) "No previous history." else historySummary)
@@ -261,7 +263,7 @@ class BedrockClient @Inject constructor(
                 .replace("{tierDefinitions}", tierDefinitions)
                 .replace("{totalMinutesMinus5}", (totalMinutes - 5).toString())
             
-            val userPrompt = "Generate plan for ${userAge}year old, ${userWeight}kg, Goal: ${goal}."
+            val userPrompt = "Generate Phase $phase plan for ${userAge}y/o, Goal: $goal."
             val cleanJson = invokeClaude(systemPrompt, userPrompt)
             jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
 

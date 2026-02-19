@@ -1,6 +1,7 @@
 package com.example.myapplication.ui.plan
 
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -12,8 +13,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.WorkoutPlan
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Timeline
+import androidx.compose.material.icons.filled.Sync
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -24,6 +30,7 @@ fun GeneratePlanScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isAccepted by viewModel.isPlanAccepted.collectAsState()
+    val nextPhaseNumber by viewModel.nextPhaseNumber.collectAsState()
     val context = LocalContext.current
 
     // -- LOCAL UI STATE --
@@ -32,10 +39,7 @@ fun GeneratePlanScreen(
     // -- FORM STATE --
     var goalInput by remember { mutableStateOf("") }
     val programs = listOf("Strength", "Physique", "Endurance")
-
-    // FIX: Ensure 'selectedProgram' is declared ONLY ONCE here
     var selectedProgram by remember { mutableStateOf(programs[0]) }
-
     var isDropdownExpanded by remember { mutableStateOf(false) }
     var durationHours by remember { mutableFloatStateOf(1.0f) }
     val daysOfWeek = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -59,13 +63,56 @@ fun GeneratePlanScreen(
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            // Dynamic Header
             Text(
-                text = if (uiState is PlanUiState.Success) "Plan Generator" else "Plan Generator",
+                text = "Training Strategy",
                 style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 1. INPUT FORM
+            // --- CYCLE BLOCK (Macrocycle -> Mesocycle Link) ---
+            CycleInformationBlock(goalInput, selectedProgram)
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // 1. NEXT PHASE OFFER (If Eligible)
+            if (nextPhaseNumber != null && uiState !is PlanUiState.Loading) {
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                    colors = CardDefaults.elevatedCardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Phase $nextPhaseNumber Ready!", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "You are nearing the end of your current block. Generate Phase $nextPhaseNumber to automatically apply Progressive Overload and Variation based on your performance.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = { viewModel.generateNextPhase() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Generate Phase $nextPhaseNumber with AI")
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+
+            // 2. INPUT FORM (Action Plan)
+            Text(
+                text = "Action Plan",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            
             PlanInputForm(
                 goalInput, { goalInput = it },
                 selectedProgram, { selectedProgram = it },
@@ -79,7 +126,7 @@ fun GeneratePlanScreen(
                 uiState is PlanUiState.Loading
             )
 
-            // 2. ACTIVE PLAN CARD (If Accepted)
+            // 3. ACTIVE PLAN CARD (If Accepted)
             if (isAccepted && uiState is PlanUiState.Success) {
                 val plan = (uiState as PlanUiState.Success).plan
                 Spacer(modifier = Modifier.height(24.dp))
@@ -88,7 +135,6 @@ fun GeneratePlanScreen(
                 Text("Active Plan", style = MaterialTheme.typography.titleLarge)
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Workout Card
                 ElevatedCard(
                     onClick = { showExerciseDialog = true },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
@@ -115,7 +161,7 @@ fun GeneratePlanScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = if (!isAccepted) "New Plan Generated" else "Workout Details",
+                            text = if (!isAccepted) "Phase Preview" else "Workout Details",
                             style = MaterialTheme.typography.headlineSmall
                         )
                         Spacer(modifier = Modifier.height(8.dp))
@@ -134,7 +180,7 @@ fun GeneratePlanScreen(
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Accept Plan")
+                                Text("Accept Phase")
                             }
                         } else {
                             TextButton(onClick = { showExerciseDialog = false }, modifier = Modifier.fillMaxWidth()) {
@@ -148,7 +194,74 @@ fun GeneratePlanScreen(
     }
 }
 
-// FIX: Updated PlanInputForm with Definitions and ExposedDropdownMenuBox
+@Composable
+fun CycleInformationBlock(goal: String, programType: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        shape = MaterialTheme.shapes.large
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Timeline,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    "Training Structure",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // Macrocycle link
+            Text(
+                text = "Macrocycle: ${if (goal.isBlank()) "Define your goal" else goal}",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "A long-term training journey (typically 6-12 months) focused on achieving your ultimate objective through progressive phases.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Mesocycle explanation
+            Row(verticalAlignment = Alignment.Top) {
+                Icon(
+                    imageVector = Icons.Default.Sync,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.size(20.dp).padding(top = 2.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Text(
+                        text = "Iterative Mesocycles",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Forma automatically splits your journey into 4-6 week blocks. Each block is analyzed to calculate your next phase, ensuring continuous overload and adaptation.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun PlanInputForm(
@@ -161,7 +274,6 @@ fun PlanInputForm(
     onGenerateClick: () -> Unit, onManualCreateClick: () -> Unit,
     isLoading: Boolean
 ) {
-    // 1. Program Definitions
     val programDefinitions = mapOf(
         "Strength" to "Prioritize raw power and 1RM",
         "Physique" to "Focus on muscle size and aesthetics",
@@ -176,7 +288,6 @@ fun PlanInputForm(
     )
     Spacer(modifier = Modifier.height(16.dp))
 
-    // 2. Dropdown Menu with Definitions
     ExposedDropdownMenuBox(
         expanded = isDropdownExpanded,
         onExpandedChange = { onDropdownExpand(it) },
@@ -228,9 +339,30 @@ fun PlanInputForm(
         }
     }
     Spacer(modifier = Modifier.height(24.dp))
+    
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Sync, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Continuous Training Enabled", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            }
+            Text(
+                "Phase 1 will be generated now. Forma will automatically calculate and append iterative mesocycles as you progress.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+    
+    Spacer(modifier = Modifier.height(16.dp))
+
     Button(onClick = onGenerateClick, enabled = !isLoading, modifier = Modifier.fillMaxWidth()) {
         if (isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
-        else Text("Generate Plan with AI")
+        else Text("Generate Phase 1 with AI")
     }
     Spacer(modifier = Modifier.height(16.dp))
     TextButton(onClick = onManualCreateClick, modifier = Modifier.fillMaxWidth()) {
@@ -284,7 +416,6 @@ fun PlanDisplay(plan: WorkoutPlan) {
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
-                                // day.title will now show the correct 'workoutName'
                                 Text(day.title, style = MaterialTheme.typography.titleMedium)
                             }
                             day.exercises.forEachIndexed { index, ex ->
