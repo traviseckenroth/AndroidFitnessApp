@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -51,8 +52,6 @@ fun ProfileScreen(
     val permissionsLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract()
     ) {
-        // The callback fires when the user returns from the permission screen.
-        // We verify the actual status from the manager instead of relying on the 'granted' list.
         viewModel.syncHealthConnect()
     }
 
@@ -81,7 +80,6 @@ fun ProfileScreen(
                     )
                 },
                 actions = {
-                    // Settings Icon to navigate to the Settings Screen
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(
                             imageVector = Icons.Default.Settings,
@@ -118,6 +116,64 @@ fun ProfileScreen(
                 )
             }
 
+            // --- AI Usage Card ---
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "AI Allowance",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        
+                        Spacer(modifier = Modifier.height(12.dp))
+                        
+                        val progress = uiState.aiRequestsToday.toFloat() / uiState.aiDailyLimit.toFloat()
+                        LinearProgressIndicator(
+                            progress = progress.coerceIn(0f, 1f),
+                            modifier = Modifier.fillMaxWidth().height(8.dp),
+                            color = if (progress > 0.8f) Color.Red else MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "${uiState.aiRequestsToday} / ${uiState.aiDailyLimit} requests used today",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (uiState.aiRequestsToday >= uiState.aiDailyLimit) {
+                                Text(
+                                    text = "Limit Reached",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.Red,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -142,52 +198,23 @@ fun ProfileScreen(
                                 Spacer(modifier = Modifier.height(4.dp))
 
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        Icons.Default.Bed,
-                                        "Sleep",
-                                        Modifier.size(16.dp),
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Icon(Icons.Default.Bed, "Sleep", Modifier.size(16.dp), MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text(" Sleep  ", style = MaterialTheme.typography.bodySmall)
-
-                                    Icon(
-                                        Icons.Default.Favorite,
-                                        "Heart Rate",
-                                        Modifier.size(16.dp),
-                                        Color.Red.copy(alpha = 0.7f)
-                                    )
+                                    Icon(Icons.Default.Favorite, "Heart Rate", Modifier.size(16.dp), Color.Red.copy(alpha = 0.7f))
                                     Text(" Heart  ", style = MaterialTheme.typography.bodySmall)
-
-                                    Icon(
-                                        Icons.Default.FitnessCenter,
-                                        "Workouts",
-                                        Modifier.size(16.dp),
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Icon(Icons.Default.FitnessCenter, "Workouts", Modifier.size(16.dp), MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text(" Workouts", style = MaterialTheme.typography.bodySmall)
                                 }
 
                                 Spacer(modifier = Modifier.height(4.dp))
 
                                 if (uiState.isHealthConnectLinked) {
-                                    Text(
-                                        text = "Status: Active & Synced",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color(0xFF2E7D32) // Green Text
-                                    )
+                                    Text(text = "Status: Active & Synced", style = MaterialTheme.typography.labelSmall, color = Color(0xFF2E7D32))
                                     if (uiState.lastSyncTime != null) {
-                                        Text(
-                                            text = "Last synced: ${uiState.lastSyncTime}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                        Text(text = "Last synced: ${uiState.lastSyncTime}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 } else {
-                                    Text(
-                                        text = "Tap sync to enable bio-tracking",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.error
-                                    )
+                                    Text(text = "Tap sync to enable bio-tracking", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                                 }
                             }
 
@@ -200,18 +227,9 @@ fun ProfileScreen(
                                     }
                                 }) {
                                     if (uiState.isHealthConnectLinked) {
-                                        Icon(
-                                            imageVector = Icons.Default.CheckCircle,
-                                            contentDescription = "Connected",
-                                            tint = Color(0xFF4CAF50), // Green Checkmark
-                                            modifier = Modifier.size(32.dp)
-                                        )
+                                        Icon(imageVector = Icons.Default.CheckCircle, contentDescription = "Connected", tint = Color(0xFF4CAF50), modifier = Modifier.size(32.dp))
                                     } else {
-                                        Icon(
-                                            imageVector = Icons.Default.Sync,
-                                            contentDescription = "Connect",
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
+                                        Icon(imageVector = Icons.Default.Sync, contentDescription = "Connect", tint = MaterialTheme.colorScheme.primary)
                                     }
                                 }
                             }

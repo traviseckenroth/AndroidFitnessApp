@@ -13,6 +13,7 @@ import org.json.JSONObject
 import okhttp3.internal.http2.StreamResetException
 import kotlinx.coroutines.CancellationException
 import com.example.myapplication.data.local.ExerciseEntity
+import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.repository.AuthRepository
 import com.example.myapplication.data.repository.PromptRepository
 import javax.inject.Inject
@@ -24,6 +25,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.Json
 import java.util.Date
+import kotlinx.coroutines.flow.first
 
 // --- AI RESPONSE DATA MODELS ---
 @Serializable
@@ -123,7 +125,8 @@ private val jsonConfig = Json {
 @Singleton
 class BedrockClient @Inject constructor(
     private val authRepository: AuthRepository,
-    private val promptRepository: PromptRepository
+    private val promptRepository: PromptRepository,
+    private val userPrefs: UserPreferencesRepository
 ) {
 
     private val client by lazy {
@@ -141,6 +144,15 @@ class BedrockClient @Inject constructor(
                 socketReadTimeout = 120.seconds
             }
         }
+    }
+
+    private suspend fun enforceLimit() {
+        val todayUsage = userPrefs.aiRequestsToday.first()
+        val dailyLimit = userPrefs.aiDailyLimit.first()
+        if (todayUsage >= dailyLimit) {
+            throw Exception("Daily AI limit reached ($dailyLimit requests). Please try again tomorrow.")
+        }
+        userPrefs.incrementAiUsage()
     }
 
     suspend fun generateCoachingCue(
@@ -165,6 +177,7 @@ class BedrockClient @Inject constructor(
         }
 
         try {
+            enforceLimit()
             val request = InvokeModelRequest {
                 modelId = "amazon.titan-text-express-v1"
                 body = jsonBody.toString().toByteArray()
@@ -183,7 +196,7 @@ class BedrockClient @Inject constructor(
             throw CancellationException("Request cancelled")
         } catch (e: Exception) {
             Log.e("BedrockClient", "AI Generation failed", e)
-            "Keep pushing!"
+            if (e.message?.contains("limit reached") == true) e.message!! else "Keep pushing!"
         }
     }
 
@@ -283,7 +296,7 @@ class BedrockClient @Inject constructor(
             jsonConfig.decodeFromString<NegotiationResponse>(cleanJson)
         } catch (e: Exception) {
             Log.e("BedrockError", "Coach interaction failed", e)
-            NegotiationResponse("I'm here, but I'm having trouble processing that. Keep going!", emptyList())
+            NegotiationResponse(if (e.message?.contains("limit reached") == true) e.message!! else "I'm here, but I'm having trouble processing that. Keep going!", emptyList())
         }
     }
 
@@ -313,7 +326,7 @@ class BedrockClient @Inject constructor(
             jsonConfig.decodeFromString<RemoteNutritionPlan>(cleanJson)
         } catch (e: Exception) {
             Log.e("BedrockError", "Nutrition Gen Failed", e)
-            RemoteNutritionPlan(explanation = "Error generating plan. Please try again.")
+            RemoteNutritionPlan(explanation = if (e.message?.contains("limit reached") == true) e.message!! else "Error generating plan. Please try again.")
         }
     }
 
@@ -333,7 +346,7 @@ class BedrockClient @Inject constructor(
             jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
         } catch (e: Exception) {
             Log.e("Bedrock", "Stretching parse failed", e)
-            GeneratedPlanResponse(explanation = "Failed to generate mobility flow.")
+            GeneratedPlanResponse(explanation = if (e.message?.contains("limit reached") == true) e.message!! else "Failed to generate mobility flow.")
         }
     }
 
@@ -415,7 +428,7 @@ class BedrockClient @Inject constructor(
             jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
         } catch (e: Exception) {
             Log.e("Bedrock", "Accessory parse failed", e)
-            GeneratedPlanResponse(explanation = "Failed to generate accessory work.")
+            GeneratedPlanResponse(explanation = if (e.message?.contains("limit reached") == true) e.message!! else "Failed to generate accessory work.")
         }
     }
 
@@ -443,11 +456,12 @@ class BedrockClient @Inject constructor(
             json.getString("briefing")
         } catch (e: Exception) {
             Log.e("Bedrock", "Briefing failed", e)
-            "Stay focused on your goals! Check back later for your personalized briefing."
+            if (e.message?.contains("limit reached") == true) e.message!! else "Stay focused on your goals! Check back later for your personalized briefing."
         }
     }
 
     private suspend fun invokeClaude(systemPrompt: String, userPrompt: String): String {
+        enforceLimit()
         val requestBody = ClaudeRequest(
             max_tokens = 6000,
             system = systemPrompt,

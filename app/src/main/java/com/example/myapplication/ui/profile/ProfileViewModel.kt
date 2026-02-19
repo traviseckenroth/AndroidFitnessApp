@@ -37,6 +37,11 @@ private data class Lifestyle(
     val pace: String
 )
 
+private data class AiUsage(
+    val today: Int,
+    val limit: Int
+)
+
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
     private val nutritionRepository: NutritionRepository,
@@ -79,12 +84,18 @@ class ProfileViewModel @Inject constructor(
                 userPrefs.userGoalPace
             ) { bf, d, p -> Lifestyle(bf, d, p) }
 
+            val aiUsageFlow = combine(
+                userPrefs.aiRequestsToday,
+                userPrefs.aiDailyLimit
+            ) { today, limit -> AiUsage(today, limit) }
+
             // Combine all data sources
             combine(
                 executionRepository.getAllCompletedWorkouts(),
                 biometricsFlow,
-                lifestyleFlow
-            ) { completed: List<CompletedWorkoutWithExercise>, bio: Biometrics, life: Lifestyle ->
+                lifestyleFlow,
+                aiUsageFlow
+            ) { completed: List<CompletedWorkoutWithExercise>, bio: Biometrics, life: Lifestyle, usage: AiUsage ->
                 val items = completed.map {
                     CompletedWorkoutItem(
                         completedWorkout = it.completedWorkout,
@@ -92,8 +103,6 @@ class ProfileViewModel @Inject constructor(
                     )
                 }.sortedByDescending { it.completedWorkout.date }
 
-                Triple(items, bio, life)
-            }.collect { (items, bio, life) ->
                 _uiState.update { currentState ->
                     currentState.copy(
                         isLoading = false,
@@ -105,10 +114,12 @@ class ProfileViewModel @Inject constructor(
                         activityLevel = bio.activity,
                         bodyFat = life.bodyFat?.toString() ?: "",
                         dietType = life.diet,
-                        goalPace = life.pace
+                        goalPace = life.pace,
+                        aiRequestsToday = usage.today,
+                        aiDailyLimit = usage.limit
                     )
                 }
-            }
+            }.collect { }
         }
     }
 

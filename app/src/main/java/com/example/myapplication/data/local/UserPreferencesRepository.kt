@@ -7,6 +7,8 @@ import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -29,11 +31,15 @@ class UserPreferencesRepository @Inject constructor(
         val USER_DIET = stringPreferencesKey("user_diet")
         val USER_GOAL_PACE = stringPreferencesKey("user_goal_pace")
 
-        // FIXED: Added missing RECOVERY_SCORE key
         val RECOVERY_SCORE = intPreferencesKey("recovery_score")
 
         val GYM_TYPE = stringPreferencesKey("gym_type")
         val EXCLUDED_EQUIPMENT = stringSetPreferencesKey("excluded_equipment")
+
+        // AI Usage Controls
+        val AI_DAILY_LIMIT = intPreferencesKey("ai_daily_limit")
+        val AI_REQUESTS_TODAY = intPreferencesKey("ai_requests_today")
+        val LAST_AI_REQUEST_DATE = stringPreferencesKey("last_ai_request_date")
     }
 
     val userName: Flow<String> = dataStore.data.map { it[PreferencesKeys.USER_NAME] ?: "User" }
@@ -51,9 +57,36 @@ class UserPreferencesRepository @Inject constructor(
     val gymType: Flow<String> = dataStore.data.map { it[PreferencesKeys.GYM_TYPE] ?: "Commercial" }
     val excludedEquipment: Flow<Set<String>> = dataStore.data.map { it[PreferencesKeys.EXCLUDED_EQUIPMENT] ?: emptySet() }
 
+    // AI Usage Flows
+    val aiDailyLimit: Flow<Int> = dataStore.data.map { it[PreferencesKeys.AI_DAILY_LIMIT] ?: 50 } // Default 50 requests/day
+    val aiRequestsToday: Flow<Int> = dataStore.data.map {
+        val lastDate = it[PreferencesKeys.LAST_AI_REQUEST_DATE]
+        val today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+        if (lastDate == today) {
+            it[PreferencesKeys.AI_REQUESTS_TODAY] ?: 0
+        } else {
+            0
+        }
+    }
+
     suspend fun saveUserName(name: String) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.USER_NAME] = name
+        }
+    }
+
+    suspend fun incrementAiUsage() {
+        dataStore.edit { preferences ->
+            val today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+            val lastDate = preferences[PreferencesKeys.LAST_AI_REQUEST_DATE]
+            
+            if (lastDate == today) {
+                val current = preferences[PreferencesKeys.AI_REQUESTS_TODAY] ?: 0
+                preferences[PreferencesKeys.AI_REQUESTS_TODAY] = current + 1
+            } else {
+                preferences[PreferencesKeys.LAST_AI_REQUEST_DATE] = today
+                preferences[PreferencesKeys.AI_REQUESTS_TODAY] = 1
+            }
         }
     }
 

@@ -28,5 +28,9 @@ data class ProfileUIState(
     // Integration States
     val isHealthConnectSyncing: Boolean = false,
     val isHealthConnectLinked: Boolean = false,
-    val lastSyncTime: String? = null
+    val lastSyncTime: String? = null,
+
+    // AI Usage
+    val aiRequestsToday: Int = 0,
+    val aiDailyLimit: Int = 50
 )
