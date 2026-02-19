@@ -43,9 +43,11 @@ class ContentRepository @Inject constructor(
         val existingContent = workoutDao.getSubscribedContent().firstOrNull()?.filter { it.sportTag == query }
         if (existingContent != null && existingContent.isNotEmpty()) {
             val mostRecent = existingContent.maxOf { it.dateFetched }
-            // If data is less than 6 hours old, return cached Room data
-            if (System.currentTimeMillis() - mostRecent < 6 * 60 * 60 * 1000) {
-                return@withContext existingContent
+            // If data is fresh (less than 4 hours old) AND we have thumbnails, use it
+            if (System.currentTimeMillis() - mostRecent < 4 * 60 * 60 * 1000) {
+                if (existingContent.all { it.imageUrl != null }) {
+                    return@withContext existingContent
+                }
             }
         }
 
@@ -53,20 +55,38 @@ class ContentRepository @Inject constructor(
             val encodedQuery = URLEncoder.encode(query, "UTF-8")
             val rssUrl = "https://news.google.com/rss/search?q=$encodedQuery&hl=en-US&gl=US&ceid=US:en&scoring=n"
             val doc = Jsoup.connect(rssUrl)
-                .timeout(8000)
+                .timeout(10000)
                 .parser(Parser.xmlParser())
                 .get()
 
             val items = doc.select("item")
             val savedList = mutableListOf<ContentSourceEntity>()
 
-            items.take(10).forEach { item ->
+            items.take(15).forEach { item ->
                 val title = item.select("title").text()
                 val url = item.select("link").text()
                 
-                // Try to extract a thumbnail/image if available in description or media:content
+                // Enhanced image extraction logic
                 val description = item.select("description").text()
-                val imageUrl = extractImageUrl(description) ?: item.select("media|content").attr("url").takeIf { it.isNotBlank() }
+                var imageUrl = extractImageUrl(description)
+                
+                if (imageUrl == null) {
+                    imageUrl = item.select("media|content").attr("url").takeIf { it.isNotBlank() }
+                }
+                if (imageUrl == null) {
+                    imageUrl = item.select("media|thumbnail").attr("url").takeIf { it.isNotBlank() }
+                }
+                if (imageUrl == null) {
+                    imageUrl = item.select("enclosure[type^=image]").attr("url").takeIf { it.isNotBlank() }
+                }
+
+                // YouTube predictably has thumbnails
+                if (imageUrl == null && (url.contains("youtube.com") || url.contains("youtu.be"))) {
+                    val videoId = extractVideoId(url)
+                    if (videoId != null) {
+                        imageUrl = "https://img.youtube.com/vi/$videoId/maxresdefault.jpg"
+                    }
+                }
 
                 val entity = ContentSourceEntity(
                     title = title,
@@ -77,27 +97,47 @@ class ContentRepository @Inject constructor(
                     sportTag = query,
                     dateFetched = System.currentTimeMillis()
                 )
-                // Save to DB (Room handles uniqueness via URL index)
+                
                 try {
-                    val newId = workoutDao.insertContentSource(entity)
-                    savedList.add(entity.copy(sourceId = newId))
+                    workoutDao.insertContentSource(entity)
+                    savedList.add(entity)
                 } catch (e: Exception) {
-                    // Item likely already exists, fetch it if needed or just skip
+                    savedList.add(entity)
                 }
             }
             return@withContext savedList
 
         } catch (e: Exception) {
-            Log.e("ContentRepo", "Crawling failed", e)
+            Log.e("ContentRepo", "Crawling failed for $query", e)
             return@withContext existingContent ?: emptyList()
         }
     }
 
     private fun extractImageUrl(html: String): String? {
+        if (html.isBlank()) return null
         return try {
             val doc = Jsoup.parse(html)
             val img = doc.select("img").first()
-            img?.attr("src")
+            var src = img?.attr("src")
+            
+            if (src != null && src.startsWith("//")) {
+                src = "https:$src"
+            }
+            src
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun extractVideoId(url: String): String? {
+        return try {
+            if (url.contains("youtu.be/")) {
+                url.substringAfter("youtu.be/").substringBefore("?").substringBefore("&")
+            } else if (url.contains("v=")) {
+                url.substringAfter("v=").substringBefore("&")
+            } else {
+                null
+            }
         } catch (e: Exception) {
             null
         }

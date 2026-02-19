@@ -8,6 +8,7 @@ data class CommunityPick(
     val title: String = "",
     val summary: String = "",
     val url: String = "",
+    val imageUrl: String? = null,
     val upvotes: Int = 0,
     val date: Long = 0L
 )

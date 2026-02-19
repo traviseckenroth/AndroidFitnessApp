@@ -13,6 +13,8 @@ import aws.sdk.kotlin.services.cognitoidentityprovider.model.GetUserRequest
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.InitiateAuthRequest
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.RespondToAuthChallengeRequest
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.SignUpRequest
+import aws.sdk.kotlin.services.cognitoidentityprovider.model.ForgotPasswordRequest
+import aws.sdk.kotlin.services.cognitoidentityprovider.model.ConfirmForgotPasswordRequest
 import com.example.myapplication.BuildConfig
 import com.example.myapplication.data.local.UserPreferencesRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -33,6 +35,11 @@ sealed class SignUpResult {
     object Success : SignUpResult()
     object Confirmed : SignUpResult()
     data class Error(val message: String) : SignUpResult()
+}
+
+sealed class ForgotPasswordResult {
+    object Success : ForgotPasswordResult()
+    data class Error(val message: String) : ForgotPasswordResult()
 }
 
 @Singleton
@@ -193,6 +200,35 @@ class AuthRepository @Inject constructor(
             SignUpResult.Confirmed
         } catch (e: Exception) {
             SignUpResult.Error(e.localizedMessage ?: "Confirmation failed")
+        }
+    }
+
+    // --- FORGOT PASSWORD ---
+    suspend fun forgotPassword(email: String): ForgotPasswordResult {
+        return try {
+            val request = ForgotPasswordRequest {
+                clientId = BuildConfig.COGNITO_CLIENT_ID
+                username = email
+            }
+            cognitoClient.forgotPassword(request)
+            ForgotPasswordResult.Success
+        } catch (e: Exception) {
+            ForgotPasswordResult.Error(e.localizedMessage ?: "Forgot password request failed")
+        }
+    }
+
+    suspend fun confirmForgotPassword(email: String, code: String, newPass: String): ForgotPasswordResult {
+        return try {
+            val request = ConfirmForgotPasswordRequest {
+                clientId = BuildConfig.COGNITO_CLIENT_ID
+                username = email
+                confirmationCode = code
+                password = newPass
+            }
+            cognitoClient.confirmForgotPassword(request)
+            ForgotPasswordResult.Success
+        } catch (e: Exception) {
+            ForgotPasswordResult.Error(e.localizedMessage ?: "Password reset failed")
         }
     }
 

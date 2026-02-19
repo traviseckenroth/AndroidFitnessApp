@@ -131,6 +131,7 @@ class HomeViewModel @Inject constructor(
                                         title = "Instagram: #$tagName",
                                         summary = "Latest trending posts and training reels for $tagName.",
                                         url = "https://www.instagram.com/explore/tags/$cleanTag/",
+                                        imageUrl = "https://www.instagram.com/static/images/ico/favicon-192.png/68d99ad29166.png",
                                         mediaType = "Social",
                                         sportTag = tagName,
                                         dateFetched = System.currentTimeMillis()
@@ -144,6 +145,7 @@ class HomeViewModel @Inject constructor(
                                         title = "Reddit: r/$redditSub",
                                         summary = "Join the community discussion and see what's trending in $tagName.",
                                         url = "https://www.reddit.com/r/$redditSub/new/",
+                                        imageUrl = "https://www.redditstatic.com/desktop2x/img/favicon/android-icon-192x192.png",
                                         mediaType = "Social",
                                         sportTag = tagName,
                                         dateFetched = System.currentTimeMillis()
@@ -156,6 +158,7 @@ class HomeViewModel @Inject constructor(
                                         title = "YouTube: $tagName Training",
                                         summary = "Watch recent training footage and competition highlights for $tagName.",
                                         url = "https://www.youtube.com/results?search_query=$encodedTag+training+highlights",
+                                        imageUrl = "https://www.youtube.com/s/desktop/28e5c60b/img/favicon_144x144.png",
                                         mediaType = "Video",
                                         sportTag = tagName,
                                         dateFetched = System.currentTimeMillis()
@@ -168,6 +171,7 @@ class HomeViewModel @Inject constructor(
                                         title = "X: #$tagName Updates",
                                         summary = "Real-time news and athlete updates for $tagName.",
                                         url = "https://twitter.com/hashtag/$cleanTag",
+                                        imageUrl = "https://abs.twimg.com/favicons/twitter.2.ico",
                                         mediaType = "Social",
                                         sportTag = tagName,
                                         dateFetched = System.currentTimeMillis()

@@ -55,6 +55,7 @@ class CommunityRepository @Inject constructor() {
                         "title" to content.title,
                         "summary" to content.summary,
                         "url" to content.url,
+                        "imageUrl" to content.imageUrl,
                         "upvotes" to 1L,
                         "date" to System.currentTimeMillis()
                     )
@@ -63,6 +64,10 @@ class CommunityRepository @Inject constructor() {
                     val currentUpvotes = snapshot.getLong("upvotes") ?: 0L
                     transaction.update(docRef, "upvotes", currentUpvotes + 1L)
                     transaction.update(docRef, "date", System.currentTimeMillis())
+                    // Optionally update imageUrl if it was missing
+                    if (snapshot.getString("imageUrl") == null && content.imageUrl != null) {
+                        transaction.update(docRef, "imageUrl", content.imageUrl)
+                    }
                 }
             }.await()
             Log.d("CommunityRepo", "Successfully upvoted: $docId")
