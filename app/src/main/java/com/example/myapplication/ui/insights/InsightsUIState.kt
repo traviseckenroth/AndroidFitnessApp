@@ -1,12 +1,21 @@
 package com.example.myapplication.ui.insights
 
-import com.example.myapplication.data.local.CompletedWorkoutWithExercise
 import com.example.myapplication.data.local.ExerciseEntity
+
+data class RecentWorkoutSummary(
+    val workoutId: Long? = null,
+    val date: Long,
+    val topExercises: List<String>,
+    val totalVolume: Double,
+    val totalExercises: Int
+)
 
 data class InsightsUiState(
     val isLoading: Boolean = true,
     // List of exercises available to analyze
     val availableExercises: List<ExerciseEntity> = emptyList(),
+    // Top performed exercises (for quick selection)
+    val topExercises: List<ExerciseEntity> = emptyList(),
     // The currently selected exercise for the graph
     val selectedExercise: ExerciseEntity? = null,
     // Data points for the 1RM Graph
@@ -15,8 +24,9 @@ data class InsightsUiState(
     val muscleVolumeDistribution: Map<String, Double> = emptyMap(),
     // Lifetime stats aggregated in SQL
     val lifetimeMuscleVolume: Map<String, Double> = emptyMap(),
-    // Recent History (Limited to last 5-10 items)
-    val recentWorkouts: List<CompletedWorkoutWithExercise> = emptyList(),
+    val weeklyTonnage: List<Pair<String, Double>> = emptyList(),
+    // Recent History grouped by session
+    val recentWorkouts: List<RecentWorkoutSummary> = emptyList(),
     
     // Knowledge Hub Optimizations
     val knowledgeBriefing: String = "",

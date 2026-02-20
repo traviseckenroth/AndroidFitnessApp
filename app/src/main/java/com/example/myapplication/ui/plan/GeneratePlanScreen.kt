@@ -1,17 +1,22 @@
 package com.example.myapplication.ui.plan
 
 import android.widget.Toast
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -21,6 +26,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.Sync
 import com.example.myapplication.data.repository.PlanProgress
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -173,7 +179,7 @@ fun GeneratePlanScreen(
                         planProgress?.let {
                             Spacer(modifier = Modifier.height(12.dp))
                             LinearProgressIndicator(
-                                progress = it.percentage,
+                                progress = { it.percentage },
                                 modifier = Modifier.fillMaxWidth().height(8.dp),
                                 color = MaterialTheme.colorScheme.primary,
                                 trackColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f),
@@ -185,6 +191,18 @@ fun GeneratePlanScreen(
                         Text("Tap to view details", style = MaterialTheme.typography.labelSmall)
                     }
                 }
+            }
+        }
+
+        // --- SKELETON LOADER OVERLAY ---
+        if (uiState is PlanUiState.Loading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.9f))
+                    .padding(16.dp)
+            ) {
+                SkeletonPlanLoader()
             }
         }
 
@@ -228,6 +246,82 @@ fun GeneratePlanScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun SkeletonPlanLoader() {
+    val thoughts = listOf(
+        "Analyzing past volume...",
+        "Calculating Progressive Overload...",
+        "Tailoring exercise selection...",
+        "Optimizing intensity splits...",
+        "Finalizing Mesocycle..."
+    )
+    var thoughtIndex by remember { mutableIntStateOf(0) }
+    
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2000)
+            thoughtIndex = (thoughtIndex + 1) % thoughts.size
+        }
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "shimmer")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.7f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "alpha"
+    )
+
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        // Skeleton Cards
+        repeat(3) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp)
+                    .padding(vertical = 8.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.Gray.copy(alpha = alpha))
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        Icon(
+            imageVector = Icons.Default.AutoAwesome,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(48.dp)
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        AnimatedContent(
+            targetState = thoughts[thoughtIndex],
+            transitionSpec = {
+                fadeIn(animationSpec = tween(500)) + slideInVertically() togetherWith
+                fadeOut(animationSpec = tween(500)) + slideOutVertically()
+            },
+            label = "thought"
+        ) { thought ->
+            Text(
+                text = thought,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center
+            )
         }
     }
 }
@@ -380,8 +474,7 @@ fun PlanInputForm(
     Spacer(modifier = Modifier.height(16.dp))
 
     Button(onClick = onGenerateClick, enabled = !isLoading, modifier = Modifier.fillMaxWidth()) {
-        if (isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
-        else Text("Generate Block 1 with AI")
+        Text("Generate Block 1 with AI")
     }
     Spacer(modifier = Modifier.height(16.dp))
     TextButton(onClick = onManualCreateClick, modifier = Modifier.fillMaxWidth()) {

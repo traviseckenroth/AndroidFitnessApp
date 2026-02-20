@@ -2,6 +2,8 @@ package com.example.myapplication.data.repository
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
@@ -27,9 +29,13 @@ import javax.inject.Singleton
 class HealthConnectManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
+    // Check availability status
+    val availability: Int
+        get() = HealthConnectClient.getSdkStatus(context)
+
     // Check if available on device
     private val healthConnectClient by lazy {
-        if (HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE) {
+        if (availability == HealthConnectClient.SDK_AVAILABLE) {
             HealthConnectClient.getOrCreate(context)
         } else {
             null
@@ -48,6 +54,17 @@ class HealthConnectManager @Inject constructor(
 
     suspend fun hasPermissions(): Boolean {
         return healthConnectClient?.permissionController?.getGrantedPermissions()?.containsAll(permissions) == true
+    }
+
+    fun promptInstall() {
+        if (availability == HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                data = Uri.parse("market://details?id=com.google.android.apps.healthdata")
+                setPackage("com.android.vending")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        }
     }
 
     suspend fun getDailySleepDuration(startTime: Instant, endTime: Instant): Duration {

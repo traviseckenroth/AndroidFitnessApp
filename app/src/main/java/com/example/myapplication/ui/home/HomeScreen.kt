@@ -1,6 +1,7 @@
 // File: app/src/main/java/com/example/myapplication/ui/home/HomeScreen.kt
 package com.example.myapplication.ui.home
 
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -29,6 +30,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.PermissionController
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.example.myapplication.data.local.DailyWorkoutEntity
@@ -68,10 +71,32 @@ fun HomeScreen(
     val userName by viewModel.userName.collectAsState()
     val formaScore by viewModel.formaScore.collectAsState()
 
+    val showHealthConnectOnboarding by viewModel.showHealthConnectOnboarding.collectAsState()
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        PermissionController.createRequestPermissionResultContract()
+    ) { granted ->
+        viewModel.dismissHealthConnectOnboarding()
+    }
+
     LaunchedEffect(Unit) {
         viewModel.navigationEvents.collect { route ->
             onNavigate(route)
         }
+    }
+
+    if (showHealthConnectOnboarding) {
+        HealthConnectOnboardingSheet(
+            onDismiss = { viewModel.dismissHealthConnectOnboarding() },
+            onConnect = {
+                if (viewModel.healthConnectAvailability == HealthConnectClient.SDK_AVAILABLE) {
+                    permissionLauncher.launch(viewModel.healthConnectManager.permissions)
+                } else {
+                    viewModel.performHealthConnectAction()
+                    viewModel.dismissHealthConnectOnboarding()
+                }
+            }
+        )
     }
 
     if (errorMessage != null) {
@@ -222,6 +247,77 @@ fun HomeScreen(
             item { QuickActionsSection(onNavigate = onNavigate) }
             
             item { Spacer(modifier = Modifier.height(24.dp)) }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HealthConnectOnboardingSheet(onDismiss: () -> Unit, onConnect: () -> Unit) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.primaryContainer,
+                shape = CircleShape,
+                modifier = Modifier.size(80.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Favorite,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(40.dp)
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            Text(
+                text = "Sync with Health Connect",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Text(
+                text = "Forma uses your sleep data to auto-regulate your workout intensity, preventing injury and optimizing your recovery path.",
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                lineHeight = 24.sp
+            )
+            
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            Button(
+                onClick = onConnect,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Sync Health Data", fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 4.dp))
+            }
+            
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Maybe Later", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            
+            Spacer(modifier = Modifier.navigationBarsPadding())
         }
     }
 }

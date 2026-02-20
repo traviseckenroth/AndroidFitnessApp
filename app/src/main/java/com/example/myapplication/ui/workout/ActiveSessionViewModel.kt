@@ -214,13 +214,17 @@ class ActiveSessionViewModel @Inject constructor(
                     }.sortedBy { it.setNumber }
 
                     val existingState = _exerciseStates.value.find { it.exercise.exerciseId == exercise.exerciseId }
+                    
+                    val isAllCompleted = adjustedSets.isNotEmpty() && adjustedSets.all { it.isCompleted }
+                    val wasAllCompletedBefore = existingState?.sets?.isNotEmpty() == true && existingState.sets.all { it.isCompleted }
+
                     ExerciseState(
                         exercise = exercise,
                         sets = adjustedSets,
                         timerState = existingState?.timerState ?: ExerciseTimerState(
                             remainingTime = (exercise.estimatedTimePerSet * 60).toLong()
                         ),
-                        areSetsVisible = existingState?.areSetsVisible ?: true
+                        areSetsVisible = if (isAllCompleted && !wasAllCompletedBefore) false else (existingState?.areSetsVisible ?: true)
                     )
                 }
             }.collect { newStates ->

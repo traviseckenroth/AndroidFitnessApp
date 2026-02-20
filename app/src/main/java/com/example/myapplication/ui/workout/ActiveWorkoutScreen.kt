@@ -36,8 +36,10 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -331,10 +333,9 @@ fun ExerciseCard(
     onLaunchCamera: () -> Unit
 ) {
     val isActive = exerciseState.sets.any { !it.isCompleted }
-    val isAllCompleted = exerciseState.sets.all { it.isCompleted }
 
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().animateContentSize(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.elevatedCardColors(
             containerColor = if (isActive) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
@@ -510,6 +511,7 @@ fun SetRow(
     exerciseId: Long
 ) {
     val focusManager = LocalFocusManager.current
+    val haptic = LocalHapticFeedback.current
     var weightText by remember(set.actualLbs) { mutableStateOf(set.actualLbs?.toInt()?.toString() ?: "") }
     var repsText by remember(set.actualReps) { mutableStateOf(set.actualReps?.toString() ?: "") }
     var rpeText by remember(set.actualRpe) { mutableStateOf(set.actualRpe?.toInt()?.toString() ?: "") }
@@ -624,6 +626,7 @@ fun SetRow(
             Checkbox(
                 checked = set.isCompleted,
                 onCheckedChange = { isChecked ->
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     if (isChecked) {
                         if (weightText.isEmpty()) viewModel.updateSetWeight(set, set.suggestedLbs.toString())
                         if (repsText.isEmpty()) viewModel.updateSetReps(set, set.suggestedReps.toString())

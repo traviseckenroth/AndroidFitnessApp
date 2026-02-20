@@ -2,6 +2,7 @@
 package com.example.myapplication.ui.home
 
 import android.util.Log
+import androidx.health.connect.client.HealthConnectClient
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.DailyWorkoutEntity
@@ -40,7 +41,7 @@ class HomeViewModel @Inject constructor(
     private val userPrefs: UserPreferencesRepository,
     private val nutritionRepository: NutritionRepository,
     private val executionRepository: WorkoutExecutionRepository,
-    private val healthConnectManager: HealthConnectManager,
+    val healthConnectManager: HealthConnectManager,
     private val readinessEngine: ReadinessEngine
 ) : ViewModel() {
 
@@ -68,6 +69,12 @@ class HomeViewModel @Inject constructor(
 
     private val _formaScore = MutableStateFlow<FormaScore?>(null)
     val formaScore: StateFlow<FormaScore?> = _formaScore.asStateFlow()
+
+    // Health Connect Onboarding State
+    private val _showHealthConnectOnboarding = MutableStateFlow(false)
+    val showHealthConnectOnboarding: StateFlow<Boolean> = _showHealthConnectOnboarding.asStateFlow()
+
+    val healthConnectAvailability = healthConnectManager.availability
 
     // Reactive Flow for Active Plan Progress
     val planProgress: StateFlow<PlanProgress?> = repository.getActivePlanProgressFlow()
@@ -126,6 +133,34 @@ class HomeViewModel @Inject constructor(
         observeContextForIntel()
         observeContentForBriefing()
         calculateFormaScore()
+        checkHealthConnectStatus()
+    }
+
+    private fun checkHealthConnectStatus() {
+        viewModelScope.launch {
+            val shown = userPrefs.healthConnectOnboardingShown.first()
+            if (!shown) {
+                if (healthConnectAvailability != HealthConnectClient.SDK_UNAVAILABLE) {
+                     val hasPerms = healthConnectManager.hasPermissions()
+                     if (!hasPerms) {
+                         _showHealthConnectOnboarding.value = true
+                     }
+                }
+            }
+        }
+    }
+
+    fun dismissHealthConnectOnboarding() {
+        _showHealthConnectOnboarding.value = false
+        viewModelScope.launch {
+            userPrefs.setHealthConnectOnboardingShown(true)
+        }
+    }
+
+    fun performHealthConnectAction() {
+        if (healthConnectAvailability == HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) {
+            healthConnectManager.promptInstall()
+        }
     }
 
     private fun calculateFormaScore() {

@@ -23,7 +23,6 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -120,32 +119,94 @@ class InsightsViewModel @Inject constructor(
     }
 
     private fun observeWorkoutHistory() {
-        val sixMonthsAgo = Instant.now().minus(180, ChronoUnit.DAYS)
+        val thirtyDaysAgo = Instant.now().minus(30, ChronoUnit.DAYS)
 
         viewModelScope.launch {
-            // 1. Observe Recent Workouts (last 6 months) for graphs and lists
-            executionRepository.getCompletedWorkoutsRecent(sixMonthsAgo).collect { completedWorkouts ->
-                val volumeByMuscle = completedWorkouts
+            combine(
+                executionRepository.getCompletedWorkoutsRecent(thirtyDaysAgo),
+                workoutDao.getCompletedWorkouts()
+            ) { completedSets, completedSessions ->
+                // 1. Current Block Muscle Focus (30 Days)
+                val volumeByMuscle = completedSets
                     .filter { it.exercise.muscleGroup != null }
                     .groupBy { it.exercise.muscleGroup!! }
                     .mapValues { (_, workouts) ->
                         workouts.sumOf { it.completedWorkout.totalVolume.toDouble() }
                     }
 
-                val sortedHistory = completedWorkouts
-                    .sortedByDescending { it.completedWorkout.date }
-                    .take(10)
+                // 2. Weekly Tonnage (Progressive Overload Tracking)
+                val workoutsByWeek = completedSets.groupBy {
+                    val daysAgo = ChronoUnit.DAYS.between(
+                        Instant.ofEpochMilli(it.completedWorkout.date).atZone(ZoneId.systemDefault()).toLocalDate(),
+                        LocalDate.now()
+                    )
+                    when {
+                        daysAgo <= 7 -> "This Week"
+                        daysAgo <= 14 -> "Last Week"
+                        daysAgo <= 21 -> "Week 3"
+                        else -> "Week 4"
+                    }
+                }
 
-                _uiState.update { it.copy(
-                    isLoading = false,
-                    muscleVolumeDistribution = volumeByMuscle,
-                    recentWorkouts = sortedHistory
-                ) }
+                val tonnage = listOf("Week 4", "Week 3", "Last Week", "This Week").mapNotNull { week ->
+                    val total = workoutsByWeek[week]?.sumOf { it.completedWorkout.totalVolume.toDouble() }
+                    if (total != null && total > 0) week to total else null
+                }
+
+                // 3. Top Exercises for 1RM Quick Select
+                val topExerciseIds = completedSets
+                    .groupBy { it.exercise.exerciseId }
+                    .entries.sortedByDescending { it.value.size }
+                    .take(5)
+                    .map { it.key }
+
+                val topExercises = completedSets
+                    .map { it.exercise }
+                    .distinctBy { it.exerciseId }
+                    .filter { it.exerciseId in topExerciseIds }
+
+                // 4. Group Recent Activity by Workout Session
+                val groupedHistory = completedSets.groupBy {
+                    Instant.ofEpochMilli(it.completedWorkout.date).atZone(ZoneId.systemDefault()).toLocalDate()
+                }.map { (localDate, sets) ->
+                    val distinctExercises = sets.map { it.exercise.name }.distinct()
+                    val sessionDate = localDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                    
+                    // Match with DailyWorkoutEntity to get the actual workoutId for navigation
+                    val matchedSession = completedSessions.find { 
+                        Instant.ofEpochMilli(it.scheduledDate).atZone(ZoneId.systemDefault()).toLocalDate() == localDate
+                    }
+
+                    RecentWorkoutSummary(
+                        workoutId = matchedSession?.workoutId,
+                        date = sessionDate,
+                        topExercises = distinctExercises.take(3),
+                        totalVolume = sets.sumOf { it.completedWorkout.totalVolume.toDouble() },
+                        totalExercises = distinctExercises.size
+                    )
+                }.sortedByDescending { it.date }.take(5)
+
+                Triple(volumeByMuscle, tonnage, topExercises to groupedHistory)
+            }.collect { (muscleVol, tonnage, exerciseHistory) ->
+                val (topExercises, groupedHistory) = exerciseHistory
+                _uiState.update { state ->
+                    val newSelected = if (state.selectedExercise == null) topExercises.firstOrNull() else state.selectedExercise
+                    if (newSelected != null && _selectedExerciseId.value == null) {
+                        _selectedExerciseId.value = newSelected.exerciseId
+                    }
+
+                    state.copy(
+                        isLoading = false,
+                        muscleVolumeDistribution = muscleVol,
+                        weeklyTonnage = tonnage,
+                        topExercises = topExercises,
+                        recentWorkouts = groupedHistory
+                    )
+                }
             }
         }
 
         viewModelScope.launch {
-            // 2. Observe Lifetime Stats via SQL aggregation
             executionRepository.getLifetimeMuscleVolume().collect { aggregations ->
                 val lifetimeMap = aggregations.associate { it.muscleGroup to it.totalVolume }
                 _uiState.update { it.copy(lifetimeMuscleVolume = lifetimeMap) }

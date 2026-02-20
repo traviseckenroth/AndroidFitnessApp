@@ -36,6 +36,8 @@ class UserPreferencesRepository @Inject constructor(
         val GYM_TYPE = stringPreferencesKey("gym_type")
         val EXCLUDED_EQUIPMENT = stringSetPreferencesKey("excluded_equipment")
 
+        val HEALTH_CONNECT_ONBOARDING_SHOWN = booleanPreferencesKey("health_connect_onboarding_shown")
+
         // AI Usage Controls
         val AI_DAILY_LIMIT = intPreferencesKey("ai_daily_limit")
         val AI_REQUESTS_TODAY = intPreferencesKey("ai_requests_today")
@@ -56,6 +58,8 @@ class UserPreferencesRepository @Inject constructor(
 
     val gymType: Flow<String> = dataStore.data.map { it[PreferencesKeys.GYM_TYPE] ?: "Commercial" }
     val excludedEquipment: Flow<Set<String>> = dataStore.data.map { it[PreferencesKeys.EXCLUDED_EQUIPMENT] ?: emptySet() }
+
+    val healthConnectOnboardingShown: Flow<Boolean> = dataStore.data.map { it[PreferencesKeys.HEALTH_CONNECT_ONBOARDING_SHOWN] ?: false }
 
     // AI Usage Flows
     val aiDailyLimit: Flow<Int> = dataStore.data.map { it[PreferencesKeys.AI_DAILY_LIMIT] ?: 50 }
@@ -121,5 +125,9 @@ class UserPreferencesRepository @Inject constructor(
             }
             preferences[PreferencesKeys.EXCLUDED_EQUIPMENT] = newSet
         }
+    }
+
+    suspend fun setHealthConnectOnboardingShown(shown: Boolean) {
+        dataStore.edit { it[PreferencesKeys.HEALTH_CONNECT_ONBOARDING_SHOWN] = shown }
     }
 }
