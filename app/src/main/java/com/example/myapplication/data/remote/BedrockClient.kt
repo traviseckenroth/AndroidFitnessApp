@@ -122,6 +122,12 @@ private val jsonConfig = Json {
     allowTrailingComma = true
 }
 
+private const val tierDefinitions = """
+    - Tier 1: Primary Compound Lifts (High fatigue, high priority, e.g., Squat, Bench, Deadlift).
+    - Tier 2: Secondary/Accessory Lifts (Moderate fatigue, e.g., Dumbbell Press, Rows).
+    - Tier 3: Isolation/Correctives (Low fatigue, e.g., Curls, Lateral Raises, Face Pulls).
+"""
+
 // --- CLIENT CLASS ---
 @Singleton
 class BedrockClient @Inject constructor(
@@ -151,54 +157,9 @@ class BedrockClient @Inject constructor(
         val todayUsage = userPrefs.aiRequestsToday.first()
         val dailyLimit = userPrefs.aiDailyLimit.first()
         if (todayUsage >= dailyLimit) {
-            throw Exception("Daily AI limit reached ($dailyLimit requests). Please try again tomorrow.")
+            throw Exception("Daily AI limit reached ($dailyLimit requests).")
         }
         userPrefs.incrementAiUsage()
-    }
-
-    suspend fun generateCoachingCue(
-        exerciseName: String,
-        issue: String,
-        repCount: Int
-    ): String = withContext(Dispatchers.IO) {
-        val rawTemplate = promptRepository.getCoachingCueTemplate()
-
-        val prompt = rawTemplate
-            .replace("{exerciseName}", exerciseName)
-            .replace("{repCount}", repCount.toString())
-            .replace("{issue}", issue)
-
-        val jsonBody = JSONObject().apply {
-            put("inputText", prompt)
-            put("textGenerationConfig", JSONObject().apply {
-                put("maxTokenCount", 20)
-                put("temperature", 1.0)
-                put("topP", 0.9)
-            })
-        }
-
-        try {
-            enforceLimit()
-            val request = InvokeModelRequest {
-                modelId = "amazon.titan-text-express-v1"
-                body = jsonBody.toString().toByteArray()
-                contentType = "application/json"
-                accept = "application/json"
-            }
-
-            val response = client.invokeModel(request)
-            val bodyBytes = response.body ?: throw Exception("Empty body")
-            val responseBody = JSONObject(String(bodyBytes))
-
-            responseBody.getJSONArray("results").getJSONObject(0).getString("outputText").trim()
-
-        } catch (e: StreamResetException) {
-            Log.w("BedrockClient", "Cue generation cancelled: ${e.message}")
-            throw CancellationException("Request cancelled")
-        } catch (e: Exception) {
-            Log.e("BedrockClient", "AI Generation failed", e)
-            if (e.message?.contains("limit reached") == true) e.message!! else "Keep pushing!"
-        }
     }
 
     suspend fun parseFoodLog(userQuery: String): FoodLogResponse = withContext(Dispatchers.Default) {
@@ -226,12 +187,6 @@ class BedrockClient @Inject constructor(
     ): GeneratedPlanResponse = withContext(Dispatchers.Default) {
 
         try {
-            val tierDefinitions = """
-                - Tier 1: Compound movements, fundamental for strength.
-                - Tier 2: Accessory exercises, supplement Tier 1.
-                - Tier 3: Isolation or machine-based exercises.
-            """.trimIndent()
-
             val historySummary = workoutHistory
                 .groupBy { it.completedWorkout.date }
                 .entries.joinToString("\n") { (date, sessionSets) ->
@@ -244,7 +199,7 @@ class BedrockClient @Inject constructor(
                 }
 
             val exerciseListString = availableExercises.joinToString("\n") {
-                "- ${it.name} (Muscle: ${it.muscleGroup ?: "General"}, Equipment: ${it.equipment ?: "None"}, Tier: ${it.tier})"
+                "- ${it.name} (Muscle: ${it.muscleGroup ?: "General"}, Tier: ${it.tier})"
             }
 
             val totalMinutes = (duration * 60).toInt()
@@ -263,9 +218,8 @@ class BedrockClient @Inject constructor(
                 .replace("{exerciseListString}", exerciseListString)
                 .replace("{tierDefinitions}", tierDefinitions)
                 .replace("{totalMinutesMinus5}", (totalMinutes - 5).toString())
-            
-            val userPrompt = "Generate Block $block plan for ${userAge}y/o, Goal: $goal."
-            val cleanJson = invokeClaude(systemPrompt, userPrompt)
+
+            val cleanJson = invokeClaude(systemPrompt, "Generate Block $block plan")
             jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
 
         } catch (e: Exception) {
@@ -277,7 +231,7 @@ class BedrockClient @Inject constructor(
     @Serializable
     data class NegotiationResponse(
         val explanation: String,
-        val exercises: List<GeneratedExercise>,
+        val exercises: List<GeneratedExercise> = emptyList(),
         val replacingExerciseName: String? = null
     )
 
@@ -299,8 +253,21 @@ class BedrockClient @Inject constructor(
             jsonConfig.decodeFromString<NegotiationResponse>(cleanJson)
         } catch (e: Exception) {
             Log.e("BedrockError", "Coach interaction failed", e)
-            NegotiationResponse(if (e.message?.contains("limit reached") == true) e.message!! else "I'm here, but I'm having trouble processing that. Keep going!", emptyList())
+            NegotiationResponse("I'm here, but I'm having trouble processing that. Keep going!", emptyList())
         }
+    }
+
+    suspend fun generateCoachingCue(
+        exerciseName: String,
+        issue: String,
+        repCount: Int
+    ): String {
+        val response = coachInteraction(
+            currentWorkout = "- $exerciseName",
+            userMessage = "I am doing $exerciseName and having this issue: $issue. Give me a short (max 5 words) correction.",
+            availableExercises = emptyList()
+        )
+        return response.explanation
     }
 
     suspend fun generateNutritionPlan(
@@ -329,7 +296,7 @@ class BedrockClient @Inject constructor(
             jsonConfig.decodeFromString<RemoteNutritionPlan>(cleanJson)
         } catch (e: Exception) {
             Log.e("BedrockError", "Nutrition Gen Failed", e)
-            RemoteNutritionPlan(explanation = if (e.message?.contains("limit reached") == true) e.message!! else "Error generating plan. Please try again.")
+            RemoteNutritionPlan(explanation = "Error generating plan.")
         }
     }
 
@@ -349,7 +316,7 @@ class BedrockClient @Inject constructor(
             jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
         } catch (e: Exception) {
             Log.e("Bedrock", "Stretching parse failed", e)
-            GeneratedPlanResponse(explanation = if (e.message?.contains("limit reached") == true) e.message!! else "Failed to generate mobility flow.")
+            GeneratedPlanResponse(explanation = "Failed to generate mobility flow.")
         }
     }
 
@@ -363,12 +330,7 @@ class BedrockClient @Inject constructor(
             "${intel.sourceId}: ${intel.title} (${intel.sportTag})"
         }
 
-        val systemPrompt = """
-            You are a Fitness Content Curator. Given the user's scheduled workout and a list of articles/videos, 
-            select the SINGLE most relevant item ID that will help them today.
-            Return ONLY the ID number.
-        """.trimIndent()
-
+        val systemPrompt = promptRepository.getIntelSelectionPrompt()
         val userPrompt = "Today's Workout: $currentWorkout\n\nAvailable Content:\n$contentListString"
 
         try {
@@ -386,19 +348,8 @@ class BedrockClient @Inject constructor(
             return@withContext listOf("CrossFit", "Powerlifting", "Hyrox", "Olympic Weightlifting", "Yoga")
         }
 
-        if (currentInterests.any { it.equals("CrossFit", ignoreCase = true) }) {
-            return@withContext listOf("Mat Fraser", "Rich Froning", "Tia-Clair Toomey", "Justin Medeiros", "Mal O'Brien")
-        }
-
-        val prompt = """
-            The user follows these sports/athletes: ${currentInterests.joinToString(", ")}.
-            Recommend 5 related top athletes or niche sports they might like.
-            If they follow a sport (e.g., "CrossFit"), recommend top athletes in that sport.
-            If they follow an athlete, recommend their rivals or training partners.
-            
-            Return ONLY a JSON object with a "recommendations" key containing an array of strings. 
-            Example: {"recommendations": ["Mat Fraser", "Hyrox", "Rich Froning"]}
-        """.trimIndent()
+        val rawPrompt = promptRepository.getRecommendationsPrompt()
+        val prompt = rawPrompt.replace("{currentInterests}", currentInterests.joinToString(", "))
 
         try {
             val response = invokeClaude(prompt, "Recommend interests")
@@ -431,7 +382,7 @@ class BedrockClient @Inject constructor(
             jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
         } catch (e: Exception) {
             Log.e("Bedrock", "Accessory parse failed", e)
-            GeneratedPlanResponse(explanation = if (e.message?.contains("limit reached") == true) e.message!! else "Failed to generate accessory work.")
+            GeneratedPlanResponse(explanation = "Failed to generate accessory work.")
         }
     }
 
@@ -439,19 +390,13 @@ class BedrockClient @Inject constructor(
         content: List<ContentSourceEntity>,
         workoutTitle: String? = null
     ): String = withContext(Dispatchers.Default) {
-        if (content.isEmpty() && workoutTitle == null) return@withContext "No news yet. Follow some interests to get started!"
+        if (content.isEmpty() && workoutTitle == null) return@withContext "No news yet."
         
-        val contentList = content.joinToString("\n") { "- ${it.title} (${it.sportTag}): ${it.summary}" }
+        val contentList = content.joinToString("\n") { "- ${it.title}: ${it.summary}" }
         val workoutContext = if (workoutTitle != null) "The user's workout for today is: $workoutTitle." else "No workout scheduled today."
         
-        val systemPrompt = """
-            You are a Fitness Intelligence Analyst. 
-            Synthesize the following recent articles and videos into a 3-sentence "Daily Briefing" for the user.
-            $workoutContext
-            Focus on actionable tips or major trends that might be relevant to the user's interests or today's workout.
-            Format as a single paragraph.
-            Output JSON: {"briefing": "..."}
-        """.trimIndent()
+        val rawPrompt = promptRepository.getKnowledgeBriefingPrompt()
+        val systemPrompt = rawPrompt.replace("{workoutContext}", workoutContext)
 
         try {
             val cleanJson = invokeClaude(systemPrompt, "Summarize this content: \n$contentList")
@@ -459,14 +404,14 @@ class BedrockClient @Inject constructor(
             json.getString("briefing")
         } catch (e: Exception) {
             Log.e("Bedrock", "Briefing failed", e)
-            if (e.message?.contains("limit reached") == true) e.message!! else "Stay focused on your goals! Check back later for your personalized briefing."
+            "Stay focused on your goals!"
         }
     }
 
     private suspend fun invokeClaude(systemPrompt: String, userPrompt: String): String {
         enforceLimit()
         val requestBody = ClaudeRequest(
-            max_tokens = 6000,
+            max_tokens = 4000,
             system = systemPrompt,
             messages = listOf(Message(role = "user", content = userPrompt))
         )

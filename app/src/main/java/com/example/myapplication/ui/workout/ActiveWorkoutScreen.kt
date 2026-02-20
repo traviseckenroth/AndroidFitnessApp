@@ -694,7 +694,11 @@ fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
         shape = RoundedCornerShape(12.dp)
     ) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
             Column {
                 Text("WORKOUT TIMER", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 Text(
