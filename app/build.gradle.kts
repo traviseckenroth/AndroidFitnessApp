@@ -95,6 +95,10 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+    
+    // --- Database Security ---
+    implementation(libs.android.database.sqlcipher)
+    implementation(libs.androidx.security.crypto)
 
     // --- Hilt (Dependency Injection) ---
     implementation(libs.hilt.android)
