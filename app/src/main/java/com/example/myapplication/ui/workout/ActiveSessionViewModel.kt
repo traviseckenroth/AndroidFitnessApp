@@ -91,6 +91,11 @@ class ActiveSessionViewModel @Inject constructor(
     private var workoutStartTime: Instant = Instant.now()
     private var transcribeJob: Job? = null
 
+    // Optimistic Estimated Time calculation
+    val totalEstimatedTime: StateFlow<Int> = _exerciseStates.map { states ->
+        states.sumOf { (it.exercise.estimatedTimePerSet * it.sets.size).toInt() }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     // --- 2. INITIALIZATION ---
 
     init {

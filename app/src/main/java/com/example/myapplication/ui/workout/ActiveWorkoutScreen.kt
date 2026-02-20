@@ -66,6 +66,7 @@ fun ActiveWorkoutScreen(
     val exerciseStates by viewModel.exerciseStates.collectAsState()
     val coachBriefing by viewModel.coachBriefing.collectAsState()
     val workoutSummary by viewModel.workoutSummary.collectAsState()
+    val estimatedTime by viewModel.totalEstimatedTime.collectAsState()
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showChatSheet by remember { mutableStateOf(false) }
@@ -235,7 +236,12 @@ fun ActiveWorkoutScreen(
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text("Active Session", style = MaterialTheme.typography.titleLarge) },
+                    title = {
+                        Column {
+                            Text("Active Session", style = MaterialTheme.typography.titleLarge)
+                            Text("Est. Time: $estimatedTime min", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -355,7 +361,8 @@ fun ActiveWorkoutScreen(
                     }
 
                     item {
-                        val shouldShowSets = exerciseState.areSetsVisible && (isActiveExercise || exerciseState == exerciseStates.last())
+                        // Allow expansion regardless of completion status
+                        val shouldShowSets = exerciseState.areSetsVisible
 
                         AnimatedVisibility(visible = shouldShowSets) {
                             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -601,7 +608,7 @@ fun SetsTable(
 
         TextButton(
             onClick = { viewModel.addSet(exerciseId) },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.padding(start = 16.dp), // Minimized
             colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
         ) {
             Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
@@ -781,7 +788,7 @@ fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column {
-                Text("Rest Timer", style = MaterialTheme.typography.labelSmall)
+                Text("Workout Timer", style = MaterialTheme.typography.labelSmall)
                 Text(
                     text = String.format(Locale.US, "%02d:%02d", timerState.remainingTime / 60, timerState.remainingTime % 60),
                     style = MaterialTheme.typography.headlineMedium,
