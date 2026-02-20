@@ -1,6 +1,7 @@
 package com.example.myapplication.ui.profile
 
 import android.app.Application
+import android.util.Log
 import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -56,7 +57,7 @@ class ProfileViewModel @Inject constructor(
     val requiredPermissions = healthConnectManager.permissions
 
     init {
-        // Initial Check
+        // Initial Check without full sync
         checkHealthConnectStatus()
 
         viewModelScope.launch {
@@ -161,7 +162,18 @@ class ProfileViewModel @Inject constructor(
 
             try {
                 val isLinked = healthConnectManager.hasPermissions()
-                delay(1000)
+                
+                // Fetch Sleep for Recovery Score
+                val sleepDuration = healthConnectManager.getLastNightSleepDuration()
+                val sleepHours = sleepDuration.toMinutes() / 60.0
+                
+                // Calculate Recovery Score (Simple heuristic: 8 hours = 100%, 4 hours = 50%)
+                val recoveryScore = ((sleepHours / 8.0) * 100).toInt().coerceIn(0, 100)
+                userPrefs.updateRecoveryScore(recoveryScore)
+                
+                Log.d("ProfileVM", "Bio-Sync: Sleep=$sleepHours hrs, Recovery=$recoveryScore%")
+
+                delay(500) // Aesthetic delay for UI feedback
 
                 val formatter = DateTimeFormatter.ofPattern("MMM dd, HH:mm")
                 val currentTimestamp = LocalDateTime.now().format(formatter)
@@ -174,7 +186,7 @@ class ProfileViewModel @Inject constructor(
                     )
                 }
 
-                Toast.makeText(application, "Health Connect Synced", Toast.LENGTH_SHORT).show()
+                Toast.makeText(application, "Bio-Sync Complete: Recovery at $recoveryScore%", Toast.LENGTH_SHORT).show()
 
             } catch (e: Exception) {
                 _uiState.update { it.copy(isHealthConnectSyncing = false) }

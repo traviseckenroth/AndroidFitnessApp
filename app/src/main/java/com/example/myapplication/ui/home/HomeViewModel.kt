@@ -14,7 +14,12 @@ import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.local.WorkoutDao
 import com.example.myapplication.data.repository.CommunityRepository
 import com.example.myapplication.data.remote.CommunityPick
+import com.example.myapplication.data.repository.NutritionRepository
+import com.example.myapplication.data.repository.WorkoutExecutionRepository
+import com.example.myapplication.data.repository.HealthConnectManager
 import com.example.myapplication.ui.navigation.Screen
+import com.example.myapplication.util.FormaScore
+import com.example.myapplication.util.ReadinessEngine
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
@@ -22,8 +27,8 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import javax.inject.Inject
 import java.net.URLEncoder
+import javax.inject.Inject
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -32,7 +37,11 @@ class HomeViewModel @Inject constructor(
     private val workoutDao: WorkoutDao,
     private val contentRepository: ContentRepository,
     private val communityRepository: CommunityRepository,
-    private val userPrefs: UserPreferencesRepository
+    private val userPrefs: UserPreferencesRepository,
+    private val nutritionRepository: NutritionRepository,
+    private val executionRepository: WorkoutExecutionRepository,
+    private val healthConnectManager: HealthConnectManager,
+    private val readinessEngine: ReadinessEngine
 ) : ViewModel() {
 
     private val _selectedDate = MutableStateFlow(LocalDate.now())
@@ -56,6 +65,9 @@ class HomeViewModel @Inject constructor(
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+    private val _formaScore = MutableStateFlow<FormaScore?>(null)
+    val formaScore: StateFlow<FormaScore?> = _formaScore.asStateFlow()
 
     // Reactive Flow for Active Plan Progress
     val planProgress: StateFlow<PlanProgress?> = repository.getActivePlanProgressFlow()
@@ -113,6 +125,17 @@ class HomeViewModel @Inject constructor(
     init {
         observeContextForIntel()
         observeContentForBriefing()
+        calculateFormaScore()
+    }
+
+    private fun calculateFormaScore() {
+        viewModelScope.launch {
+            dailyWorkout.collectLatest { workout ->
+                val title = workout?.title ?: "training"
+                val score = readinessEngine.calculateReadiness(title)
+                _formaScore.value = score
+            }
+        }
     }
 
     private fun observeContextForIntel() {
@@ -231,7 +254,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _isBriefingLoading.value = true
             val briefing = bedrockClient.generateKnowledgeBriefing(content.take(10), workoutTitle)
-            contentRepository.updateBriefingCache(briefing, interests, workoutTitle)
+            contentRepository.updateBriefingCache(briefing, interests = interests, workoutTitle = workoutTitle)
             _knowledgeBriefing.value = briefing
             _isBriefingLoading.value = false
         }

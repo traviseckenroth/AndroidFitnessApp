@@ -7,18 +7,19 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
-import androidx.health.connect.client.records.HeartRateRecord // Added
-import androidx.health.connect.client.records.SleepSessionRecord // Added
+import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.records.metadata.Metadata
 import androidx.health.connect.client.units.Energy
-import androidx.health.connect.client.request.ReadRecordsRequest // Added
-import androidx.health.connect.client.time.TimeRangeFilter // Added
-import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord // Added
+import androidx.health.connect.client.request.ReadRecordsRequest
+import androidx.health.connect.client.time.TimeRangeFilter
+import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.time.Duration // Added
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
+import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -42,7 +43,7 @@ class HealthConnectManager @Inject constructor(
         HealthPermission.getReadPermission(ExerciseSessionRecord::class),
         HealthPermission.getReadPermission(SleepSessionRecord::class),
         HealthPermission.getReadPermission(HeartRateRecord::class),
-        HealthPermission.getReadPermission(HeartRateVariabilityRmssdRecord::class) // Essential for Bio-Sync
+        HealthPermission.getReadPermission(HeartRateVariabilityRmssdRecord::class)
     )
 
     suspend fun hasPermissions(): Boolean {
@@ -67,6 +68,15 @@ class HealthConnectManager @Inject constructor(
         }
     }
 
+    /**
+     * Gets the sleep duration for the last 24 hours.
+     */
+    suspend fun getLastNightSleepDuration(): Duration {
+        val endTime = Instant.now()
+        val startTime = endTime.minus(24, ChronoUnit.HOURS)
+        return getDailySleepDuration(startTime, endTime)
+    }
+
     @SuppressLint("RestrictedApi")
     suspend fun writeWorkout(
         workoutId: Long,
@@ -84,12 +94,12 @@ class HealthConnectManager @Inject constructor(
             // 1. Create the Session Record (The main wrapper)
             val sessionRecord = ExerciseSessionRecord(
                 startTime = startTime,
-                startZoneOffset = ZoneOffset.UTC, // Or system default
+                startZoneOffset = ZoneOffset.UTC,
                 endTime = endTime,
                 endZoneOffset = ZoneOffset.UTC,
-                exerciseType = ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING, // Default to strength
+                exerciseType = ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING,
                 title = title,
-                metadata = Metadata(clientRecordId = "workout_$workoutId") // Unique ID prevents dupes
+                metadata = Metadata(clientRecordId = "workout_$workoutId")
             )
 
             // 2. Create Calorie Record (Associated with the session)

@@ -183,7 +183,8 @@ class BedrockClient @Inject constructor(
         userAge: Int,
         userHeight: Int,
         userWeight: Double,
-        block: Int = 1
+        block: Int = 1,
+        sleepHours: Double = 8.0 // Default to healthy sleep if unknown
     ): GeneratedPlanResponse = withContext(Dispatchers.Default) {
 
         try {

@@ -58,7 +58,7 @@ class UserPreferencesRepository @Inject constructor(
     val excludedEquipment: Flow<Set<String>> = dataStore.data.map { it[PreferencesKeys.EXCLUDED_EQUIPMENT] ?: emptySet() }
 
     // AI Usage Flows
-    val aiDailyLimit: Flow<Int> = dataStore.data.map { it[PreferencesKeys.AI_DAILY_LIMIT] ?: 50 } // Default 50 requests/day
+    val aiDailyLimit: Flow<Int> = dataStore.data.map { it[PreferencesKeys.AI_DAILY_LIMIT] ?: 50 }
     val aiRequestsToday: Flow<Int> = dataStore.data.map {
         val lastDate = it[PreferencesKeys.LAST_AI_REQUEST_DATE]
         val today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
@@ -101,6 +101,10 @@ class UserPreferencesRepository @Inject constructor(
             preferences[PreferencesKeys.USER_DIET] = d
             preferences[PreferencesKeys.USER_GOAL_PACE] = p
         }
+    }
+
+    suspend fun updateRecoveryScore(score: Int) {
+        dataStore.edit { it[PreferencesKeys.RECOVERY_SCORE] = score.coerceIn(0, 100) }
     }
 
     suspend fun saveGymType(type: String) {

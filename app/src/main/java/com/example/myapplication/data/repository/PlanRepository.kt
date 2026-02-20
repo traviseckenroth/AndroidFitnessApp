@@ -35,7 +35,8 @@ data class PlanProgress(
 class PlanRepository @Inject constructor(
     private val workoutDao: WorkoutDao,
     private val userPrefs: UserPreferencesRepository,
-    private val bedrockClient: BedrockClient
+    private val bedrockClient: BedrockClient,
+    private val healthConnectManager: HealthConnectManager
 ) {
     suspend fun generateAndSavePlan(
         goal: String,
@@ -66,6 +67,11 @@ class PlanRepository @Inject constructor(
         val weight = userPrefs.userWeight.first()
         val age = userPrefs.userAge.first()
 
+        // Fetch Health Connect Data for Bio-Syncing
+        val lastNightSleep = healthConnectManager.getLastNightSleepDuration()
+        val sleepHours = lastNightSleep.toMinutes() / 60.0
+        Log.d("PlanRepo", "Fetched Sleep Data: $sleepHours hours")
+
         val aiResponse = bedrockClient.generateWorkoutPlan(
             goal = goal,
             programType = programType,
@@ -76,7 +82,8 @@ class PlanRepository @Inject constructor(
             userAge = age,
             userHeight = height,
             userWeight = weight,
-            block = block
+            block = block,
+            sleepHours = if (sleepHours > 0) sleepHours else 8.0 // Use real data if available
         )
 
         val startDate = if (block > 1 && previousPlan != null) {

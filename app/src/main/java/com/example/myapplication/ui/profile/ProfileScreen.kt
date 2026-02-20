@@ -45,9 +45,8 @@ fun ProfileScreen(
     var dietType by remember(uiState.dietType) { mutableStateOf(uiState.dietType) }
     var goalPace by remember(uiState.goalPace) { mutableStateOf(uiState.goalPace) }
 
-    LaunchedEffect(Unit) {
-        viewModel.syncHealthConnect()
-    }
+    // Removed automatic sync on launch to prevent constant Toast messages
+    // viewModel.checkHealthConnectStatus() is already called in ViewModel init
 
     val permissionsLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract()
@@ -209,7 +208,7 @@ fun ProfileScreen(
                                 Spacer(modifier = Modifier.height(4.dp))
 
                                 if (uiState.isHealthConnectLinked) {
-                                    Text(text = "Status: Active & Synced", style = MaterialTheme.typography.labelSmall, color = Color(0xFF2E7D32))
+                                    Text(text = "Status: Active & Connected", style = MaterialTheme.typography.labelSmall, color = Color(0xFF2E7D32))
                                     if (uiState.lastSyncTime != null) {
                                         Text(text = "Last synced: ${uiState.lastSyncTime}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }

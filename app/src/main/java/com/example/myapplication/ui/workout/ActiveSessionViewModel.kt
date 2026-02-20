@@ -18,6 +18,8 @@ import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import com.example.myapplication.data.repository.WorkoutSummaryResult
 import com.example.myapplication.service.WorkoutTimerService
 import com.example.myapplication.service.WorkoutSyncWorker
+import com.example.myapplication.util.PlateCalculator
+import com.example.myapplication.util.ReadinessEngine
 import com.example.myapplication.util.SpeechToTextManager
 import com.example.myapplication.util.VoiceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -55,7 +57,8 @@ class ActiveSessionViewModel @Inject constructor(
     private val healthConnectManager: HealthConnectManager,
     private val voiceManager: VoiceManager,
     private val speechToTextManager: SpeechToTextManager,
-    private val bedrockClient: BedrockClient
+    private val bedrockClient: BedrockClient,
+    private val readinessEngine: ReadinessEngine
 ) : ViewModel() {
 
     // --- 1. STATE PROPERTIES ---
@@ -100,6 +103,25 @@ class ActiveSessionViewModel @Inject constructor(
 
     init {
         workoutStartTime = Instant.now()
+
+        // Sync with Health Connect on start for Bio-Syncing
+        viewModelScope.launch {
+            if (healthConnectManager.hasPermissions()) {
+                val sleepDuration = healthConnectManager.getLastNightSleepDuration()
+                val sleepHours = sleepDuration.toMinutes() / 60.0
+                if (sleepHours > 0) {
+                    val recoveryScore = ((sleepHours / 8.0) * 100).toInt().coerceIn(0, 100)
+                    userPrefs.updateRecoveryScore(recoveryScore)
+                    Log.d("ActiveSessionVM", "Bio-Sync: Sleep=$sleepHours hrs, Updated Recovery=$recoveryScore%")
+                }
+            }
+        }
+
+        // Sync Readiness Engine to Preferences
+        viewModelScope.launch {
+            val formaScore = readinessEngine.calculateReadiness()
+            userPrefs.updateRecoveryScore(formaScore.score)
+        }
 
         // Sync with Timer Service
         viewModelScope.launch {
@@ -174,7 +196,7 @@ class ActiveSessionViewModel @Inject constructor(
                     .sortedBy { it.tier }
 
                 if (sessionExercises.isNotEmpty() && sessionSets.isNotEmpty()) {
-                    var briefing = generateCoachBriefing(sessionExercises, sessionSets, recovery)
+                    var briefing = this@ActiveSessionViewModel.generateCoachBriefing(sessionExercises, sessionSets, recovery)
                     if (rpeReduction > 0) {
                         briefing = "⚠️ RECOVERY LOW ($recovery%)\nTargets reduced by $rpeReduction RPE. Take it easy today.\n\n$briefing"
                     }
@@ -498,24 +520,11 @@ class ActiveSessionViewModel @Inject constructor(
 
     private fun calculatePlateMath(target: Double): String {
         val bar = barWeight.value
-        if (target <= bar) return "That's just the bar ($bar lbs)."
-
-        var remaining = (target - bar) / 2.0
-        val plates = listOf(45.0, 35.0, 25.0, 10.0, 5.0, 2.5)
-        val result = mutableListOf<String>()
-
-        for (plate in plates) {
-            val count = (remaining / plate).toInt()
-            if (count > 0) {
-                result.add("$count x ${if (plate % 1.0 == 0.0) plate.toInt() else plate}")
-                remaining -= count * plate
-            }
-        }
-
-        return if (result.isEmpty()) {
-            "Load the bar ($bar lbs)."
+        val platesString = PlateCalculator.calculatePlates(target, bar)
+        return if (target <= bar) {
+            "That's just the bar ($bar lbs)."
         } else {
-            "Per side: ${result.joinToString(", ")}."
+            "For $target lbs, load $platesString."
         }
     }
 

@@ -40,6 +40,7 @@ import com.example.myapplication.ui.navigation.Screen
 import com.example.myapplication.ui.theme.PrimaryIndigo
 import com.example.myapplication.ui.theme.SecondaryIndigo
 import com.example.myapplication.ui.theme.SuccessGreen
+import com.example.myapplication.util.FormaScore
 import java.time.LocalDate
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -65,6 +66,7 @@ fun HomeScreen(
     val planProgress by viewModel.planProgress.collectAsState()
 
     val userName by viewModel.userName.collectAsState()
+    val formaScore by viewModel.formaScore.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.navigationEvents.collect { route ->
@@ -93,7 +95,11 @@ fun HomeScreen(
             item {
                 Spacer(modifier = Modifier.height(16.dp))
                 HeaderSection(userName = userName)
-                Spacer(modifier = Modifier.height(8.dp))
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                FormaScoreSection(formaScore = formaScore)
+                
+                Spacer(modifier = Modifier.height(16.dp))
                 InfiniteScrollingCalendar(
                     initialDate = LocalDate.now(),
                     selectedDate = selectedDate,
@@ -216,6 +222,68 @@ fun HomeScreen(
             item { QuickActionsSection(onNavigate = onNavigate) }
             
             item { Spacer(modifier = Modifier.height(24.dp)) }
+        }
+    }
+}
+
+@Composable
+fun FormaScoreSection(formaScore: FormaScore?) {
+    if (formaScore == null) return
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = formaScore.color.copy(alpha = 0.05f)),
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, formaScore.color.copy(alpha = 0.2f))
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(
+                    progress = formaScore.score / 100f,
+                    modifier = Modifier.size(64.dp),
+                    color = formaScore.color,
+                    strokeWidth = 6.dp,
+                    trackColor = formaScore.color.copy(alpha = 0.1f),
+                    strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+                )
+                Text(
+                    text = "${formaScore.score}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = formaScore.color
+                )
+            }
+            
+            Spacer(modifier = Modifier.width(20.dp))
+            
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = formaScore.color,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "FORMA READINESS: ${formaScore.title.uppercase()}",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = formaScore.color,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = formaScore.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    lineHeight = 18.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
         }
     }
 }

@@ -519,7 +519,8 @@ fun SetRow(
     val backgroundColor = if (set.isCompleted) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.1f)
 
     if (showPlateDialog) {
-        PlateCalculatorDialog(set.suggestedLbs.toDouble(), barWeight, userGender, onDismiss = { showPlateDialog = false })
+        val displayWeight = weightText.toDoubleOrNull() ?: set.actualLbs?.toDouble() ?: set.suggestedLbs.toDouble()
+        PlateCalculatorDialog(displayWeight, barWeight, userGender, onDismiss = { showPlateDialog = false })
     }
 
     Row(
@@ -539,14 +540,29 @@ fun SetRow(
             fontWeight = FontWeight.Bold
         )
 
+        // WEIGHT FIELD
         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             TextField(
                 value = weightText,
                 onValueChange = { weightText = it },
-                modifier = Modifier.fillMaxWidth().onFocusChanged { if (!it.isFocused && weightText.isNotBlank()) viewModel.updateSetWeight(set, weightText) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { focusState ->
+                        if (focusState.isFocused) {
+                            weightText = ""
+                        } else {
+                            if (weightText.isNotBlank()) {
+                                viewModel.updateSetWeight(set, weightText)
+                            } else {
+                                // Restore value if blurred while empty
+                                weightText = set.actualLbs?.toInt()?.toString() ?: ""
+                            }
+                        }
+                    },
                 placeholder = { Text(set.suggestedLbs.toString(), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
                 textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center, fontWeight = FontWeight.Medium),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 colors = activeSetTextFieldColors()
             )
             if (isBarbell && !set.isCompleted) {
@@ -556,20 +572,47 @@ fun SetRow(
             }
         }
 
+        // REPS FIELD
         TextField(
             value = repsText,
             onValueChange = { repsText = it },
-            modifier = Modifier.weight(1f).onFocusChanged { if (!it.isFocused && repsText.isNotBlank()) viewModel.updateSetReps(set, repsText) },
+            modifier = Modifier
+                .weight(1f)
+                .onFocusChanged { focusState ->
+                    if (focusState.isFocused) {
+                        repsText = ""
+                    } else {
+                        if (repsText.isNotBlank()) {
+                            viewModel.updateSetReps(set, repsText)
+                        } else {
+                            repsText = set.actualReps?.toString() ?: ""
+                        }
+                    }
+                },
             placeholder = { Text(set.suggestedReps.toString(), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
             textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center, fontWeight = FontWeight.Medium),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
             colors = activeSetTextFieldColors()
         )
 
+        // RPE FIELD
         TextField(
             value = rpeText,
             onValueChange = { rpeText = it },
-            modifier = Modifier.weight(1f).onFocusChanged { if (!it.isFocused && rpeText.isNotBlank()) viewModel.updateSetRpe(set, rpeText) },
+            modifier = Modifier
+                .weight(1f)
+                .onFocusChanged { focusState ->
+                    if (focusState.isFocused) {
+                        rpeText = ""
+                    } else {
+                        if (rpeText.isNotBlank()) {
+                            viewModel.updateSetRpe(set, rpeText)
+                        } else {
+                            rpeText = set.actualRpe?.toInt()?.toString() ?: ""
+                        }
+                    }
+                },
             placeholder = { Text(set.suggestedRpe.toString(), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
             textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center, fontWeight = FontWeight.Medium),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
