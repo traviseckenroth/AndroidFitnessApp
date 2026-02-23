@@ -6,6 +6,7 @@ import com.example.myapplication.data.local.WorkoutSetEntity
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
 enum class AutoCoachState {
@@ -14,7 +15,8 @@ enum class AutoCoachState {
 
 class AutoCoachEngine @Inject constructor(
     private val voice: NativeAutoCoachVoice,
-    private val sttManager: SpeechToTextManager // Assuming you have this implemented
+    private val sttManager: SpeechToTextManager,
+    private val bleHeartRateManager: BleHeartRateManager
 ) {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var job: Job? = null
@@ -91,11 +93,18 @@ class AutoCoachEngine @Inject constructor(
                         onSetCompleted(set) // Checks the box
                         onStartTimer(exercise.exerciseId) // Starts the UI timer
 
-                        // 5. Announce Rest
+                        // 5. Announce Rest with Live HR Monitoring
                         if (index < sets.lastIndex) {
-                            voice.speakAndWait("Take two minutes to recover.")
+                            voice.speakAndWait("Take a break. I'll watch your heart rate and let you know when you're recovered.")
                             _state.value = AutoCoachState.RESTING
-                            delay(120000) // 2 min rest
+                            
+                            // Dynamic recovery: Wait for HR < 115 or 2.5 min timeout
+                            withTimeoutOrNull(150000L) {
+                                bleHeartRateManager.heartRate.first { it in 1..114 }
+                            }
+                            
+                            _state.value = AutoCoachState.SPEAKING
+                            voice.speakAndWait("Heart rate recovered. Let's hit the next set.")
                         }
                     }
 
