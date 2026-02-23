@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.room.Room
 import com.example.myapplication.data.local.AppDatabase
+import com.example.myapplication.data.local.MemoryDao
 import com.example.myapplication.data.local.WorkoutDao
 import com.example.myapplication.util.DatabasePassphraseManager
 import dagger.Module
@@ -73,5 +74,11 @@ object AppModule {
     @Singleton
     fun provideWorkoutDao(database: AppDatabase): WorkoutDao {
         return database.workoutDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideMemoryDao(database: AppDatabase): MemoryDao {
+        return database.memoryDao()
     }
 }

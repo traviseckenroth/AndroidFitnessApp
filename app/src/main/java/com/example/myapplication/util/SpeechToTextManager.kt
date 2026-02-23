@@ -8,9 +8,12 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -73,6 +76,20 @@ class SpeechToTextManager @Inject constructor(
         awaitClose {
             speechRecognizer.stopListening()
             speechRecognizer.destroy()
+        }
+    }
+
+    suspend fun listenForResponse(timeoutMillis: Long): String {
+        return try {
+            withTimeout(timeoutMillis) {
+                startListening().first()
+            }
+        } catch (e: TimeoutCancellationException) {
+            Log.d("SpeechToText", "Listening timed out")
+            ""
+        } catch (e: Exception) {
+            Log.e("SpeechToText", "Error during listening", e)
+            ""
         }
     }
 }

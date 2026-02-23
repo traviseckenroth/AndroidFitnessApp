@@ -17,8 +17,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.myapplication.ui.theme.PrimaryIndigo
-import com.example.myapplication.ui.theme.SecondaryIndigo
+import com.example.myapplication.ui.theme.PrimaryAccent
+import com.example.myapplication.ui.theme.SecondaryAccent
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,7 +61,7 @@ fun WarmUpScreen(onBack: () -> Unit) {
             WarmUpCard(
                 title = "Strength",
                 subtitle = "CNS Potentiation & Power",
-                accentColor = SecondaryIndigo, // Or use a distinct color like Gold/Yellow
+                accentColor = SecondaryAccent, // Or use a distinct color like Gold/Yellow
                 icon = Icons.Default.Bolt,
                 goal = "Wake up the Central Nervous System (CNS) for heavy loads.",
                 steps = listOf(
@@ -77,7 +77,7 @@ fun WarmUpScreen(onBack: () -> Unit) {
             WarmUpCard(
                 title = "Physique",
                 subtitle = "Hypertrophy & Blood Flow",
-                accentColor = PrimaryIndigo,
+                accentColor = PrimaryAccent,
                 icon = Icons.Default.FitnessCenter,
                 goal = "Raise core temp, lubricate joints, and drive blood to muscles.",
                 steps = listOf(

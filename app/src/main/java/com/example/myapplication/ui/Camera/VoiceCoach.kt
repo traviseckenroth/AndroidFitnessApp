@@ -2,6 +2,7 @@
 
 package com.example.myapplication.ui.camera
 
+/*
 import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.util.Log
@@ -84,3 +85,4 @@ class VoiceCoach(context: Context) {
         speak("Rack it! Great set.", force = true, flush = false)
     }
 }
+*/

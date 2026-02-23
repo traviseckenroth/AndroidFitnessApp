@@ -2,6 +2,7 @@
 
 package com.example.myapplication.ui.camera
 
+/*
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.camera.core.ExperimentalGetImage
@@ -203,3 +204,4 @@ class FormAnalyzer(
 }
 
 data class MotionProfile(val landmarks: List<Int>, val flexionThreshold: Int, val extensionThreshold: Int)
+*/

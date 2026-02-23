@@ -36,8 +36,8 @@ import androidx.compose.ui.zIndex
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.repository.WorkoutSummaryResult
-import com.example.myapplication.ui.theme.PrimaryIndigo
-import com.example.myapplication.ui.theme.SecondaryIndigo
+import com.example.myapplication.ui.theme.PrimaryAccent
+import com.example.myapplication.ui.theme.SecondaryAccent
 import com.example.myapplication.ui.workout.ActiveSessionViewModel
 import kotlinx.coroutines.launch
 import java.io.File
@@ -118,7 +118,7 @@ fun WorkoutSummaryScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Spacer(modifier = Modifier.height(24.dp))
-                Icon(Icons.Default.CheckCircle, null, tint = PrimaryIndigo, modifier = Modifier.size(64.dp))
+                Icon(Icons.Default.CheckCircle, null, tint = PrimaryAccent, modifier = Modifier.size(64.dp))
                 Text(
                     text = summary?.title ?: "Workout Complete!",
                     style = MaterialTheme.typography.headlineMedium,

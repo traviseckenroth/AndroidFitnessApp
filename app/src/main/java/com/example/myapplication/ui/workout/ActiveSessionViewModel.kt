@@ -22,6 +22,8 @@ import com.example.myapplication.util.PlateCalculator
 import com.example.myapplication.util.ReadinessEngine
 import com.example.myapplication.util.SpeechToTextManager
 import com.example.myapplication.util.VoiceManager
+import com.example.myapplication.util.AutoCoachEngine
+import com.example.myapplication.util.AutoCoachState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
@@ -58,7 +60,8 @@ class ActiveSessionViewModel @Inject constructor(
     private val voiceManager: VoiceManager,
     private val speechToTextManager: SpeechToTextManager,
     private val bedrockClient: BedrockClient,
-    private val readinessEngine: ReadinessEngine
+    private val readinessEngine: ReadinessEngine,
+    private val autoCoachEngine: AutoCoachEngine
 ) : ViewModel() {
 
     // --- 1. STATE PROPERTIES ---
@@ -90,6 +93,8 @@ class ActiveSessionViewModel @Inject constructor(
 
     private val _isListening = MutableStateFlow(false)
     val isListening: StateFlow<Boolean> = _isListening
+
+    val autoCoachState: StateFlow<AutoCoachState> = autoCoachEngine.state
 
     private var workoutStartTime: Instant = Instant.now()
     private var transcribeJob: Job? = null
@@ -387,8 +392,34 @@ class ActiveSessionViewModel @Inject constructor(
             }
         }
     }
+    
+    // --- 6. AUTO COACH LOGIC ---
+    
+    fun toggleAutoCoach() {
+        if (autoCoachState.value == AutoCoachState.OFF) {
+            // Prepare a list of incomplete sets for the coach to handle
+            val exercisesToCoach = _exerciseStates.value.mapNotNull { state ->
+                val incompleteSets = state.sets.filter { !it.isCompleted }
+                if (incompleteSets.isNotEmpty()) {
+                    state.exercise to incompleteSets
+                } else null
+            }
+            
+            if (exercisesToCoach.isNotEmpty()) {
+                 autoCoachEngine.startWorkout(
+                    exercises = exercisesToCoach,
+                    onUpdateReps = { set, reps -> updateSetReps(set, reps) },
+                    onUpdateWeight = { set, weight -> updateSetWeight(set, weight) },
+                    onSetCompleted = { set -> updateSetCompletion(set, true) },
+                    onStartTimer = { exerciseId -> startSetTimer(exerciseId) }
+                )
+            }
+        } else {
+            autoCoachEngine.stop()
+        }
+    }
 
-    // --- 6. AI & CHAT INTERACTION ---
+    // --- 7. AI & CHAT INTERACTION ---
 
     fun interactWithCoach(userText: String) {
         val currentHistory = _chatHistory.value.toMutableList()
@@ -532,11 +563,14 @@ class ActiveSessionViewModel @Inject constructor(
         }
     }
 
+    // --- ML KIT REMOVAL ---
+    /*
     suspend fun generateCoachingCue(exerciseName: String, issue: String): String {
         return bedrockClient.generateCoachingCue(exerciseName, issue, 0)
     }
+    */
 
-    // --- 7. LIVE VOICE COACHING ---
+    // --- 8. LIVE VOICE COACHING ---
 
     fun toggleLiveCoaching() {
         if (_isListening.value) {
@@ -576,6 +610,7 @@ class ActiveSessionViewModel @Inject constructor(
         stopLiveTranscription()
         voiceManager.stop()
         stopTimerService()
+        autoCoachEngine.stop()
     }
 
     private fun generateCoachBriefing(

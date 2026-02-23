@@ -100,6 +100,9 @@ dependencies {
     implementation(libs.android.database.sqlcipher)
     implementation(libs.androidx.security.crypto)
 
+    // --- Biometric Authentication ---
+    implementation(libs.androidx.biometric)
+
     // --- Hilt (Dependency Injection) ---
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

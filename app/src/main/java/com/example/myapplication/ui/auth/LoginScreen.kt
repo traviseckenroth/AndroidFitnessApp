@@ -11,19 +11,24 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.repository.AuthRepository
 import com.example.myapplication.data.repository.ForgotPasswordResult
 import com.example.myapplication.data.repository.LoginResult
+import com.example.myapplication.util.BiometricAuthManager
+import com.example.myapplication.util.CredentialManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val biometricAuthManager: BiometricAuthManager,
+    private val credentialManager: CredentialManager
 ) : ViewModel() {
     var uiState by mutableStateOf<LoginResult?>(null)
     var forgotPasswordUiState by mutableStateOf<ForgotPasswordResult?>(null)
@@ -32,6 +37,9 @@ class AuthViewModel @Inject constructor(
     var isForgotPasswordMode by mutableStateOf(false)
     var isResetCodeSent by mutableStateOf(false)
 
+    val canShowBiometric: Boolean
+        get() = biometricAuthManager.isBiometricAvailable() && credentialManager.hasCredentials()
+
     fun login(u: String, p: String, onSuccess: () -> Unit) {
         viewModelScope.launch {
             isLoading = true
@@ -39,11 +47,29 @@ class AuthViewModel @Inject constructor(
             isLoading = false
 
             when (result) {
-                is LoginResult.Success -> onSuccess()
+                is LoginResult.Success -> {
+                    credentialManager.saveCredentials(u, p)
+                    onSuccess()
+                }
                 is LoginResult.NewPasswordRequired -> isNewPasswordRequired = true // Switch UI mode
                 is LoginResult.Error -> uiState = result
             }
         }
+    }
+
+    fun loginWithBiometric(activity: FragmentActivity, onSuccess: () -> Unit) {
+        biometricAuthManager.showBiometricPrompt(
+            activity = activity,
+            onSuccess = {
+                val (u, p) = credentialManager.getCredentials()
+                if (u != null && p != null) {
+                    login(u, p, onSuccess)
+                }
+            },
+            onError = { _, err ->
+                uiState = LoginResult.Error(err.toString())
+            }
+        )
     }
 
     fun confirmNewPassword(newPass: String, onSuccess: () -> Unit) {
@@ -102,14 +128,16 @@ fun LoginScreen(
     var newPassword by remember { mutableStateOf("") }
     var resetCode by remember { mutableStateOf("") }
 
-    val activity = (LocalContext.current as? Activity)
+    val context = LocalContext.current
+    val activity = context as? FragmentActivity
+    
     // If the user is on the login screen, back button should exit the app
     BackHandler {
         if (viewModel.isForgotPasswordMode) {
             viewModel.isForgotPasswordMode = false
             viewModel.isResetCodeSent = false
         } else {
-            activity?.finish()
+            (context as? Activity)?.finish()
         }
     }
 
@@ -234,6 +262,16 @@ fun LoginScreen(
                 ) {
                     if (viewModel.isLoading) CircularProgressIndicator(color = Color.White)
                     else Text("Log In")
+                }
+
+                if (viewModel.canShowBiometric && activity != null) {
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedButton(
+                        onClick = { viewModel.loginWithBiometric(activity, onLoginSuccess) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Login with Biometrics")
+                    }
                 }
 
                 Spacer(Modifier.height(16.dp))

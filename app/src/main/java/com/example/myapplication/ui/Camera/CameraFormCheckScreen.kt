@@ -2,6 +2,7 @@
 
 package com.example.myapplication.ui.camera
 
+/*
 import android.Manifest
 import android.content.ContentValues
 import android.content.pm.PackageManager
@@ -420,3 +421,4 @@ fun PermissionDeniedView(onGrantClick: () -> Unit) {
         }
     }
 }
+*/

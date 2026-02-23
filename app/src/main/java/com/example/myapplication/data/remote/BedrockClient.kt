@@ -13,6 +13,7 @@ import org.json.JSONObject
 import okhttp3.internal.http2.StreamResetException
 import kotlinx.coroutines.CancellationException
 import com.example.myapplication.data.local.ExerciseEntity
+import com.example.myapplication.data.local.UserMemoryEntity
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.repository.AuthRepository
 import com.example.myapplication.data.repository.PromptRepository
@@ -406,6 +407,78 @@ class BedrockClient @Inject constructor(
         } catch (e: Exception) {
             Log.e("Bedrock", "Briefing failed", e)
             "Stay focused on your goals!"
+        }
+    }
+
+    suspend fun extractUserMemory(userSpeech: String): UserMemoryEntity? = withContext(Dispatchers.Default) {
+        val systemPrompt = """
+            You are a Fitness Memory Assistant. Analyze the user's speech for mentions of:
+            1. Pain or injury (Category: 'Pain')
+            2. Exercise preferences or dislikes (Category: 'Preference')
+            3. Fitness goals (Category: 'Goal')
+            
+            If detected, output a JSON object:
+            {
+              "category": "Pain" | "Preference" | "Goal",
+              "exerciseName": "Name of specific exercise if mentioned, else null",
+              "note": "A concise summary of the memory"
+            }
+            If nothing significant is mentioned, return an empty JSON object {}.
+        """.trimIndent()
+
+        try {
+            val cleanJson = invokeClaude(systemPrompt, userSpeech)
+            if (cleanJson == "{}") return@withContext null
+            
+            val json = JSONObject(cleanJson)
+            if (!json.has("category")) return@withContext null
+            
+            UserMemoryEntity(
+                timestamp = System.currentTimeMillis(),
+                category = json.getString("category"),
+                exerciseName = if (json.isNull("exerciseName")) null else json.getString("exerciseName"),
+                note = json.getString("note")
+            )
+        } catch (e: Exception) {
+            Log.e("BedrockError", "Error extracting memory", e)
+            null
+        }
+    }
+
+    suspend fun generatePreWorkoutScript(
+        content: List<ContentSourceEntity>,
+        workoutTitle: String?,
+        relevantMemories: List<UserMemoryEntity>
+    ): String = withContext(Dispatchers.Default) {
+        val contentList = content.joinToString("\n") { "- ${it.title}: ${it.summary}" }
+        val memoriesList = relevantMemories.joinToString("\n") { 
+            "- ${it.category}: ${it.note} ${it.exerciseName?.let { name -> "($name)" } ?: ""}" 
+        }
+        
+        val workoutContext = if (workoutTitle != null) "The user's workout for today is: $workoutTitle." else "No workout scheduled today."
+        
+        val rawPrompt = promptRepository.getKnowledgeBriefingPrompt()
+        val systemPrompt = """
+            $rawPrompt
+            $workoutContext
+            
+            USER MEMORIES (PAST ISSUES/PREFERENCES):
+            $memoriesList
+            
+            INSTRUCTIONS:
+            1. Proactively mention the relevant user memories (especially pain or preferences).
+            2. Explain how today's session or advice accounts for these memories (e.g., "I've kept the weights moderate because of your lower back pain").
+            3. Keep the tone supportive and professional.
+            4. Synthesize the provided fitness content into the briefing as well.
+        """.trimIndent()
+
+        try {
+            val cleanJson = invokeClaude(systemPrompt, "Summarize this content and address memories: \n$contentList")
+            val json = JSONObject(cleanJson)
+            json.getString("briefing")
+        } catch (e: Exception) {
+            Log.e("Bedrock", "Pre-workout script failed", e)
+            "Let's have a great workout today!"
         }
     }
 

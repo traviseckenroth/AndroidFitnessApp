@@ -140,7 +140,7 @@ fun InsightsScreen(
                         if (state.oneRepMaxHistory.isNotEmpty()) {
                             OneRepMaxGraph(
                                 dataPoints = state.oneRepMaxHistory,
-                                lineColor = MaterialTheme.colorScheme.primary,
+                                lineColor = MaterialTheme.colorScheme.secondary, // Use Highlight color
                                 surfaceColor = MaterialTheme.colorScheme.surface
                             )
                         } else {
@@ -165,7 +165,7 @@ fun InsightsScreen(
 
                         if (state.weeklyTonnage.size == 1) {
                             Surface(
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
                             ) {
@@ -185,14 +185,14 @@ fun InsightsScreen(
                                 Column(modifier = Modifier.padding(vertical = 6.dp)) {
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                         Text(week, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                        Text("${(volume).roundToInt()} lbs", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.ExtraBold)
+                                        Text("${(volume).roundToInt()} lbs", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.ExtraBold)
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))
                                     LinearProgressIndicator(
                                         progress = { percentage },
                                         modifier = Modifier.fillMaxWidth().height(12.dp).clip(CircleShape),
-                                        color = MaterialTheme.colorScheme.primary,
-                                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                        color = MaterialTheme.colorScheme.secondary,
+                                        trackColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
                                     )
                                 }
                             }
@@ -289,7 +289,7 @@ fun AIStatusCard() {
             Icon(
                 Icons.Default.AutoAwesome,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier.size(24.dp)
             )
             Spacer(modifier = Modifier.width(16.dp))
@@ -297,12 +297,13 @@ fun AIStatusCard() {
                 Text(
                     "AI-Optimized Training",
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
                 Text(
                     "Your performance data is being analyzed locally to refine your next session's RPE targets.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                 )
             }
         }
@@ -336,7 +337,7 @@ fun MuscleVolumeRow(muscle: String, volume: Double, maxVolume: Double, totalVolu
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(muscle, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
             Row {
-                Text("$relativePercentage%", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text("$relativePercentage%", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("(${(volume / 1000).roundToInt()}k lbs)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -356,7 +357,7 @@ fun MuscleVolumeRow(muscle: String, volume: Double, maxVolume: Double, totalVolu
                     .clip(CircleShape)
                     .background(
                         Brush.horizontalGradient(
-                            listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary)
+                            listOf(MaterialTheme.colorScheme.secondary, MaterialTheme.colorScheme.secondaryContainer)
                         )
                     )
             )
@@ -550,7 +551,7 @@ fun WorkoutSummaryCard(item: RecentWorkoutSummary, onClick: () -> Unit) {
                     Text(
                         text = "${item.totalVolume.roundToInt()} lbs",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = MaterialTheme.colorScheme.secondary,
                         fontWeight = FontWeight.ExtraBold
                     )
                     Spacer(modifier = Modifier.width(8.dp))

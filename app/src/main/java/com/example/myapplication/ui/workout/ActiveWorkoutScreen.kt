@@ -12,12 +12,16 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
 import androidx.compose.animation.*
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import com.example.myapplication.util.AutoCoachState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -30,6 +34,8 @@ import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -37,6 +43,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -51,9 +58,12 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
-import com.example.myapplication.ui.camera.CameraFormCheckScreen
-import com.example.myapplication.ui.camera.FormAnalyzer
+// --- ML KIT REMOVAL ---
+// import com.example.myapplication.ui.camera.CameraFormCheckScreen
+// import com.example.myapplication.ui.camera.FormAnalyzer
 import com.example.myapplication.util.PlateCalculator
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -69,6 +79,10 @@ fun ActiveWorkoutScreen(
     val coachBriefing by viewModel.coachBriefing.collectAsState()
     val workoutSummary by viewModel.workoutSummary.collectAsState()
     val estimatedTime by viewModel.totalEstimatedTime.collectAsState()
+    val autoCoachState by viewModel.autoCoachState.collectAsState()
+
+    // --- POCKET MODE STATE ---
+    var isPocketModeActive by remember { mutableStateOf(false) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showChatSheet by remember { mutableStateOf(false) }
@@ -89,14 +103,22 @@ fun ActiveWorkoutScreen(
     val completedSets = remember(exerciseStates) { exerciseStates.sumOf { it.sets.count { s -> s.isCompleted } } }
     val progress = if (totalSets > 0) completedSets.toFloat() / totalSets else 0f
 
-    // Auto-Scroll Logic: Triggered whenever a set is completed
-    LaunchedEffect(completedSets) {
-        if (exerciseStates.isNotEmpty()) {
-            val activeExerciseIndex = exerciseStates.indexOfFirst { state ->
+    // Track completed exercises to trigger the scroll only when an exercise is fully finished
+    val completedExercisesCount = remember(exerciseStates) {
+        exerciseStates.count { state -> state.sets.isNotEmpty() && state.sets.all { it.isCompleted } }
+    }
+
+    // Auto-Scroll Logic: When an exercise is completed, move the next one to the top.
+    LaunchedEffect(completedExercisesCount) {
+        if (exerciseStates.isNotEmpty() && completedExercisesCount > 0) {
+            // Wait for the collapse animation to finish before scrolling to avoid "blinking" jumps
+            delay(600)
+            val nextExerciseIndex = exerciseStates.indexOfFirst { state ->
                 state.sets.any { !it.isCompleted }
             }
-            if (activeExerciseIndex != -1) {
-                workoutListState.animateScrollToItem(activeExerciseIndex + 1)
+            if (nextExerciseIndex != -1) {
+                // Index + 1 because of the CoachBriefingCard at position 0
+                workoutListState.animateScrollToItem(nextExerciseIndex + 1)
             }
         }
     }
@@ -131,8 +153,9 @@ fun ActiveWorkoutScreen(
 
     var permissionsGranted by remember {
         mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED &&
-                    ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+            // --- ML KIT REMOVAL: Removed Camera Permission check ---
+            // ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         )
     }
 
@@ -142,10 +165,13 @@ fun ActiveWorkoutScreen(
 
     LaunchedEffect(Unit) {
         if (!permissionsGranted) {
-            launcher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
+            // --- ML KIT REMOVAL: Removed Camera Permission request ---
+            launcher.launch(arrayOf(/* Manifest.permission.CAMERA, */ Manifest.permission.RECORD_AUDIO))
         }
     }
 
+    // --- ML KIT REMOVAL ---
+    /*
     var activeCameraExerciseState by remember { mutableStateOf<ExerciseState?>(null) }
 
     if (activeCameraExerciseState != null) {
@@ -163,6 +189,7 @@ fun ActiveWorkoutScreen(
         }
         return
     }
+    */
 
     LaunchedEffect(workoutId) { viewModel.loadWorkout(workoutId) }
 
@@ -191,165 +218,259 @@ fun ActiveWorkoutScreen(
         )
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            Column {
-                TopAppBar(
-                    title = {
-                        Column {
-                            Text("Active Session", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                            Text("Est. Time: $estimatedTime min", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    // --- WRAP SCAFFOLD IN BOX FOR POCKET MODE OVERLAY ---
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                Column {
+                    TopAppBar(
+                        title = {
+                            Column {
+                                Text("Active Session", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                Text("Est. Time: $estimatedTime min", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                        },
+                        actions = {
+                            // --- LOCK BUTTON TO TRIGGER POCKET MODE ---
+                            IconButton(onClick = { isPocketModeActive = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = "Lock Screen",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            // --- AUTO COACH BUTTON ---
+                            IconButton(onClick = { viewModel.toggleAutoCoach() }) {
+                                Icon(
+                                    imageVector = if (autoCoachState == AutoCoachState.OFF) Icons.Default.RecordVoiceOver else Icons.Default.VoiceOverOff,
+                                    contentDescription = "Toggle Auto-Coach",
+                                    tint = if (autoCoachState != AutoCoachState.OFF) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+                    )
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth().height(4.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                    AnimatedVisibility(visible = autoCoachState != AutoCoachState.OFF) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            shape = RoundedCornerShape(12.dp),
+                            onClick = { viewModel.toggleAutoCoach() } // Tap to turn off
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = when(autoCoachState) {
+                                            AutoCoachState.SPEAKING -> Icons.Default.VolumeUp
+                                            AutoCoachState.LISTENING -> Icons.Default.Mic
+                                            AutoCoachState.RESTING -> Icons.Default.Timer
+                                            else -> Icons.Default.Headphones
+                                        },
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text("Auto-Coach Active", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                        Text(
+                                            text = "Status: ${autoCoachState.name}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                        )
+                                    }
+                                }
+                                if (autoCoachState == AutoCoachState.LISTENING) {
+                                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                                }
+                            }
                         }
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
-                )
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.fillMaxWidth().height(4.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            }
-        },
-        floatingActionButton = {
-            Column(horizontalAlignment = Alignment.End) {
-                FloatingActionButton(
-                    onClick = { showAddExerciseDialog = true },
-                    containerColor = MaterialTheme.colorScheme.secondary,
-                    contentColor = MaterialTheme.colorScheme.onSecondary,
-                    modifier = Modifier.padding(bottom = 16.dp),
-                    shape = CircleShape
-                ) { Icon(Icons.Default.Add, "Add Exercise") }
+                    }
+                }
+            },
+            floatingActionButton = {
+                Column(horizontalAlignment = Alignment.End) {
+                    FloatingActionButton(
+                        onClick = { showAddExerciseDialog = true },
+                        containerColor = MaterialTheme.colorScheme.secondary,
+                        contentColor = MaterialTheme.colorScheme.onSecondary,
+                        modifier = Modifier.padding(bottom = 16.dp),
+                        shape = CircleShape
+                    ) { Icon(Icons.Default.Add, "Add Exercise") }
 
-                FloatingActionButton(
-                    onClick = { showChatSheet = true },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = CircleShape
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Chat, "AI Coach")
-                        if (isListening) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(56.dp),
-                                color = MaterialTheme.colorScheme.error,
-                                strokeWidth = 2.dp
-                            )
+                    FloatingActionButton(
+                        onClick = { showChatSheet = true },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        shape = CircleShape
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Chat, "AI Coach")
+                            if (isListening) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(56.dp),
+                                    color = MaterialTheme.colorScheme.error,
+                                    strokeWidth = 2.dp
+                                )
+                            }
                         }
                     }
                 }
             }
-        }
-    ) { padding ->
-        if (showChatSheet) {
-            ModalBottomSheet(
-                onDismissRequest = {
-                    showChatSheet = false
-                    if (isListening) viewModel.toggleLiveCoaching()
-                },
-                sheetState = sheetState,
-                containerColor = MaterialTheme.colorScheme.surface,
-                dragHandle = { BottomSheetDefaults.DragHandle() }
-            ) {
-                CoachChatContent(
-                    chatHistory = chatHistory,
-                    userText = userText,
-                    isListening = isListening,
-                    onUserTextChange = { userText = it },
-                    onSend = {
-                        if (userText.isNotBlank()) {
-                            viewModel.interactWithCoach(userText)
-                            userText = ""
-                        }
+        ) { padding ->
+            if (showChatSheet) {
+                ModalBottomSheet(
+                    onDismissRequest = {
+                        showChatSheet = false
+                        if (isListening) viewModel.toggleLiveCoaching()
                     },
-                    onVoiceInput = {
-                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    sheetState = sheetState,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    dragHandle = { BottomSheetDefaults.DragHandle() }
+                ) {
+                    CoachChatContent(
+                        chatHistory = chatHistory,
+                        userText = userText,
+                        isListening = isListening,
+                        onUserTextChange = { userText = it },
+                        onSend = {
+                            if (userText.isNotBlank()) {
+                                viewModel.interactWithCoach(userText)
+                                userText = ""
+                            }
+                        },
+                        onVoiceInput = {
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                            }
+                            voiceLauncher.launch(intent)
+                        },
+                        onToggleLive = { viewModel.toggleLiveCoaching() },
+                        onQuickAction = { actionText -> viewModel.interactWithCoach(actionText) },
+                        onDismiss = {
+                            scope.launch { sheetState.hide() }.invokeOnCompletion {
+                                if (!sheetState.isVisible) showChatSheet = false
+                            }
                         }
-                        voiceLauncher.launch(intent)
-                    },
-                    onToggleLive = { viewModel.toggleLiveCoaching() },
-                    onQuickAction = { actionText -> viewModel.interactWithCoach(actionText) },
-                    onDismiss = {
-                        scope.launch { sheetState.hide() }.invokeOnCompletion {
-                            if (!sheetState.isVisible) showChatSheet = false
-                        }
-                    }
-                )
-            }
-        }
-
-        if (exerciseStates.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                state = workoutListState,
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                item { CoachBriefingCard(briefing = coachBriefing) }
-
-                items(exerciseStates, key = { it.exercise.exerciseId }) { exerciseState ->
-                    ExerciseCard(
-                        exerciseState = exerciseState,
-                        viewModel = viewModel,
-                        barWeight = barWeight,
-                        userGender = userGender,
-                        onLaunchCamera = { activeCameraExerciseState = exerciseState }
                     )
                 }
+            }
 
-                item {
-                    Button(
-                        onClick = { viewModel.finishWorkout(workoutId) },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                    ) {
-                        Text("FINISH WORKOUT", fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+            if (exerciseStates.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    state = workoutListState,
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    item(key = "coach_briefing") {
+                        CoachBriefingCard(
+                            briefing = coachBriefing
+                        )
                     }
-                    Spacer(modifier = Modifier.height(80.dp))
+
+                    items(exerciseStates, key = { it.exercise.exerciseId }) { exerciseState ->
+                        ExerciseCard(
+                            exerciseState = exerciseState,
+                            viewModel = viewModel,
+                            barWeight = barWeight,
+                            userGender = userGender
+                            // --- ML KIT REMOVAL ---
+                            // onLaunchCamera = { activeCameraExerciseState = exerciseState }
+                        )
+                    }
+
+                    item(key = "finish_workout") {
+                        Button(
+                            onClick = { viewModel.finishWorkout(workoutId) },
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Text("FINISH WORKOUT", fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                        }
+                        Spacer(modifier = Modifier.height(80.dp))
+                    }
                 }
             }
+        }
+
+        // --- POCKET MODE RENDER LAYER ---
+        AnimatedVisibility(
+            visible = isPocketModeActive,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            // Find current exercise to show on lock screen
+            val activeExercise = exerciseStates.firstOrNull { state -> state.sets.any { !it.isCompleted } }
+            val currentExerciseName = activeExercise?.exercise?.name ?: "Workout Complete"
+
+            PocketModeOverlay(
+                currentExercise = currentExerciseName,
+                coachState = autoCoachState,
+                onUnlock = { isPocketModeActive = false }
+            )
         }
     }
 }
 
 @Composable
 fun ExerciseCard(
+    modifier: Modifier = Modifier,
     exerciseState: ExerciseState,
     viewModel: ActiveSessionViewModel,
     barWeight: Double,
-    userGender: String,
-    onLaunchCamera: () -> Unit
+    userGender: String
+    // --- ML KIT REMOVAL ---
+    // onLaunchCamera: () -> Unit
 ) {
     val isActive = exerciseState.sets.any { !it.isCompleted }
+    
+    val containerColor by animateColorAsState(
+        targetValue = if (isActive) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "ExerciseCardColor"
+    )
 
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth().animateContentSize(),
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessLow)),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = if (isActive) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             ExerciseHeader(
                 exerciseState = exerciseState,
                 viewModel = viewModel,
-                onToggleVisibility = { viewModel.toggleExerciseVisibility(exerciseState.exercise.exerciseId) },
-                onLaunchCamera = onLaunchCamera
+                onToggleVisibility = { viewModel.toggleExerciseVisibility(exerciseState.exercise.exerciseId) }
+                // --- ML KIT REMOVAL ---
+                // onLaunchCamera = onLaunchCamera
             )
 
-            AnimatedVisibility(visible = exerciseState.areSetsVisible) {
+            if (exerciseState.areSetsVisible) {
                 Column {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp).alpha(0.2f))
                     SetsTable(
@@ -360,6 +481,7 @@ fun ExerciseCard(
                         barWeight = barWeight,
                         userGender = userGender
                     )
+                    
                     SetTimer(exerciseState = exerciseState, viewModel = viewModel)
                 }
             }
@@ -371,8 +493,9 @@ fun ExerciseCard(
 fun ExerciseHeader(
     exerciseState: ExerciseState,
     viewModel: ActiveSessionViewModel,
-    onToggleVisibility: () -> Unit,
-    onLaunchCamera: () -> Unit
+    onToggleVisibility: () -> Unit
+    // --- ML KIT REMOVAL ---
+    // onLaunchCamera: () -> Unit
 ) {
     val exercise = exerciseState.exercise
     var showDescriptionDialog by remember { mutableStateOf(false) }
@@ -380,6 +503,11 @@ fun ExerciseHeader(
     var alternatives by remember { mutableStateOf<List<ExerciseEntity>>(emptyList()) }
     val scope = rememberCoroutineScope()
     val isAllCompleted = exerciseState.sets.all { it.isCompleted }
+
+    val titleColor by animateColorAsState(
+        targetValue = if (isAllCompleted) Color.Gray else MaterialTheme.colorScheme.onSurface,
+        label = "HeaderTitleColor"
+    )
 
     if (showDescriptionDialog) {
         AlertDialog(
@@ -410,7 +538,7 @@ fun ExerciseHeader(
                 text = exercise.name,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                color = if (isAllCompleted) Color.Gray else MaterialTheme.colorScheme.onSurface
+                color = titleColor
             )
             Row(modifier = Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Surface(
@@ -434,11 +562,14 @@ fun ExerciseHeader(
                 Icon(Icons.AutoMirrored.Filled.Help, "Info", tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
             }
 
+            // --- ML KIT REMOVAL ---
+            /*
             if (FormAnalyzer.isSupported(exercise.name)) {
                 IconButton(onClick = onLaunchCamera) {
                     Icon(Icons.Default.Videocam, "Camera", tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f))
                 }
             }
+            */
 
             IconButton(onClick = {
                 scope.launch {
@@ -491,7 +622,7 @@ fun SetsTable(
         TextButton(
             onClick = { viewModel.addSet(exerciseId) },
             modifier = Modifier.align(Alignment.Start),
-            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+            colors = ButtonDefaults.buttonColors(contentColor = Color.White)
         ) {
             Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
@@ -733,12 +864,12 @@ fun PlateCalculatorDialog(lbs: Double, bar: Double, gender: String, onDismiss: (
 @Composable
 fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
     val timerState = exerciseState.timerState
-    if (exerciseState.sets.all { it.isCompleted }) return
 
     Card(
         modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -767,12 +898,13 @@ fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
 }
 
 @Composable
-fun CoachBriefingCard(briefing: String) {
+fun CoachBriefingCard(modifier: Modifier = Modifier, briefing: String) {
     if (briefing.isBlank()) return
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)),
-        shape = RoundedCornerShape(16.dp)
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
@@ -830,4 +962,78 @@ fun AddExerciseDialog(viewModel: ActiveSessionViewModel, onDismiss: () -> Unit, 
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
     )
+}
+
+@Composable
+fun PocketModeOverlay(
+    currentExercise: String,
+    coachState: AutoCoachState,
+    onUnlock: () -> Unit
+) {
+    // Pure black background saves OLED battery
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .pointerInput(Unit) {
+                // Consume all generic taps so they don't pass through to the workout UI
+                detectTapGestures { }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                imageVector = Icons.Default.Headphones,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(48.dp)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = currentExercise,
+                style = MaterialTheme.typography.headlineMedium,
+                color = Color.White,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "Coach Status: ${coachState.name}",
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.Gray
+            )
+
+            Spacer(modifier = Modifier.height(64.dp))
+
+            // A simple "Hold to Unlock" button
+            // var progress by remember { mutableStateOf(0f) }
+            val haptic = LocalHapticFeedback.current
+
+            Button(
+                onClick = { /* Do nothing on normal click */ },
+                modifier = Modifier
+                    .fillMaxWidth(0.6f)
+                    .height(56.dp)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onPress = {
+                                // Simulate holding down to unlock
+                                val startTime = System.currentTimeMillis()
+                                try {
+                                    awaitRelease()
+                                    val holdTime = System.currentTimeMillis() - startTime
+                                    if (holdTime > 1000) { // Held for 1 second
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        onUnlock()
+                                    }
+                                } catch (c: CancellationException) {
+                                    // Touch was cancelled
+                                }
+                            }
+                        )
+                    },
+                colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
+            ) {
+                Text("HOLD TO UNLOCK", color = Color.White)
+            }
+        }
+    }
 }

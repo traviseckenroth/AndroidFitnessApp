@@ -13,6 +13,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -90,19 +92,21 @@ fun GeneratePlanScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.secondary)
                             Spacer(Modifier.width(8.dp))
-                            Text("Block $nextBlockNumber Ready!", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("Block $nextBlockNumber Ready!", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             "You are nearing the end of your current mesocycle. Generate Block $nextBlockNumber to automatically apply Progressive Overload and Variation based on your performance.",
-                            style = MaterialTheme.typography.bodyMedium
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(
                             onClick = { viewModel.generateNextBlock() },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                         ) {
                             Text("Generate Block $nextBlockNumber with AI")
                         }
@@ -154,12 +158,12 @@ fun GeneratePlanScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Workout Schedule", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("Workout Schedule", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                             
                             // Progress Counter
                             planProgress?.let {
                                 Surface(
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f),
                                     shape = MaterialTheme.shapes.small
                                 ) {
                                     Text(
@@ -167,13 +171,13 @@ fun GeneratePlanScreen(
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
                                     )
                                 }
                             }
                         }
                         
-                        Text(plan.explanation, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
+                        Text(plan.explanation, style = MaterialTheme.typography.bodyMedium, maxLines = 2, color = MaterialTheme.colorScheme.onPrimaryContainer)
                         
                         // Progress Bar
                         planProgress?.let {
@@ -181,25 +185,29 @@ fun GeneratePlanScreen(
                             LinearProgressIndicator(
                                 progress = { it.percentage },
                                 modifier = Modifier.fillMaxWidth().height(8.dp),
-                                color = MaterialTheme.colorScheme.primary,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 trackColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f),
                                 strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
                             )
                         }
 
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("Tap to view details", style = MaterialTheme.typography.labelSmall)
+                        Text("Tap to view details", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f))
                     }
                 }
             }
         }
 
-        // --- SKELETON LOADER OVERLAY ---
-        if (uiState is PlanUiState.Loading) {
+        // --- SMOOTH SKELETON LOADER OVERLAY ---
+        AnimatedVisibility(
+            visible = uiState is PlanUiState.Loading,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.9f))
+                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.95f))
                     .padding(16.dp)
             ) {
                 SkeletonPlanLoader()
@@ -234,7 +242,8 @@ fun GeneratePlanScreen(
                                     viewModel.acceptCurrentPlan()
                                     showExerciseDialog = false
                                 },
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                             ) {
                                 Text("Accept Block")
                             }
@@ -263,20 +272,33 @@ fun SkeletonPlanLoader() {
     
     LaunchedEffect(Unit) {
         while (true) {
-            delay(2000)
+            delay(2500)
             thoughtIndex = (thoughtIndex + 1) % thoughts.size
         }
     }
 
-    val infiniteTransition = rememberInfiniteTransition(label = "shimmer")
-    val alpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 0.7f,
+    // Professional Shimmer Animation
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val shimmerTranslate by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1000f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
+            animation = tween(1500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
         ),
-        label = "alpha"
+        label = "shimmer"
+    )
+
+    val shimmerColors = listOf(
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+    )
+
+    val brush = Brush.linearGradient(
+        colors = shimmerColors,
+        start = Offset(shimmerTranslate - 200f, shimmerTranslate - 200f),
+        end = Offset(shimmerTranslate, shimmerTranslate)
     )
 
     Column(
@@ -284,7 +306,7 @@ fun SkeletonPlanLoader() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // Skeleton Cards
+        // Skeleton Cards with Gradient Shimmer (Less "flashy")
         repeat(3) {
             Box(
                 modifier = Modifier
@@ -292,16 +314,16 @@ fun SkeletonPlanLoader() {
                     .height(120.dp)
                     .padding(vertical = 8.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Color.Gray.copy(alpha = alpha))
+                    .background(brush)
             )
         }
         
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(48.dp))
         
         Icon(
             imageVector = Icons.Default.AutoAwesome,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+            tint = MaterialTheme.colorScheme.secondary,
             modifier = Modifier.size(48.dp)
         )
         
@@ -310,8 +332,8 @@ fun SkeletonPlanLoader() {
         AnimatedContent(
             targetState = thoughts[thoughtIndex],
             transitionSpec = {
-                fadeIn(animationSpec = tween(500)) + slideInVertically() togetherWith
-                fadeOut(animationSpec = tween(500)) + slideOutVertically()
+                fadeIn(animationSpec = tween(800)) + slideInVertically { it / 2 } togetherWith
+                fadeOut(animationSpec = tween(800)) + slideOutVertically { -it / 2 }
             },
             label = "thought"
         ) { thought ->
@@ -319,8 +341,9 @@ fun SkeletonPlanLoader() {
                 text = thought,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                textAlign = TextAlign.Center
+                color = MaterialTheme.colorScheme.secondary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 24.dp)
             )
         }
     }
@@ -328,6 +351,7 @@ fun SkeletonPlanLoader() {
 
 @Composable
 fun CycleInformationBlock(goal: String, programType: String) {
+    // Offset from the gradient start/end to create the moving effect
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -340,7 +364,7 @@ fun CycleInformationBlock(goal: String, programType: String) {
                 Icon(
                     imageVector = Icons.Default.Timeline,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = MaterialTheme.colorScheme.secondary,
                     modifier = Modifier.size(24.dp)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
@@ -462,18 +486,36 @@ fun PlanInputForm(
 
     Spacer(modifier = Modifier.height(8.dp))
     Text("Session Duration: ${durationHours} Hours", style = MaterialTheme.typography.labelMedium)
-    Slider(value = durationHours, onValueChange = onDurationChange, valueRange = 0.5f..2.0f, steps = 2)
+    Slider(
+        value = durationHours, 
+        onValueChange = onDurationChange, 
+        valueRange = 0.5f..2.0f, 
+        steps = 2,
+        colors = SliderDefaults.colors(
+            thumbColor = MaterialTheme.colorScheme.secondary,
+            activeTrackColor = MaterialTheme.colorScheme.secondary,
+            inactiveTrackColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
+        )
+    )
     Spacer(modifier = Modifier.height(16.dp))
     Text("Days Available:", style = MaterialTheme.typography.labelMedium)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         daysOfWeek.forEach { day ->
-            FilterChip(selected = selectedDays.contains(day), onClick = { onDaySelected(day) }, label = { Text(day) })
+            FilterChip(
+                selected = selectedDays.contains(day), 
+                onClick = { onDaySelected(day) }, 
+                label = { Text(day) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            )
         }
     }
 
     Spacer(modifier = Modifier.height(16.dp))
 
-    Button(onClick = onGenerateClick, enabled = !isLoading, modifier = Modifier.fillMaxWidth()) {
+    Button(onClick = onGenerateClick, enabled = !isLoading, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
         Text("Generate Block 1 with AI")
     }
     Spacer(modifier = Modifier.height(16.dp))
@@ -490,7 +532,7 @@ fun PlanDisplay(plan: WorkoutPlan) {
                 text = "Coach's Strategy:",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.secondary
             )
             Text(
                 text = plan.explanation,
@@ -508,7 +550,7 @@ fun PlanDisplay(plan: WorkoutPlan) {
                     Text(
                         text = "WEEK ${week.week}",
                         style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = MaterialTheme.colorScheme.secondary,
                         fontWeight = FontWeight.Bold
                     )
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -525,7 +567,8 @@ fun PlanDisplay(plan: WorkoutPlan) {
                                         text = day.day,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                         style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
                                     )
                                 }
                                 Text(day.title, style = MaterialTheme.typography.titleMedium)

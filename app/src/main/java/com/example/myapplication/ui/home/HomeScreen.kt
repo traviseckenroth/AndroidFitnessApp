@@ -40,8 +40,8 @@ import com.example.myapplication.data.local.UserSubscriptionEntity
 import com.example.myapplication.data.remote.CommunityPick
 import com.example.myapplication.data.repository.PlanProgress
 import com.example.myapplication.ui.navigation.Screen
-import com.example.myapplication.ui.theme.PrimaryIndigo
-import com.example.myapplication.ui.theme.SecondaryIndigo
+import com.example.myapplication.ui.theme.PrimaryAccent
+import com.example.myapplication.ui.theme.SecondaryAccent
 import com.example.myapplication.ui.theme.SuccessGreen
 import com.example.myapplication.util.FormaScore
 import java.time.LocalDate
@@ -714,9 +714,9 @@ fun RestDayRecoveryCard(
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.SelfImprovement, null, tint = PrimaryIndigo, modifier = Modifier.size(32.dp))
+                Icon(Icons.Default.SelfImprovement, null, tint = PrimaryAccent , modifier = Modifier.size(32.dp))
                 Spacer(modifier = Modifier.width(12.dp))
-                Text("REST & RECHARGE", style = MaterialTheme.typography.labelLarge, color = PrimaryIndigo)
+                Text("REST & RECHARGE", style = MaterialTheme.typography.labelLarge, color = PrimaryAccent)
             }
             Spacer(modifier = Modifier.height(12.dp))
             Text("Your body grows while you rest. Use today to stay mobile.",
@@ -732,13 +732,13 @@ fun RestDayRecoveryCard(
             Spacer(modifier = Modifier.height(24.dp))
 
             if (isGenerating) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = PrimaryIndigo)
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = PrimaryAccent )
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(
                         onClick = onGenerateStretching,
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo)
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryAccent)
                     ) {
                         Icon(Icons.Default.AutoMode, null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
@@ -747,11 +747,11 @@ fun RestDayRecoveryCard(
                     OutlinedButton(
                         onClick = onGenerateAccessory,
                         modifier = Modifier.fillMaxWidth(),
-                        border = BorderStroke(1.dp, SecondaryIndigo)
+                        border = BorderStroke(1.dp, SecondaryAccent)
                     ) {
-                        Icon(Icons.Default.FitnessCenter, null, tint = SecondaryIndigo, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.FitnessCenter, null, tint = SecondaryAccent, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("GENERATE ACCESSORY WORK", color = SecondaryIndigo)
+                        Text("GENERATE ACCESSORY WORK", color = SecondaryAccent)
                     }
                 }
             }
@@ -768,7 +768,7 @@ fun QuickActionsSection(onNavigate: (String) -> Unit) {
         QuickActionCard(
             title = "New Plan",
             icon = Icons.Default.AutoMode,
-            color = PrimaryIndigo,
+            color = PrimaryAccent,
             modifier = Modifier.weight(1f),
             onClick = { onNavigate(Screen.GeneratePlan.route) }
         )
@@ -776,7 +776,7 @@ fun QuickActionsSection(onNavigate: (String) -> Unit) {
         QuickActionCard(
             title = "Free Lift",
             icon = Icons.Default.FitnessCenter,
-            color = SecondaryIndigo,
+            color = SecondaryAccent,
             modifier = Modifier.weight(1f),
             onClick = { onNavigate(Screen.ManualPlan.route) }
         )
@@ -912,7 +912,7 @@ fun WorkoutCard(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
                 }
@@ -924,8 +924,8 @@ fun WorkoutCard(
                 LinearProgressIndicator(
                     progress = it.percentage,
                     modifier = Modifier.fillMaxWidth().height(6.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    trackColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f),
                     strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
                 )
             }
