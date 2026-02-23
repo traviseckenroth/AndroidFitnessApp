@@ -3,6 +3,7 @@ package com.example.myapplication.data.repository
 import android.util.Log
 import com.example.myapplication.data.local.CompletedWorkoutEntity
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
+import com.example.myapplication.data.local.DailyWorkoutEntity
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutDao
 import com.example.myapplication.data.local.WorkoutEntity
@@ -10,6 +11,7 @@ import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.local.MuscleVolumeAggregation
 import java.time.Duration
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.flow.*
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -45,6 +47,27 @@ class WorkoutExecutionRepository @Inject constructor(
         workoutDao.getCompletedWorkoutsForExercise(exerciseId)
 
     fun getLifetimeMuscleVolume(): Flow<List<MuscleVolumeAggregation>> = workoutDao.getLifetimeMuscleVolume()
+
+    suspend fun getRecentFatigueState(days: Int = 7): String {
+        val startTime = Instant.now().minus(days.toLong(), ChronoUnit.DAYS)
+        val recentWorkouts = workoutDao.getCompletedWorkoutsRecent(startTime.toEpochMilli()).first()
+
+        if (recentWorkouts.isEmpty()) {
+            return "No recent workout data. User is fully rested."
+        }
+
+        val volumeByMuscle = recentWorkouts.groupBy { it.exercise.majorMuscle }
+            .mapValues { (_, workouts) ->
+                workouts.sumOf { it.completedWorkout.totalVolume }
+            }
+
+        val resultString = volumeByMuscle.entries.joinToString(", ") { "${it.key}: ${it.value} lbs" }
+        return "Recent $days-day muscle volume: $resultString."
+    }
+
+    suspend fun getWorkoutById(workoutId: Long): DailyWorkoutEntity? {
+        return workoutDao.getWorkoutById(workoutId)
+    }
 
     // --- WRITES ---
     suspend fun updateSet(set: WorkoutSetEntity) = workoutDao.updateSet(set)

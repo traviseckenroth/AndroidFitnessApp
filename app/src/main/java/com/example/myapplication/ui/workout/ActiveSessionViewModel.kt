@@ -2,6 +2,7 @@
 package com.example.myapplication.ui.workout
 
 import android.app.Application
+import android.bluetooth.BluetoothDevice
 import android.content.Intent
 import android.util.Log
 import androidx.lifecycle.ViewModel
@@ -13,6 +14,8 @@ import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.remote.BedrockClient
 import com.example.myapplication.data.local.UserPreferencesRepository
+import com.example.myapplication.data.local.MemoryDao
+import com.example.myapplication.data.local.UserMemoryEntity
 import com.example.myapplication.data.repository.HealthConnectManager
 import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import com.example.myapplication.data.repository.WorkoutSummaryResult
@@ -24,6 +27,8 @@ import com.example.myapplication.util.SpeechToTextManager
 import com.example.myapplication.util.VoiceManager
 import com.example.myapplication.util.AutoCoachEngine
 import com.example.myapplication.util.AutoCoachState
+import com.example.myapplication.util.BleHeartRateManager
+import com.example.myapplication.util.ContinuousAudioStreamer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
@@ -61,7 +66,10 @@ class ActiveSessionViewModel @Inject constructor(
     private val speechToTextManager: SpeechToTextManager,
     private val bedrockClient: BedrockClient,
     private val readinessEngine: ReadinessEngine,
-    private val autoCoachEngine: AutoCoachEngine
+    private val autoCoachEngine: AutoCoachEngine,
+    private val bleHeartRateManager: BleHeartRateManager,
+    private val memoryDao: MemoryDao,
+    private val audioStreamer: ContinuousAudioStreamer
 ) : ViewModel() {
 
     // --- 1. STATE PROPERTIES ---
@@ -96,8 +104,14 @@ class ActiveSessionViewModel @Inject constructor(
 
     val autoCoachState: StateFlow<AutoCoachState> = autoCoachEngine.state
 
+    // BLE Heart Rate
+    val heartRate: StateFlow<Int> = bleHeartRateManager.heartRate
+    val isBleConnected: StateFlow<Boolean> = bleHeartRateManager.isConnected
+    val foundBleDevices: StateFlow<List<BluetoothDevice>> = bleHeartRateManager.foundDevices
+
     private var workoutStartTime: Instant = Instant.now()
     private var transcribeJob: Job? = null
+    private var briefingJob: Job? = null
 
     // Optimistic Estimated Time calculation
     val totalEstimatedTime: StateFlow<Int> = _exerciseStates.map { states ->
@@ -200,12 +214,9 @@ class ActiveSessionViewModel @Inject constructor(
                     .filter { it.exerciseId in sessionExerciseIds }
                     .sortedBy { it.tier }
 
-                if (sessionExercises.isNotEmpty() && sessionSets.isNotEmpty()) {
-                    var briefing = this@ActiveSessionViewModel.generateCoachBriefing(sessionExercises, sessionSets, recovery)
-                    if (rpeReduction > 0) {
-                        briefing = "⚠️ RECOVERY LOW ($recovery%)\nTargets reduced by $rpeReduction RPE. Take it easy today.\n\n$briefing"
-                    }
-                    _coachBriefing.value = briefing
+                // Dynamic Pre-Workout Briefing Loop
+                if (sessionExercises.isNotEmpty() && _coachBriefing.value == "Loading briefing...") {
+                    triggerCloudBriefing(recovery, sessionExercises)
                 }
 
                 val setsByExercise = sessionSets.groupBy { it.exerciseId }
@@ -234,6 +245,43 @@ class ActiveSessionViewModel @Inject constructor(
                 }
             }.collect { newStates ->
                 _exerciseStates.value = newStates
+            }
+        }
+
+        // Full Duplex Interruption Logic
+        viewModelScope.launch {
+            audioStreamer.interruptionFlow.collect {
+                if (_isListening.value) {
+                    Log.d("FullDuplex", "Interruption detected. Resetting transcription to prioritize new speech.")
+                    startLiveTranscription() 
+                }
+            }
+        }
+    }
+
+    private fun triggerCloudBriefing(recovery: Int, exercises: List<ExerciseEntity>) {
+        if (briefingJob?.isActive == true) return
+        
+        briefingJob = viewModelScope.launch {
+            try {
+                val memories = memoryDao.getRecentMemories(5)
+                val fatigueState = repository.getRecentFatigueState(7)
+                val workoutId = _workoutId.value
+                val workout = repository.getWorkoutById(workoutId)
+                val workoutTitle = workout?.title ?: "Today's Session"
+                val firstExercise = exercises.firstOrNull()?.name
+
+                val script = bedrockClient.generatePreWorkoutScript(
+                    recovery = recovery,
+                    workoutTitle = workoutTitle,
+                    firstExercise = firstExercise,
+                    userMemories = memories,
+                    recentFatigueState = fatigueState
+                )
+                _coachBriefing.value = script
+            } catch (e: Exception) {
+                Log.e("Briefing", "Failed to generate dynamic script", e)
+                _coachBriefing.value = "Let's have a great workout today!"
             }
         }
     }
@@ -426,6 +474,19 @@ class ActiveSessionViewModel @Inject constructor(
         currentHistory.add(ChatMessage("User", userText))
         _chatHistory.value = currentHistory
 
+        // --- RAG Memory extraction ---
+        viewModelScope.launch {
+            try {
+                val memory = bedrockClient.extractUserMemory(userText)
+                if (memory != null) {
+                    memoryDao.insertMemory(memory)
+                    Log.d("RAG", "Saved new user memory: ${memory.note}")
+                }
+            } catch (e: Exception) {
+                Log.e("RAG", "Memory extraction failed", e)
+            }
+        }
+
         viewModelScope.launch {
             val wasListening = _isListening.value
             if (wasListening) {
@@ -563,13 +624,6 @@ class ActiveSessionViewModel @Inject constructor(
         }
     }
 
-    // --- ML KIT REMOVAL ---
-    /*
-    suspend fun generateCoachingCue(exerciseName: String, issue: String): String {
-        return bedrockClient.generateCoachingCue(exerciseName, issue, 0)
-    }
-    */
-
     // --- 8. LIVE VOICE COACHING ---
 
     fun toggleLiveCoaching() {
@@ -583,6 +637,7 @@ class ActiveSessionViewModel @Inject constructor(
 
     private fun startLiveTranscription() {
         transcribeJob?.cancel()
+        audioStreamer.startStreaming() // Start continuous mic for VAD interruption
 
         transcribeJob = viewModelScope.launch {
             try {
@@ -594,6 +649,7 @@ class ActiveSessionViewModel @Inject constructor(
             } catch (e: Exception) {
                 Log.e("LiveCoach", "Speech error: ${e.message}")
                 _isListening.value = false
+                audioStreamer.stopStreaming()
             }
         }
     }
@@ -603,6 +659,25 @@ class ActiveSessionViewModel @Inject constructor(
         transcribeJob?.cancel()
         transcribeJob = null
         voiceManager.stop()
+        audioStreamer.stopStreaming()
+    }
+
+    // --- BLE HEART RATE ---
+
+    fun startBleScan() {
+        bleHeartRateManager.startScan()
+    }
+
+    fun stopBleScan() {
+        bleHeartRateManager.stopScan()
+    }
+
+    fun connectBleDevice(device: BluetoothDevice) {
+        bleHeartRateManager.connectToDevice(device)
+    }
+
+    fun disconnectBle() {
+        bleHeartRateManager.disconnect()
     }
 
     override fun onCleared() {
@@ -611,6 +686,7 @@ class ActiveSessionViewModel @Inject constructor(
         voiceManager.stop()
         stopTimerService()
         autoCoachEngine.stop()
+        bleHeartRateManager.cleanup()
     }
 
     private fun generateCoachBriefing(

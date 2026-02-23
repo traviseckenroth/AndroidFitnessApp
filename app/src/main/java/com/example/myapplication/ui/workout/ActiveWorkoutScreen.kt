@@ -2,6 +2,7 @@ package com.example.myapplication.ui.workout
 
 import android.Manifest
 import android.app.Activity
+import android.bluetooth.BluetoothDevice
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -12,8 +13,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
 import androidx.compose.animation.*
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -40,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -58,9 +59,6 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
-// --- ML KIT REMOVAL ---
-// import com.example.myapplication.ui.camera.CameraFormCheckScreen
-// import com.example.myapplication.ui.camera.FormAnalyzer
 import com.example.myapplication.util.PlateCalculator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -80,6 +78,12 @@ fun ActiveWorkoutScreen(
     val workoutSummary by viewModel.workoutSummary.collectAsState()
     val estimatedTime by viewModel.totalEstimatedTime.collectAsState()
     val autoCoachState by viewModel.autoCoachState.collectAsState()
+
+    // BLE states
+    val heartRate by viewModel.heartRate.collectAsState()
+    val isBleConnected by viewModel.isBleConnected.collectAsState()
+    val foundDevices by viewModel.foundBleDevices.collectAsState()
+    var showBleDialog by remember { mutableStateOf(false) }
 
     // --- POCKET MODE STATE ---
     var isPocketModeActive by remember { mutableStateOf(false) }
@@ -153,9 +157,13 @@ fun ActiveWorkoutScreen(
 
     var permissionsGranted by remember {
         mutableStateOf(
-            // --- ML KIT REMOVAL: Removed Camera Permission check ---
-            // ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED &&
+            (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+            } else {
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            })
         )
     }
 
@@ -165,31 +173,16 @@ fun ActiveWorkoutScreen(
 
     LaunchedEffect(Unit) {
         if (!permissionsGranted) {
-            // --- ML KIT REMOVAL: Removed Camera Permission request ---
-            launcher.launch(arrayOf(/* Manifest.permission.CAMERA, */ Manifest.permission.RECORD_AUDIO))
-        }
-    }
-
-    // --- ML KIT REMOVAL ---
-    /*
-    var activeCameraExerciseState by remember { mutableStateOf<ExerciseState?>(null) }
-
-    if (activeCameraExerciseState != null) {
-        if (permissionsGranted) {
-            val nextSet = activeCameraExerciseState!!.sets.firstOrNull { !it.isCompleted }
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-                CameraFormCheckScreen(
-                    exerciseName = activeCameraExerciseState!!.exercise.name,
-                    targetWeight = nextSet?.suggestedLbs?.toInt() ?: 0,
-                    targetReps = nextSet?.suggestedReps ?: 0,
-                    onClose = { activeCameraExerciseState = null },
-                    fetchAiCue = { issue -> viewModel.generateCoachingCue(activeCameraExerciseState!!.exercise.name, issue) }
-                )
+            val neededPermissions = mutableListOf(Manifest.permission.RECORD_AUDIO)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                neededPermissions.add(Manifest.permission.BLUETOOTH_SCAN)
+                neededPermissions.add(Manifest.permission.BLUETOOTH_CONNECT)
+            } else {
+                neededPermissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
             }
+            launcher.launch(neededPermissions.toTypedArray())
         }
-        return
     }
-    */
 
     LaunchedEffect(workoutId) { viewModel.loadWorkout(workoutId) }
 
@@ -218,6 +211,20 @@ fun ActiveWorkoutScreen(
         )
     }
 
+    if (showBleDialog) {
+        BleDeviceDialog(
+            foundDevices = foundDevices,
+            onDismiss = {
+                viewModel.stopBleScan()
+                showBleDialog = false
+            },
+            onConnect = { device ->
+                viewModel.connectBleDevice(device)
+                showBleDialog = false
+            }
+        )
+    }
+
     // --- WRAP SCAFFOLD IN BOX FOR POCKET MODE OVERLAY ---
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
@@ -226,9 +233,14 @@ fun ActiveWorkoutScreen(
                 Column {
                     TopAppBar(
                         title = {
-                            Column {
-                                Text("Active Session", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                                Text("Est. Time: $estimatedTime min", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Active Session", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                    Text("Est. Time: $estimatedTime min", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if (isBleConnected) {
+                                    HeartRateDisplay(heartRate = heartRate)
+                                }
                             }
                         },
                         navigationIcon = {
@@ -237,6 +249,18 @@ fun ActiveWorkoutScreen(
                             }
                         },
                         actions = {
+                            // --- HEART RATE BUTTON ---
+                            IconButton(onClick = {
+                                viewModel.startBleScan()
+                                showBleDialog = true
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Default.Favorite,
+                                    contentDescription = "Connect Heart Rate",
+                                    tint = if (isBleConnected) Color.Red else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
                             // --- LOCK BUTTON TO TRIGGER POCKET MODE ---
                             IconButton(onClick = { isPocketModeActive = true }) {
                                 Icon(
@@ -396,8 +420,6 @@ fun ActiveWorkoutScreen(
                             viewModel = viewModel,
                             barWeight = barWeight,
                             userGender = userGender
-                            // --- ML KIT REMOVAL ---
-                            // onLaunchCamera = { activeCameraExerciseState = exerciseState }
                         )
                     }
 
@@ -436,14 +458,90 @@ fun ActiveWorkoutScreen(
 }
 
 @Composable
+fun HeartRateDisplay(heartRate: Int) {
+    val infiniteTransition = rememberInfiniteTransition(label = "Pulse")
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "HeartScale"
+    )
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(end = 8.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Default.Favorite,
+            contentDescription = null,
+            tint = Color.Red,
+            modifier = Modifier
+                .size(24.dp)
+                .scale(scale)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = "$heartRate",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = Color.Red
+        )
+    }
+}
+
+@Composable
+fun BleDeviceDialog(
+    foundDevices: List<BluetoothDevice>,
+    onDismiss: () -> Unit,
+    onConnect: (BluetoothDevice) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Connect Heart Rate Monitor") },
+        text = {
+            Column {
+                Text(
+                    "Note for Garmin users: You must enable 'Broadcast Heart Rate' in your watch settings.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                
+                if (foundDevices.isEmpty()) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("Scanning for devices...")
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
+                        items(foundDevices) { device ->
+                            ListItem(
+                                headlineContent = { Text(device.name ?: "Unknown Device") },
+                                supportingContent = { Text(device.address) },
+                                modifier = Modifier.clickable { onConnect(device) }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
 fun ExerciseCard(
     modifier: Modifier = Modifier,
     exerciseState: ExerciseState,
     viewModel: ActiveSessionViewModel,
     barWeight: Double,
     userGender: String
-    // --- ML KIT REMOVAL ---
-    // onLaunchCamera: () -> Unit
 ) {
     val isActive = exerciseState.sets.any { !it.isCompleted }
     
@@ -466,8 +564,6 @@ fun ExerciseCard(
                 exerciseState = exerciseState,
                 viewModel = viewModel,
                 onToggleVisibility = { viewModel.toggleExerciseVisibility(exerciseState.exercise.exerciseId) }
-                // --- ML KIT REMOVAL ---
-                // onLaunchCamera = onLaunchCamera
             )
 
             if (exerciseState.areSetsVisible) {
@@ -494,8 +590,6 @@ fun ExerciseHeader(
     exerciseState: ExerciseState,
     viewModel: ActiveSessionViewModel,
     onToggleVisibility: () -> Unit
-    // --- ML KIT REMOVAL ---
-    // onLaunchCamera: () -> Unit
 ) {
     val exercise = exerciseState.exercise
     var showDescriptionDialog by remember { mutableStateOf(false) }
@@ -561,15 +655,6 @@ fun ExerciseHeader(
             IconButton(onClick = { showDescriptionDialog = true }) {
                 Icon(Icons.AutoMirrored.Filled.Help, "Info", tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
             }
-
-            // --- ML KIT REMOVAL ---
-            /*
-            if (FormAnalyzer.isSupported(exercise.name)) {
-                IconButton(onClick = onLaunchCamera) {
-                    Icon(Icons.Default.Videocam, "Camera", tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f))
-                }
-            }
-            */
 
             IconButton(onClick = {
                 scope.launch {

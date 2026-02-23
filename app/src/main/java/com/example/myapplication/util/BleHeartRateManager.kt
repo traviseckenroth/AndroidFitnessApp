@@ -29,6 +29,9 @@ class BleHeartRateManager @Inject constructor(
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected
 
+    private val _foundDevices = MutableStateFlow<List<BluetoothDevice>>(emptyList())
+    val foundDevices: StateFlow<List<BluetoothDevice>> = _foundDevices
+
     private val HEART_RATE_SERVICE_UUID = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
     private val HEART_RATE_MEASUREMENT_CHAR_UUID = UUID.fromString("00002a37-0000-1000-8000-00805f9b34fb")
     private val CLIENT_CHARACTERISTIC_CONFIG_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
@@ -36,9 +39,13 @@ class BleHeartRateManager @Inject constructor(
     private val scanCallback = object : ScanCallback() {
         @SuppressLint("MissingPermission")
         override fun onScanResult(callbackType: Int, result: ScanResult) {
-            Log.d("BleHRManager", "Found device: ${result.device.name} - ${result.device.address}")
-            stopScan()
-            connectToDevice(result.device)
+            val device = result.device
+            // Some devices might not have a name in the scan record, but Garmin usually does.
+            // We scan without filters now to be more inclusive.
+            if (device.name != null && _foundDevices.value.none { it.address == device.address }) {
+                Log.d("BleHRManager", "Discovered: ${device.name} - ${device.address}")
+                _foundDevices.value = _foundDevices.value + device
+            }
         }
 
         override fun onScanFailed(errorCode: Int) {
@@ -54,26 +61,28 @@ class BleHeartRateManager @Inject constructor(
             return
         }
         
-        val filter = ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid(HEART_RATE_SERVICE_UUID))
-            .build()
+        _foundDevices.value = emptyList()
         
+        // Removed specific service UUID filter because some devices (like Garmin) 
+        // might not broadcast it in the advertisement packet.
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
 
-        scanner.startScan(listOf(filter), settings, scanCallback)
-        Log.d("BleHRManager", "Scanning for Heart Rate devices...")
+        scanner.startScan(null, settings, scanCallback)
+        Log.d("BleHRManager", "Scanning for BLE devices (unfiltered)...")
     }
 
     @SuppressLint("MissingPermission")
     fun stopScan() {
         bluetoothLeScanner?.stopScan(scanCallback)
+        Log.d("BleHRManager", "Scan stopped.")
     }
 
     @SuppressLint("MissingPermission")
-    private fun connectToDevice(device: BluetoothDevice) {
-        Log.d("BleHRManager", "Connecting to ${device.address}")
+    fun connectToDevice(device: BluetoothDevice) {
+        stopScan()
+        Log.d("BleHRManager", "Connecting to ${device.name} (${device.address})")
         bluetoothGatt = device.connectGatt(context, false, gattCallback)
     }
 
@@ -121,17 +130,11 @@ class BleHeartRateManager @Inject constructor(
                         gatt.writeDescriptor(descriptor)
                         Log.i("BleHRManager", "Heart rate notifications enabled.")
                     }
+                } else {
+                    Log.w("BleHRManager", "Heart Rate Service found but characteristic missing.")
                 }
             } else {
                 Log.w("BleHRManager", "onServicesDiscovered received: $status")
-            }
-        }
-
-        @Deprecated("Deprecated in Java")
-        override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
-            if (HEART_RATE_MEASUREMENT_CHAR_UUID == characteristic.uuid) {
-                val hrValue = parseHeartRate(characteristic)
-                _heartRate.value = hrValue
             }
         }
 
@@ -147,11 +150,6 @@ class BleHeartRateManager @Inject constructor(
         }
     }
 
-    private fun parseHeartRate(characteristic: BluetoothGattCharacteristic): Int {
-        val data = characteristic.value ?: return 0
-        return parseHeartRate(data)
-    }
-
     private fun parseHeartRate(data: ByteArray): Int {
         if (data.isEmpty()) return 0
         
@@ -162,12 +160,9 @@ class BleHeartRateManager @Inject constructor(
             BluetoothGattCharacteristic.FORMAT_UINT8
         }
         
-        // Manual extraction to avoid depending on characteristic.getIntValue which uses the internal buffer
-        // that might not be updated in the new onCharacteristicChanged callback.
         return if (format == BluetoothGattCharacteristic.FORMAT_UINT8) {
             data[1].toInt() and 0xFF
         } else {
-            // UINT16
             val low = data[1].toInt() and 0xFF
             val high = data[2].toInt() and 0xFF
             (high shl 8) or low

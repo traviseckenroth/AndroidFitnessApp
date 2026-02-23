@@ -446,34 +446,43 @@ class BedrockClient @Inject constructor(
     }
 
     suspend fun generatePreWorkoutScript(
-        content: List<ContentSourceEntity>,
+        recovery: Int,
         workoutTitle: String?,
-        relevantMemories: List<UserMemoryEntity>
+        firstExercise: String?,
+        userMemories: List<UserMemoryEntity>,
+        recentFatigueState: String
     ): String = withContext(Dispatchers.Default) {
-        val contentList = content.joinToString("\n") { "- ${it.title}: ${it.summary}" }
-        val memoriesList = relevantMemories.joinToString("\n") { 
+        val memoriesList = userMemories.joinToString("\n") { 
             "- ${it.category}: ${it.note} ${it.exerciseName?.let { name -> "($name)" } ?: ""}" 
         }
         
         val workoutContext = if (workoutTitle != null) "The user's workout for today is: $workoutTitle." else "No workout scheduled today."
+        val firstExerciseContext = if (firstExercise != null) "The first exercise is: $firstExercise." else ""
         
         val rawPrompt = promptRepository.getKnowledgeBriefingPrompt()
         val systemPrompt = """
             $rawPrompt
             $workoutContext
+            $firstExerciseContext
+            RECOVERY SCORE: $recovery%
             
-            USER MEMORIES (PAST ISSUES/PREFERENCES):
+            USER MEMORIES (RAG TEXT):
             $memoriesList
+            
+            RECENT FATIGUE STATE (SQL DATA):
+            $recentFatigueState
             
             INSTRUCTIONS:
             1. Proactively mention the relevant user memories (especially pain or preferences).
-            2. Explain how today's session or advice accounts for these memories (e.g., "I've kept the weights moderate because of your lower back pain").
-            3. Keep the tone supportive and professional.
-            4. Synthesize the provided fitness content into the briefing as well.
+            2. If userMemories mentions previous pain for today's exercises, the coach MUST acknowledge it.
+            3. Proactively mention the recent fatigue state. If recentFatigueState shows heavy recent volume for muscles targeted in today's workout, proactively mention it and suggest they focus on form rather than heavy loads today.
+            4. Explain how today's session or advice accounts for these memories and fatigue (e.g., "I've kept the weights moderate because of your lower back pain").
+            5. Keep the tone supportive and professional.
+            6. Synthesize the context into a concise pre-workout briefing.
         """.trimIndent()
 
         try {
-            val cleanJson = invokeClaude(systemPrompt, "Summarize this content and address memories: \n$contentList")
+            val cleanJson = invokeClaude(systemPrompt, "Generate a briefing addressing memories and fatigue.")
             val json = JSONObject(cleanJson)
             json.getString("briefing")
         } catch (e: Exception) {

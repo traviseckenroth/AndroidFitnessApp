@@ -13,9 +13,13 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.abs
+import kotlin.math.sqrt
 
 @Singleton
-class ContinuousAudioStreamer @Inject constructor() {
+class ContinuousAudioStreamer @Inject constructor(
+    private val voiceManager: VoiceManager
+) {
 
     private val sampleRate = 16000
     private val channelConfig = AudioFormat.CHANNEL_IN_MONO
@@ -29,8 +33,16 @@ class ContinuousAudioStreamer @Inject constructor() {
     private val _audioDataFlow = MutableSharedFlow<ByteArray>(extraBufferCapacity = 10)
     val audioDataFlow: SharedFlow<ByteArray> = _audioDataFlow.asSharedFlow()
 
+    private val _interruptionFlow = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val interruptionFlow: SharedFlow<Unit> = _interruptionFlow.asSharedFlow()
+
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var streamingJob: Job? = null
+
+    // VAD Configuration
+    private val rmsThreshold = 1200.0 // Adjusted for typical speech volume
+    private var lastInterruptionTime = 0L
+    private val interruptionCooldown = 2000L // 2 seconds between interruptions
 
     @SuppressLint("MissingPermission")
     fun startStreaming() {
@@ -52,34 +64,58 @@ class ContinuousAudioStreamer @Inject constructor() {
 
             val sessionId = audioRecord!!.audioSessionId
 
-            // Enable Acoustic Echo Canceler if available
             if (AcousticEchoCanceler.isAvailable()) {
                 aec = AcousticEchoCanceler.create(sessionId)
                 aec?.enabled = true
-                Log.d("AudioStreamer", "AcousticEchoCanceler enabled")
             }
 
-            // Enable Noise Suppressor if available
             if (NoiseSuppressor.isAvailable()) {
                 ns = NoiseSuppressor.create(sessionId)
                 ns?.enabled = true
-                Log.d("AudioStreamer", "NoiseSuppressor enabled")
             }
 
             audioRecord?.startRecording()
-            Log.d("AudioStreamer", "Recording started")
+            Log.d("AudioStreamer", "Continuous mic stream started for VAD")
 
             streamingJob = scope.launch {
                 val data = ByteArray(bufferSize)
                 while (isActive && audioRecord?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
                     val read = audioRecord?.read(data, 0, data.size) ?: -1
                     if (read > 0) {
+                        checkVoiceActivity(data, read)
                         _audioDataFlow.emit(data.copyOf(read))
                     }
                 }
             }
         } catch (e: Exception) {
             Log.e("AudioStreamer", "Error starting audio stream", e)
+        }
+    }
+
+    private fun checkVoiceActivity(buffer: ByteArray, size: Int) {
+        if (size < 2) return
+        
+        var sum = 0.0
+        for (i in 0 until size - 1 step 2) {
+            val sample = ((buffer[i + 1].toInt() shl 8) or (buffer[i].toInt() and 0xFF)).toDouble()
+            sum += sample * sample
+        }
+        val rms = sqrt(sum / (size / 2))
+
+        if (rms > rmsThreshold) {
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastInterruptionTime > interruptionCooldown) {
+                Log.d("AudioStreamer", "VAD: User speech detected (RMS: $rms). Stopping AI.")
+                lastInterruptionTime = currentTime
+                
+                // 1. Immediately shut the AI up
+                voiceManager.stop()
+                
+                // 2. Notify system to handle interruption (e.g. restart STT)
+                scope.launch {
+                    _interruptionFlow.emit(Unit)
+                }
+            }
         }
     }
 
@@ -94,12 +130,9 @@ class ContinuousAudioStreamer @Inject constructor() {
             it.release()
         }
         audioRecord = null
-
         aec?.release()
         aec = null
         ns?.release()
         ns = null
-
-        Log.d("AudioStreamer", "Recording stopped and resources released")
     }
 }
