@@ -491,6 +491,55 @@ class BedrockClient @Inject constructor(
         }
     }
 
+    suspend fun generateSetIntroScript(
+        exerciseName: String,
+        reps: Int,
+        weight: Float,
+        setNumber: Int,
+        totalSets: Int
+    ): String = withContext(Dispatchers.Default) {
+        val systemPrompt = """
+            You are a helpful, professional Fitness Auto-Coach. 
+            The user is about to start a set. 
+            Write a single, natural, highly varied sentence telling the user to perform the exercise. 
+            Acknowledge what set they are on out of the total sets.
+            Example: 'Alright, set 2 of 4 for Bench Press. Let's hit 8 reps at 185.'
+            Return the response as a JSON object: {"script": "your sentence here"}
+        """.trimIndent()
+
+        val userPrompt = "Exercise: $exerciseName, Reps: $reps, Weight: $weight lbs, Set: $setNumber of $totalSets"
+
+        try {
+            val cleanJson = invokeClaude(systemPrompt, userPrompt)
+            val json = JSONObject(cleanJson)
+            json.getString("script")
+        } catch (e: Exception) {
+            Log.e("Bedrock", "Set intro script failed", e)
+            "Set $setNumber of $totalSets: $exerciseName. $reps reps at ${weight.toInt()} lbs. Let's go."
+        }
+    }
+
+    suspend fun generatePostSetScript(reps: Int, weight: Float): String = withContext(Dispatchers.Default) {
+        val systemPrompt = """
+            You are a helpful, professional Fitness Auto-Coach. 
+            The user just finished a set.
+            Write a short, encouraging post-set phrase asking the user if they successfully completed the prescribed reps and weight.
+            Example: 'Solid work. Did you hit all 8 reps?'
+            Return the response as a JSON object: {"script": "your sentence here"}
+        """.trimIndent()
+
+        val userPrompt = "Prescribed: $reps reps at $weight lbs"
+
+        try {
+            val cleanJson = invokeClaude(systemPrompt, userPrompt)
+            val json = JSONObject(cleanJson)
+            json.getString("script")
+        } catch (e: Exception) {
+            Log.e("Bedrock", "Post-set script failed", e)
+            "Set complete. Did you get all $reps reps?"
+        }
+    }
+
     private suspend fun invokeClaude(systemPrompt: String, userPrompt: String): String {
         enforceLimit()
         val requestBody = ClaudeRequest(

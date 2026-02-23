@@ -3,6 +3,7 @@ package com.example.myapplication.util
 import android.util.Log
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
+import com.example.myapplication.data.remote.BedrockClient
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,7 +17,8 @@ enum class AutoCoachState {
 class AutoCoachEngine @Inject constructor(
     private val voice: NativeAutoCoachVoice,
     private val sttManager: SpeechToTextManager,
-    private val bleHeartRateManager: BleHeartRateManager
+    private val bleHeartRateManager: BleHeartRateManager,
+    private val bedrockClient: BedrockClient
 ) {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var job: Job? = null
@@ -44,13 +46,27 @@ class AutoCoachEngine @Inject constructor(
 
                         // 1. Announce Set
                         _state.value = AutoCoachState.SPEAKING
-                        val weight = set.actualLbs ?: set.suggestedLbs.toFloat()
+                        val weight = (set.actualLbs ?: set.suggestedLbs.toFloat())
                         val reps = set.actualReps ?: set.suggestedReps
 
+                        val introScript = try {
+                            bedrockClient.generateSetIntroScript(
+                                exerciseName = exercise.name,
+                                reps = reps,
+                                weight = weight,
+                                setNumber = index + 1,
+                                totalSets = sets.size
+                            )
+                        } catch (e: Exception) {
+                            Log.e("AutoCoach", "Failed to gen intro script", e)
+                            "Next up, ${exercise.name}. Set ${index + 1} of ${sets.size}. $reps reps at $weight lbs."
+                        }
+
+                        voice.speakAndWait(introScript)
+                        
                         if (index == 0) {
-                            voice.speakAndWait("Next up, ${exercise.name}. We are doing $reps reps at $weight pounds. Take 30 seconds to set up.")
                             _state.value = AutoCoachState.RESTING
-                            delay(30000) // 30 sec setup
+                            delay(30000) // 30 sec setup for first set
                         }
 
                         // 2. Countdown & Set
@@ -63,7 +79,15 @@ class AutoCoachEngine @Inject constructor(
 
                         // 3. Post-Set Logging Interaction
                         _state.value = AutoCoachState.SPEAKING
-                        voice.speakAndWait("Set done. Did you hit all $reps reps at $weight pounds?")
+                        
+                        val postSetScript = try {
+                            bedrockClient.generatePostSetScript(reps, weight)
+                        } catch (e: Exception) {
+                            Log.e("AutoCoach", "Failed to gen post script", e)
+                            "Set done. Did you hit all $reps reps at $weight lbs?"
+                        }
+                        
+                        voice.speakAndWait(postSetScript)
 
                         _state.value = AutoCoachState.LISTENING
                         // Listen to mic for 5 seconds
@@ -95,7 +119,8 @@ class AutoCoachEngine @Inject constructor(
 
                         // 5. Announce Rest with Live HR Monitoring
                         if (index < sets.lastIndex) {
-                            voice.speakAndWait("Take a break. I'll watch your heart rate and let you know when you're recovered.")
+                            val currentHR = bleHeartRateManager.heartRate.value
+                            voice.speakAndWait("Your heart rate is currently at $currentHR. Take a break, I will let you know when it drops below 115.")
                             _state.value = AutoCoachState.RESTING
                             
                             // Dynamic recovery: Wait for HR < 115 or 2.5 min timeout
@@ -117,6 +142,10 @@ class AutoCoachEngine @Inject constructor(
 
             } catch (e: CancellationException) {
                 voice.speakAndWait("Auto coach paused.")
+            } catch (e: Exception) {
+                Log.e("AutoCoach", "Engine loop error", e)
+                voice.speakAndWait("Something went wrong with the engine. Resetting.")
+                _state.value = AutoCoachState.OFF
             }
         }
     }
