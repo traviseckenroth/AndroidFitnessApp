@@ -192,8 +192,8 @@ class WorkoutExecutionRepository @Inject constructor(
                 exerciseId = set.exerciseId,
                 date = workout.scheduledDate,
                 reps = set.actualReps ?: set.suggestedReps,
-                weight = (set.actualLbs ?: set.suggestedLbs).toInt(),
-                rpe = (set.actualRpe ?: set.suggestedRpe).toInt()
+                weight = (set.actualLbs ?: set.suggestedLbs.toFloat()).toInt(),
+                rpe = (set.actualRpe ?: set.suggestedRpe.toFloat()).toInt()
             )
         }
         if (historyEntries.isNotEmpty()) workoutDao.insertCompletedWorkouts(historyEntries)
@@ -216,26 +216,21 @@ class WorkoutExecutionRepository @Inject constructor(
             val futureSets = workoutDao.getFutureSetsForExercise(exerciseId, currentDate)
             if (futureSets.isEmpty()) continue
 
-            // Determine Progression based on average performance of this exercise today
-            val avgActualLbs = sets.mapNotNull { it.actualLbs?.toDouble() }.average()
-            val avgSuggestedLbs = sets.map { it.suggestedLbs.toDouble() }.average()
-            val avgRpe = sets.mapNotNull { it.actualRpe?.toDouble() }.average()
+            // Determine Progression based on actual performance today.
+            // Fall back to suggested weight if actualLbs is null (user didn't change the suggested weight).
+            val avgActualLbs = sets.map { (it.actualLbs ?: it.suggestedLbs.toFloat()).toDouble() }.average()
+            val avgRpe = sets.mapNotNull { it.actualRpe?.toDouble() }.filter { !it.isNaN() }.average()
             
-            // Core Progression Logic
-            val weightIncrease = when {
-                avgRpe <= 7.0 && !avgRpe.isNaN() && avgActualLbs >= avgSuggestedLbs -> 5 // Too easy, add weight
-                avgActualLbs > avgSuggestedLbs && !avgActualLbs.isNaN() -> (avgActualLbs - avgSuggestedLbs).toInt().coerceAtLeast(0) // User manually went up
-                else -> 0
-            }
+            // Core Progression Logic:
+            // Sync the future sessions to the new successful baseline to ensure the plan reflects reality.
+            // If the user hit the weight and it was relatively easy (RPE <= 7), add 5 lbs for next time.
+            val weightIncrease = if (!avgRpe.isNaN() && avgRpe <= 7.0) 5 else 0
+            val nextSuggestedWeight = (avgActualLbs + weightIncrease).toInt()
 
-            if (weightIncrease > 0 || avgActualLbs > avgSuggestedLbs) {
-                val updatedFutureSets = futureSets.map { futureSet ->
-                    val baseWeight = if (avgActualLbs > avgSuggestedLbs && !avgActualLbs.isNaN()) avgActualLbs.toInt() else futureSet.suggestedLbs
-                    futureSet.copy(suggestedLbs = baseWeight + weightIncrease)
-                }
-                workoutDao.insertSets(updatedFutureSets)
-                Log.d("IterativePlan", "Propagated +$weightIncrease lbs for exercise $exerciseId")
-            }
+            val updatedFutureSets = futureSets.map { it.copy(suggestedLbs = nextSuggestedWeight) }
+            workoutDao.insertSets(updatedFutureSets)
+            
+            Log.d("IterativePlan", "Propagated progress for exercise $exerciseId: New suggested weight = $nextSuggestedWeight lbs (Actual avg: ${avgActualLbs.toInt()} lbs, RPE: $avgRpe)")
         }
     }
 

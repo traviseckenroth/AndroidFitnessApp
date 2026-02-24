@@ -192,7 +192,6 @@ interface WorkoutDao {
     """)
     fun getSubscribedContent(): Flow<List<ContentSourceEntity>>
 
-    // FIX: Added the missing @Query annotation here
     @Query("SELECT * FROM content_sources WHERE sourceId = :id")
     fun getContentSourceById(id: Long): Flow<ContentSourceEntity?>
 
@@ -204,7 +203,7 @@ interface WorkoutDao {
         AND w.scheduledDate > :currentDate
         AND w.isCompleted = 0
         ORDER BY w.scheduledDate ASC
-        LIMIT 10
+        LIMIT 50
     """)
     suspend fun getFutureSetsForExercise(exerciseId: Long, currentDate: Long): List<WorkoutSetEntity>
 
