@@ -105,12 +105,8 @@ class PlanRepository @Inject constructor(
             aiExplanation = aiResponse.explanation,
             nutritionJson = existingNutritionJson,
             block = block,
-            isActive = true
+            isActive = false // Changed to false: plan only becomes active once the user explicitly accepts it.
         )
-
-        if (block > 1) {
-            workoutDao.deactivateAllPlans()
-        }
 
         val adjustedSchedule = enforceTimeConstraints(aiResponse.schedule, duration.toFloat())
         
@@ -161,8 +157,15 @@ class PlanRepository @Inject constructor(
     fun getNextBlockNumberFlow(): Flow<Int?> = workoutDao.getActivePlanFlow().flatMapLatest { activePlan ->
         if (activePlan == null) flowOf(null)
         else {
-            workoutDao.getUncompletedWorkoutsCountFlow(activePlan.planId).map { remaining ->
-                if (remaining <= 3) activePlan.block + 1 else null
+            combine(
+                workoutDao.getUncompletedWorkoutsCountFlow(activePlan.planId),
+                workoutDao.getTotalWorkoutsCountFlow(activePlan.planId)
+            ) { remaining, total ->
+                // Only suggest next block if we are actually near the end (3 or fewer workouts remaining)
+                // AND we have actually made progress (remaining < total) to prevent immediate suggestions.
+                if (total > 0 && remaining <= 3 && remaining < total) {
+                    activePlan.block + 1
+                } else null
             }
         }
     }
@@ -170,7 +173,8 @@ class PlanRepository @Inject constructor(
     suspend fun getNextBlockNumber(): Int? {
         val activePlan = workoutDao.getActivePlan() ?: return null
         val remaining = workoutDao.getUncompletedWorkoutsCount(activePlan.planId)
-        return if (remaining <= 3) activePlan.block + 1 else null
+        val total = workoutDao.getTotalWorkoutsCount(activePlan.planId)
+        return if (total > 0 && remaining <= 3 && remaining < total) activePlan.block + 1 else null
     }
 
     fun getActivePlanProgressFlow(): Flow<PlanProgress?> = workoutDao.getActivePlanFlow().flatMapLatest { activePlan ->
@@ -437,7 +441,9 @@ class PlanRepository @Inject constructor(
         val tolerance = 5
         return schedule.map { day ->
             val exercises = day.exercises.toMutableList()
-            var currentMinutes = calculateTotalMinutes(exercises)
+            var currentMinutes = calculateTotalMinutes(exercises).toInt()
+
+            // 1. Cut sets if it's too long (Your existing logic)
             while (currentMinutes > targetMinutes + tolerance) {
                 val cutCandidateIndex = exercises.indexOfFirst {
                     it == exercises.filter { e -> e.sets > 2 }
@@ -447,16 +453,28 @@ class PlanRepository @Inject constructor(
                 if (cutCandidateIndex != -1) {
                     val ex = exercises[cutCandidateIndex]
                     exercises[cutCandidateIndex] = ex.copy(sets = ex.sets - 1)
-                    currentMinutes = calculateTotalMinutes(exercises)
+                    currentMinutes = calculateTotalMinutes(exercises).toInt()
                 } else { break }
             }
+
+            // 2. Pad sets if it's too short (NEW LOGIC)
+            while (currentMinutes < targetMinutes - tolerance) {
+                // Find a Tier 2 or 3 exercise with less than 4 sets to pad
+                val padCandidateIndex = exercises.indexOfFirst { it.tier > 1 && it.sets < 4 }
+                if (padCandidateIndex != -1) {
+                    val ex = exercises[padCandidateIndex]
+                    exercises[padCandidateIndex] = ex.copy(sets = ex.sets + 1)
+                    currentMinutes = calculateTotalMinutes(exercises).toInt()
+                } else { break } // Stop if we can't pad without exceeding safe volume
+            }
+
             day.copy(exercises = exercises)
         }
     }
 
     private fun calculateTotalMinutes(exercises: List<GeneratedExercise>): Double {
         return exercises.sumOf { ex ->
-            val timePerSet = when (ex.tier) { 1 -> 4.0; 2 -> 2.5; else -> 1.5 }
+            val timePerSet = when (ex.tier) { 1 -> 4.0; 2 -> 2.5; else -> 2.0 }
             ex.sets * timePerSet
         }
     }

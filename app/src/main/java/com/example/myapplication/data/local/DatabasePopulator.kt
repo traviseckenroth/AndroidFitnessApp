@@ -17,7 +17,7 @@ suspend fun populateDatabase(dao: WorkoutDao) {
             else -> 3
         }
         val timeVal = when (tierString) {
-            "Compound" -> 3.0
+            "Compound" -> 4.0
             "Secondary" -> 2.5
             else -> 2.0
         }

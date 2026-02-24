@@ -30,6 +30,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.EncodeDefault
 import java.util.Date
 import kotlinx.coroutines.flow.first
+import java.io.IOException
+import javax.net.ssl.SSLException
 
 // --- AI RESPONSE DATA MODELS ---
 @Serializable
@@ -200,8 +202,8 @@ class BedrockClient @Inject constructor(
             region = BuildConfig.AWS_REGION
             credentialsProvider = cognitoProvider
             httpClient = OkHttpEngine {
-                connectTimeout = 60.seconds
-                socketReadTimeout = 120.seconds
+                connectTimeout = 120.seconds
+                socketReadTimeout = 300.seconds
             }
         }
     }
@@ -275,14 +277,12 @@ class BedrockClient @Inject constructor(
                 .replace("{tierDefinitions}", tierDefinitions)
                 .replace("{totalMinutesMinus5}", (totalMinutes - 5).toString())
 
-            Log.d("BedrockClient", "Workout Plan Prompt: $systemPrompt")
-            
-            val cleanJson = invokeClaudeStreaming(
+            // Switched to non-streaming invokeClaude as per user request to avoid instability and redundant prompts.
+            val cleanJson = invokeClaude(
                 systemPrompt = systemPrompt, 
                 userPrompt = "Generate Block $block plan", 
                 modelId = CLAUDE_SONNET,
-                thinkingBudget = 4000,
-                onThoughtReceived = onThoughtReceived
+                thinkingBudget = 4000
             )
             
             Log.d("BedrockClient", "Workout Plan Response: $cleanJson")
@@ -614,14 +614,48 @@ class BedrockClient @Inject constructor(
     private suspend fun invokeClaude(
         systemPrompt: String, 
         userPrompt: String, 
-        modelId: String,
-        maxTokens: Int = 4096
+        modelId: String, 
+        thinkingBudget: Int = 0
     ): String {
+        var lastError: Exception? = null
+        repeat(3) { attempt ->
+            try {
+                return doInvokeClaude(systemPrompt, userPrompt, modelId, thinkingBudget)
+            } catch (e: Exception) {
+                lastError = e
+                if (e is CancellationException) throw e
+                
+                val isRetryable = e is SSLException || 
+                                 e is IOException || 
+                                 e.message?.contains("Software caused connection abort") == true ||
+                                 e is StreamResetException
+                
+                if (isRetryable && attempt < 2) {
+                    val delayMs = (attempt + 1) * 2000L
+                    Log.w("BedrockClient", "InvokeClaude attempt ${attempt + 1} failed, retrying in ${delayMs}ms...", e)
+                    kotlinx.coroutines.delay(delayMs)
+                } else {
+                    Log.e("BedrockClient", "InvokeClaude failed after ${attempt + 1} attempts", e)
+                    throw e
+                }
+            }
+        }
+        throw lastError ?: Exception("Unknown error")
+    }
+
+    private suspend fun doInvokeClaude(
+        systemPrompt: String, 
+        userPrompt: String, 
+        modelId: String, 
+        thinkingBudget: Int = 0
+    ): String {
+        Log.d("BedrockClient", "InvokeClaude System Instruction: $systemPrompt")
         enforceLimit()
         val requestBody = ClaudeRequest(
-            max_tokens = maxTokens,
+            max_tokens = 8192 + thinkingBudget,
             system = systemPrompt,
-            messages = listOf(Message(role = "user", content = userPrompt))
+            messages = listOf(Message(role = "user", content = userPrompt)),
+            thinking = if (thinkingBudget > 0) ThinkingConfig(budget_tokens = thinkingBudget) else null
         )
 
         val jsonString = jsonConfig.encodeToString(ClaudeRequest.serializer(), requestBody)
@@ -632,20 +666,25 @@ class BedrockClient @Inject constructor(
             accept = "application/json"
             body = jsonString.toByteArray()
         }
-        try {
-            val response = client.invokeModel(request)
-            val responseBody = response.body?.decodeToString() ?: ""
-            val outerResponse = jsonConfig.decodeFromString<ClaudeResponse>(responseBody)
-            val rawText = outerResponse.content.firstOrNull()?.text ?: ""
-            
-            if (outerResponse.stopReason == "max_tokens") {
-                Log.w("BedrockClient", "Model stopped due to max_tokens. Response may be incomplete.")
-            }
 
-            return extractJsonFromText(rawText)
-        } catch (e: StreamResetException) {
-            throw CancellationException("Bedrock request cancelled")
+        val response = client.invokeModel(request)
+        val responseBody = response.body?.decodeToString() ?: ""
+        val outerResponse = jsonConfig.decodeFromString<ClaudeResponse>(responseBody)
+        
+        // Log thinking/scratchpad if available in non-streaming response
+        outerResponse.content.forEach { block ->
+            if (block.thinking != null) {
+                Log.d("BedrockClient", "Claude Thinking: ${block.thinking}")
+            }
         }
+
+        val rawText = outerResponse.content.firstOrNull { it.type == "text" }?.text ?: ""
+        
+        if (outerResponse.stopReason == "max_tokens") {
+            Log.w("BedrockClient", "Model stopped due to max_tokens. Response may be incomplete.")
+        }
+
+        return extractJsonFromText(rawText)
     }
 
     private suspend fun invokeClaudeStreaming(
@@ -655,6 +694,40 @@ class BedrockClient @Inject constructor(
         thinkingBudget: Int = 0,
         onThoughtReceived: (String) -> Unit = {}
     ): String {
+        var lastError: Exception? = null
+        repeat(3) { attempt ->
+            try {
+                return doInvokeClaudeStreaming(systemPrompt, userPrompt, modelId, thinkingBudget, onThoughtReceived)
+            } catch (e: Exception) {
+                lastError = e
+                if (e is CancellationException) throw e
+                
+                val isRetryable = e is SSLException || 
+                                 e is IOException || 
+                                 e.message?.contains("Software caused connection abort") == true ||
+                                 e is StreamResetException
+                
+                if (isRetryable && attempt < 2) {
+                    val delayMs = (attempt + 1) * 2000L
+                    Log.w("BedrockClient", "Streaming attempt ${attempt + 1} failed, retrying in ${delayMs}ms...", e)
+                    kotlinx.coroutines.delay(delayMs)
+                } else {
+                    Log.e("BedrockClient", "Streaming request failed after ${attempt + 1} attempts", e)
+                    throw e
+                }
+            }
+        }
+        throw lastError ?: Exception("Unknown streaming error")
+    }
+
+    private suspend fun doInvokeClaudeStreaming(
+        systemPrompt: String,
+        userPrompt: String,
+        modelId: String,
+        thinkingBudget: Int = 0,
+        onThoughtReceived: (String) -> Unit = {}
+    ): String {
+        Log.d("BedrockClient", "InvokeClaudeStreaming System Instruction: $systemPrompt")
         enforceLimit()
         
         val requestBody = ClaudeRequest(
@@ -676,37 +749,33 @@ class BedrockClient @Inject constructor(
         val fullText = StringBuilder()
         var currentThought = StringBuilder()
 
-        try {
-            client.invokeModelWithResponseStream(request) { response ->
-                response.body?.collect { event ->
-                    when (event) {
-                        is ResponseStream.Chunk -> {
-                            val chunkText = event.value.bytes?.decodeToString() ?: ""
-                            try {
-                                val streamEvent = jsonConfig.decodeFromString<StreamEvent>(chunkText)
-                                when (streamEvent.type) {
-                                    "content_block_delta" -> {
-                                        streamEvent.delta?.text?.let { fullText.append(it) }
-                                        streamEvent.delta?.thinking?.let { 
-                                            currentThought.append(it)
-                                            // Send summarized thought updates
-                                            onThoughtReceived(summarizeThinking(currentThought.toString()))
-                                        }
+        client.invokeModelWithResponseStream(request) { response ->
+            response.body?.collect { event ->
+                when (event) {
+                    is ResponseStream.Chunk -> {
+                        val chunkText = event.value.bytes?.decodeToString() ?: ""
+                        try {
+                            val streamEvent = jsonConfig.decodeFromString<StreamEvent>(chunkText)
+                            when (streamEvent.type) {
+                                "content_block_delta" -> {
+                                    streamEvent.delta?.text?.let { fullText.append(it) }
+                                    streamEvent.delta?.thinking?.let { 
+                                        currentThought.append(it)
+                                        // Send summarized thought updates
+                                        onThoughtReceived(summarizeThinking(currentThought.toString()))
                                     }
                                 }
-                            } catch (e: Exception) {}
-                        }
-                        else -> {}
+                            }
+                        } catch (e: Exception) {}
                     }
+                    else -> {}
                 }
             }
-            
-            val finalJson = extractJsonFromText(fullText.toString())
-            return finalJson
-        } catch (e: Exception) {
-            Log.e("BedrockClient", "Streaming request failed", e)
-            throw e
         }
+        
+        Log.d("BedrockClient", "Claude Scratchpad/Thinking Output: ${currentThought.toString()}")
+        val finalJson = extractJsonFromText(fullText.toString())
+        return finalJson
     }
 
     private fun summarizeThinking(thought: String): String {

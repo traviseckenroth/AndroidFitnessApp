@@ -57,7 +57,7 @@ Typically 4 weeks for endurance/beginners, 5-6 weeks for hypertrophy/strength.
 Generate a 1-week template for this Mesocycle.
 
 *** 2. EXERCISE SELECTION ALGORITHM & BIOMECHANICS ***
-To fill a {totalMinutes} minute session, you typically need 4 to 7 distinct exercises.
+To fill the session, scale the number of exercises dynamically. A 45-min session needs ~5-6 exercises. A 90-min session needs ~7-9 exercises
 Follow this selection order STRICTLY. The final output array MUST be ordered exactly in this sequence:
 
 PRIMARY (Tier 1 - Compound): Select 1 or 2 heavy compound movements.
@@ -94,7 +94,7 @@ VIOLATION WARNING: Do NOT output a workout with only 1 exercise per tier. You mu
 Target Duration: {totalMinutes} minutes.
 Use these metrics to calculate total time:
 
-Tier 1: 3.0 mins/set
+Tier 1: 4.0 mins/set
 
 Tier 2: 2.5 mins/set
 
@@ -169,7 +169,9 @@ TRAINING HISTORY: {historySummary}.
 
 *** 8. MANDATORY REASONING SCRATCHPAD (SYSTEM REQUIREMENT) ***
 To prevent severe overtraining and ensure mathematical constraints are met, you are STRICTLY FORBIDDEN from generating the JSON output directly.
-You MUST use the <scratchpad> tags to perform a running mathematical tally of the volume and time.
+You are an AI system. You MUST output a <scratchpad> block first. 
+Begin your response immediately with:
+<scratchpad>
 
 Inside the <scratchpad>, you MUST perform the following steps to mathematically prove your compliance:
 
@@ -178,29 +180,43 @@ List the target muscle groups (e.g., Shoulders, Traps, Chest, Back, Legs, Arms).
 
 STEP 2: DAILY PLANNING & RUNNING TALLY
 For EACH training day, output the following:
-
-Draft Exercises: List selected exercises following Tier and Movement Pattern rules.
-
-Volume Tally (CRITICAL): Mathematically add the sets to the running weekly total. Show your work: [Previous Total] + [New Direct Sets] + [New Synergist Sets * 0.5] = [New Total] / [Cap].
-
-Volume Check: Is any muscle over the hard cap? If yes, YOU MUST REMOVE THE EXERCISE and replace it with mobility/core.
-
-Time Check: (Tier 1 Sets * 3.0) + (Tier 2 Sets * 2.5) + (Tier 3 Sets * 2.5) = Total Time. If time < {totalMinutes}, add an exercise ONLY IF it does not violate the volume cap.
-
-Recovery Check: Verify that localRecoveryHours have been met since this muscle was last trained.
+- Draft Exercises: List selected exercises following Tier and Movement Pattern rules.
+- Volume Tally (CRITICAL): Mathematically add the sets to the running weekly total. Show your work: [Previous Total] + [New Direct Sets] + [New Synergist Sets * 0.5] = [New Total] / [Cap].
+- Volume Check: Is any muscle over the hard cap? If yes, YOU MUST REMOVE THE EXERCISE and replace it with mobility/core.
+- Time Check: (Tier 1 Sets * 3.0) + (Tier 2 Sets * 2.5) + (Tier 3 Sets * 2.5) = Total Time. If time < {totalMinutes}, add an exercise ONLY IF it does not violate the volume cap.
+- Recovery Check: Verify that localRecoveryHours have been met since this muscle was last trained.
 
 *** 9. STRICT OUTPUT FORMAT & TEMPLATE ***
-Your entire response MUST conform to the exact structure below. You must start your response with the literal text <scratchpad>.
-
 CRITICAL JSON DATA TYPE RULES:
+- `suggestedReps`, `sets`, and `suggestedRpe` MUST be single, absolute integers.
+- `suggestedLbs` MUST be a single float.
+- ANTI-DRIFT PROTOCOL: Your JSON `schedule` MUST EXACTLY MATCH the "Final Exercises" you settled on in your scratchpad. You are STRICTLY FORBIDDEN from copy-pasting the same core exercises (like Russian Twists) onto the end of multiple days unless you explicitly planned it in the scratchpad.
+- DO NOT use strings or ranges for numbers.
+- `tier` MUST be an integer (1, 2, or 3).
+- MISSING DAYS WARNING: The template below only shows Monday as an example. Your `schedule` array MUST contain a fully populated JSON object for EVERY single day requested in the User Context's `Schedule`. Do not leave days out. Do not include code comments.
 
-suggestedReps, sets, and suggestedRpe MUST be single, absolute integers.
-
-suggestedLbs MUST be a single float.
-
-DO NOT use strings or ranges for numbers (e.g., use 8, NEVER "6-8" or "8-12").
-
-tier MUST be an integer (1, 2, or 3).
+Only after closing the </scratchpad> block, output the final, optimized JSON plan exactly matching this schema:
+{
+  "explanation": "State the current block goal AND a brief 'Look-Ahead' for the next block. (<500 chars)",
+  "mesocycleLengthWeeks": 5,
+  "schedule": [
+    {
+      "day": "Monday",
+      "workoutName": "Upper Body Power",
+      "exercises": [
+        {
+          "name": "Barbell Bench Press",
+          "sets": 4,
+          "suggestedReps": 8,
+          "suggestedLbs": 135.0,
+          "suggestedRpe": 8,
+          "tier": 1,
+          "targetMuscle": "Chest"
+        }
+      ]
+    }
+  ]
+}
         """.trimIndent(),
 
         "system_instruction_nutrition" to """
