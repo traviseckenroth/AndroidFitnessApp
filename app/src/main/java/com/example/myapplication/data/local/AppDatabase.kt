@@ -18,7 +18,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         UserSubscriptionEntity::class,
         UserMemoryEntity::class
     ],
-    version = 35,
+    version = 36,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

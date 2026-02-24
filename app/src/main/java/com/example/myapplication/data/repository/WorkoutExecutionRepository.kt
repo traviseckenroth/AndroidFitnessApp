@@ -275,13 +275,19 @@ class WorkoutExecutionRepository @Inject constructor(
     suspend fun addSet(workoutId: Long, exerciseId: Long) {
         val sets = workoutDao.getSetsForWorkoutList(workoutId).filter { it.exerciseId == exerciseId }.sortedBy { it.setNumber }
         val lastSet = sets.lastOrNull()
+        
+        // Ensure new set carries over the performance (actual weight/reps) of the previous set
+        val weight = lastSet?.actualLbs?.toInt() ?: lastSet?.suggestedLbs ?: 0
+        val reps = lastSet?.actualReps ?: lastSet?.suggestedReps ?: 10
+        val rpe = lastSet?.actualRpe?.toInt() ?: lastSet?.suggestedRpe ?: 8
+
         val newSet = WorkoutSetEntity(
             workoutId = workoutId,
             exerciseId = exerciseId,
             setNumber = (lastSet?.setNumber ?: 0) + 1,
-            suggestedReps = lastSet?.suggestedReps ?: 10,
-            suggestedLbs = lastSet?.suggestedLbs ?: 0,
-            suggestedRpe = lastSet?.suggestedRpe ?: 8,
+            suggestedReps = reps,
+            suggestedLbs = weight,
+            suggestedRpe = rpe,
             isCompleted = false
         )
         workoutDao.insertSets(listOf(newSet))

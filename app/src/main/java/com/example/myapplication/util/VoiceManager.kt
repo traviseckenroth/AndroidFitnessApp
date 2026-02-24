@@ -60,6 +60,7 @@ class VoiceManager @Inject constructor(@ApplicationContext private val context: 
                         @Suppress("Deprecated")
                         override fun onError(utteranceId: String?) {
                             abandonAudioFocus()
+                            onSpeechDone?.invoke() // Resume even on error to avoid hanging
                             onSpeechDone = null
                         }
                     })
@@ -115,6 +116,9 @@ class VoiceManager @Inject constructor(@ApplicationContext private val context: 
             params.putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC)
 
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "AI_RESPONSE")
+        } else {
+            Log.w("VoiceManager", "TTS not initialized yet. Skipping speech.")
+            onComplete?.invoke()
         }
     }
 

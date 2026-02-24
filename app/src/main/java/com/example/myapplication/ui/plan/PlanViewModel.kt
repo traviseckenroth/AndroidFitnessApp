@@ -13,7 +13,7 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 sealed interface PlanUiState {
-    object Loading : PlanUiState
+    data class Loading(val thought: String? = null) : PlanUiState
     data class Success(val plan: WorkoutPlan) : PlanUiState
     data class Error(val msg: String) : PlanUiState
     object Empty : PlanUiState
@@ -47,7 +47,7 @@ class PlanViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            _uiState.value = PlanUiState.Loading
+            _uiState.value = PlanUiState.Loading()
             _isPlanAccepted.value = false
             try {
                 val planId = withContext(Dispatchers.IO) {
@@ -56,7 +56,10 @@ class PlanViewModel @Inject constructor(
                         duration = duration.toInt(),
                         days = days,
                         programType = program,
-                        block = block
+                        block = block,
+                        onThoughtReceived = { thought ->
+                            _uiState.value = PlanUiState.Loading(thought)
+                        }
                     )
                 }
                 currentPlanId = planId

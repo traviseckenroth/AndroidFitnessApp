@@ -6,6 +6,8 @@ import android.util.Log
 import com.example.myapplication.data.local.ContentSourceEntity
 import aws.sdk.kotlin.services.bedrockruntime.BedrockRuntimeClient
 import aws.sdk.kotlin.services.bedrockruntime.model.InvokeModelRequest
+import aws.sdk.kotlin.services.bedrockruntime.model.InvokeModelWithResponseStreamRequest
+import aws.sdk.kotlin.services.bedrockruntime.model.ResponseStream
 import aws.smithy.kotlin.runtime.http.engine.okhttp.OkHttpEngine
 import com.example.myapplication.BuildConfig
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
@@ -25,6 +27,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.EncodeDefault
 import java.util.Date
 import kotlinx.coroutines.flow.first
 
@@ -102,17 +105,62 @@ data class ClaudeRequest(
     val anthropic_version: String = "bedrock-2023-05-31",
     val max_tokens: Int,
     val system: String,
-    val messages: List<Message>
+    val messages: List<Message>,
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val thinking: ThinkingConfig? = null
+)
+
+@Serializable
+data class ThinkingConfig(
+    val type: String = "enabled",
+    val budget_tokens: Int
 )
 
 @Serializable
 data class Message(val role: String, val content: String)
 
 @Serializable
-data class ClaudeResponse(val content: List<ContentBlock>)
+data class ClaudeResponse(
+    val content: List<ContentBlock>,
+    @SerialName("stop_reason") val stopReason: String? = null
+)
 
 @Serializable
-data class ContentBlock(val text: String)
+data class ContentBlock(
+    val type: String = "text",
+    val text: String? = null,
+    val thinking: String? = null
+)
+
+@Serializable
+data class StreamEvent(
+    val type: String,
+    val message: StreamMessage? = null,
+    @SerialName("content_block") val contentBlock: ContentBlock? = null,
+    val delta: StreamDelta? = null,
+    @SerialName("usage") val usage: StreamUsage? = null
+)
+
+@Serializable
+data class StreamMessage(
+    val role: String? = null,
+    val content: List<ContentBlock>? = null,
+    @SerialName("stop_reason") val stopReason: String? = null
+)
+
+@Serializable
+data class StreamDelta(
+    val type: String? = null,
+    val text: String? = null,
+    val thinking: String? = null
+)
+
+@Serializable
+data class StreamUsage(
+    @SerialName("input_tokens") val inputTokens: Int = 0,
+    @SerialName("output_tokens") val outputTokens: Int = 0
+)
 
 // --- CONFIGURATION ---
 private val jsonConfig = Json {
@@ -124,10 +172,14 @@ private val jsonConfig = Json {
 }
 
 private const val tierDefinitions = """
-    - Tier 1: Primary Compound Lifts (High fatigue, high priority, e.g., Squat, Bench, Deadlift).
-    - Tier 2: Secondary/Accessory Lifts (Moderate fatigue, e.g., Dumbbell Press, Rows).
-    - Tier 3: Isolation/Correctives (Low fatigue, e.g., Curls, Lateral Raises, Face Pulls).
+    - Compound: Primary Compound Lifts (High fatigue, high priority, e.g., Squat, Bench, Deadlift).
+    - Secondary: Secondary/Accessory Lifts (Moderate fatigue, e.g., Dumbbell Press, Rows).
+    - Isolation: Isolation/Correctives (Low fatigue, e.g., Curls, Lateral Raises, Face Pulls).
 """
+
+// Model IDs - Using Inference Profiles for Claude 3.x models to support on-demand throughput
+private const val CLAUDE_SONNET = "arn:aws:bedrock:us-east-1:609113669048:inference-profile/us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+private const val CLAUDE_HAIKU = "arn:aws:bedrock:us-east-1:609113669048:inference-profile/us.anthropic.claude-3-haiku-20240307-v1:0"
 
 // --- CLIENT CLASS ---
 @Singleton
@@ -166,7 +218,7 @@ class BedrockClient @Inject constructor(
     suspend fun parseFoodLog(userQuery: String): FoodLogResponse = withContext(Dispatchers.Default) {
         try {
             val systemPrompt = promptRepository.getFoodLogSystemPrompt()
-            val cleanJson = invokeClaude(systemPrompt, userQuery)
+            val cleanJson = invokeClaude(systemPrompt, userQuery, CLAUDE_HAIKU)
             jsonConfig.decodeFromString<FoodLogResponse>(cleanJson)
         } catch (e: Exception) {
             Log.e("BedrockError", "Error parsing food log", e)
@@ -182,10 +234,11 @@ class BedrockClient @Inject constructor(
         workoutHistory: List<CompletedWorkoutWithExercise>,
         availableExercises: List<ExerciseEntity>,
         userAge: Int,
-        userHeight: Int,
+        userHeight: Double,
         userWeight: Double,
         block: Int = 1,
-        sleepHours: Double = 8.0 // Default to healthy sleep if unknown
+        sleepHours: Double = 8.0,
+        onThoughtReceived: (String) -> Unit = {}
     ): GeneratedPlanResponse = withContext(Dispatchers.Default) {
 
         try {
@@ -195,7 +248,8 @@ class BedrockClient @Inject constructor(
                     val sessionDetails = sessionSets
                         .groupBy { it.exercise.name }
                         .entries.joinToString(", ") { (name, sets) ->
-                            "$name (${sets.size} sets)"
+                            val maxWeight = sets.maxOfOrNull { it.completedWorkout.weight.toFloat() } ?: 0f
+                            "$name (${sets.size} sets @ ~${maxWeight}lbs)"
                         }
                     "On ${Date(date)}, you did: $sessionDetails."
                 }
@@ -221,7 +275,18 @@ class BedrockClient @Inject constructor(
                 .replace("{tierDefinitions}", tierDefinitions)
                 .replace("{totalMinutesMinus5}", (totalMinutes - 5).toString())
 
-            val cleanJson = invokeClaude(systemPrompt, "Generate Block $block plan")
+            Log.d("BedrockClient", "Workout Plan Prompt: $systemPrompt")
+            
+            val cleanJson = invokeClaudeStreaming(
+                systemPrompt = systemPrompt, 
+                userPrompt = "Generate Block $block plan", 
+                modelId = CLAUDE_SONNET,
+                thinkingBudget = 4000,
+                onThoughtReceived = onThoughtReceived
+            )
+            
+            Log.d("BedrockClient", "Workout Plan Response: $cleanJson")
+
             jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
 
         } catch (e: Exception) {
@@ -251,7 +316,7 @@ class BedrockClient @Inject constructor(
             .replace("{exerciseList}", exerciseList)
 
         try {
-            val cleanJson = invokeClaude(systemPrompt, userMessage)
+            val cleanJson = invokeClaude(systemPrompt, userMessage, CLAUDE_HAIKU)
             jsonConfig.decodeFromString<NegotiationResponse>(cleanJson)
         } catch (e: Exception) {
             Log.e("BedrockError", "Coach interaction failed", e)
@@ -274,7 +339,7 @@ class BedrockClient @Inject constructor(
 
     suspend fun generateNutritionPlan(
         userAge: Int,
-        userHeight: Int,
+        userHeight: Double,
         userWeight: Double,
         gender: String,
         dietType: String,
@@ -294,7 +359,7 @@ class BedrockClient @Inject constructor(
                 .replace("{avgWorkoutDurationMins}", avgWorkoutDurationMins.toString())
                 .replace("{goalPace}", goalPace)
 
-            val cleanJson = invokeClaude(systemPrompt, "Generate Nutrition")
+            val cleanJson = invokeClaude(systemPrompt, "Generate Nutrition", CLAUDE_HAIKU)
             jsonConfig.decodeFromString<RemoteNutritionPlan>(cleanJson)
         } catch (e: Exception) {
             Log.e("BedrockError", "Nutrition Gen Failed", e)
@@ -314,7 +379,7 @@ class BedrockClient @Inject constructor(
             .replace("{exerciseList}", exerciseList)
 
         try {
-            val cleanJson = invokeClaude(prompt, "Generate Stretching")
+            val cleanJson = invokeClaude(prompt, "Generate Stretching", CLAUDE_HAIKU)
             jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
         } catch (e: Exception) {
             Log.e("Bedrock", "Stretching parse failed", e)
@@ -332,12 +397,14 @@ class BedrockClient @Inject constructor(
             "${intel.sourceId}: ${intel.title} (${intel.sportTag})"
         }
 
-        val systemPrompt = promptRepository.getIntelSelectionPrompt()
+        val rawPrompt = promptRepository.getIntelSelectionPrompt()
+        val systemPrompt = "$rawPrompt\nReturn the ID as a JSON object: {\"selectedId\": 123}"
         val userPrompt = "Today's Workout: $currentWorkout\n\nAvailable Content:\n$contentListString"
 
         try {
-            val responseText = invokeClaude(systemPrompt, userPrompt)
-            val selectedId = responseText.filter { it.isDigit() }.toLongOrNull()
+            val responseText = invokeClaude(systemPrompt, userPrompt, CLAUDE_HAIKU)
+            val json = JSONObject(responseText)
+            val selectedId = if (json.has("selectedId")) json.getLong("selectedId") else null
             availableContent.find { it.sourceId == selectedId }
         } catch (e: Exception) {
             Log.e("BedrockClient", "Intel selection failed", e)
@@ -354,7 +421,7 @@ class BedrockClient @Inject constructor(
         val prompt = rawPrompt.replace("{currentInterests}", currentInterests.joinToString(", "))
 
         try {
-            val response = invokeClaude(prompt, "Recommend interests")
+            val response = invokeClaude(prompt, "Recommend interests", CLAUDE_HAIKU)
             val json = JSONObject(response)
             val jsonArray = json.getJSONArray("recommendations")
             val results = mutableListOf<String>()
@@ -380,7 +447,7 @@ class BedrockClient @Inject constructor(
             .replace("{exerciseList}", exerciseList)
 
         try {
-            val cleanJson = invokeClaude(prompt, "Generate Accessory")
+            val cleanJson = invokeClaude(prompt, "Generate Accessory", CLAUDE_HAIKU)
             jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
         } catch (e: Exception) {
             Log.e("Bedrock", "Accessory parse failed", e)
@@ -401,7 +468,7 @@ class BedrockClient @Inject constructor(
         val systemPrompt = rawPrompt.replace("{workoutContext}", workoutContext)
 
         try {
-            val cleanJson = invokeClaude(systemPrompt, "Summarize this content: \n$contentList")
+            val cleanJson = invokeClaude(systemPrompt, "Summarize this content: \n$contentList", CLAUDE_HAIKU)
             val json = JSONObject(cleanJson)
             json.getString("briefing")
         } catch (e: Exception) {
@@ -424,10 +491,11 @@ class BedrockClient @Inject constructor(
               "note": "A concise summary of the memory"
             }
             If nothing significant is mentioned, return an empty JSON object {}.
+            MANDATORY: Return ONLY the JSON object.
         """.trimIndent()
 
         try {
-            val cleanJson = invokeClaude(systemPrompt, userSpeech)
+            val cleanJson = invokeClaude(systemPrompt, userSpeech, CLAUDE_HAIKU)
             if (cleanJson == "{}") return@withContext null
             
             val json = JSONObject(cleanJson)
@@ -460,9 +528,10 @@ class BedrockClient @Inject constructor(
         val firstExerciseContext = if (firstExercise != null) "The first exercise is: $firstExercise." else ""
         
         val rawPrompt = promptRepository.getKnowledgeBriefingPrompt()
+        val basePrompt = rawPrompt.replace("{workoutContext}", workoutContext)
+
         val systemPrompt = """
-            $rawPrompt
-            $workoutContext
+            $basePrompt
             $firstExerciseContext
             RECOVERY SCORE: $recovery%
             
@@ -476,13 +545,14 @@ class BedrockClient @Inject constructor(
             1. Proactively mention the relevant user memories (especially pain or preferences).
             2. If userMemories mentions previous pain for today's exercises, the coach MUST acknowledge it.
             3. Proactively mention the recent fatigue state. If recentFatigueState shows heavy recent volume for muscles targeted in today's workout, proactively mention it and suggest they focus on form rather than heavy loads today.
-            4. Explain how today's session or advice accounts for these memories and fatigue (e.g., "I've kept the weights moderate because of your lower back pain").
+            4. Explain how today's session or advice accounts for these memories and fatigue. DO NOT hallucinate or assume injuries that are not present in USER MEMORIES.
             5. Keep the tone supportive and professional.
             6. Synthesize the context into a concise pre-workout briefing.
+            7. MANDATORY: Return ONLY a JSON object: {"briefing": "your briefing here"}
         """.trimIndent()
 
         try {
-            val cleanJson = invokeClaude(systemPrompt, "Generate a briefing addressing memories and fatigue.")
+            val cleanJson = invokeClaude(systemPrompt, "Generate a briefing addressing memories and fatigue.", CLAUDE_HAIKU)
             val json = JSONObject(cleanJson)
             json.getString("briefing")
         } catch (e: Exception) {
@@ -503,19 +573,20 @@ class BedrockClient @Inject constructor(
             The user is about to start a set. 
             Write a single, natural, highly varied sentence telling the user to perform the exercise. 
             Acknowledge what set they are on out of the total sets.
-            Example: 'Alright, set 2 of 4 for Bench Press. Let's hit 8 reps at 185.'
+            IMPORTANT: END the sentence with a countdown: "Starting in 3... 2... 1... Go!"
+            Example: 'Alright, set 2 of 4 for Bench Press. Let's hit 8 reps at 185. Starting in 3... 2... 1... Go!'
             Return the response as a JSON object: {"script": "your sentence here"}
         """.trimIndent()
 
         val userPrompt = "Exercise: $exerciseName, Reps: $reps, Weight: $weight lbs, Set: $setNumber of $totalSets"
 
         try {
-            val cleanJson = invokeClaude(systemPrompt, userPrompt)
+            val cleanJson = invokeClaude(systemPrompt, userPrompt, CLAUDE_HAIKU)
             val json = JSONObject(cleanJson)
             json.getString("script")
         } catch (e: Exception) {
             Log.e("Bedrock", "Set intro script failed", e)
-            "Set $setNumber of $totalSets: $exerciseName. $reps reps at ${weight.toInt()} lbs. Let's go."
+            "Set $setNumber of $totalSets: $exerciseName. $reps reps at ${weight.toInt()} lbs. Starting in 3... 2... 1... Go."
         }
     }
 
@@ -531,7 +602,7 @@ class BedrockClient @Inject constructor(
         val userPrompt = "Prescribed: $reps reps at $weight lbs"
 
         try {
-            val cleanJson = invokeClaude(systemPrompt, userPrompt)
+            val cleanJson = invokeClaude(systemPrompt, userPrompt, CLAUDE_HAIKU)
             val json = JSONObject(cleanJson)
             json.getString("script")
         } catch (e: Exception) {
@@ -540,10 +611,15 @@ class BedrockClient @Inject constructor(
         }
     }
 
-    private suspend fun invokeClaude(systemPrompt: String, userPrompt: String): String {
+    private suspend fun invokeClaude(
+        systemPrompt: String, 
+        userPrompt: String, 
+        modelId: String,
+        maxTokens: Int = 4096
+    ): String {
         enforceLimit()
         val requestBody = ClaudeRequest(
-            max_tokens = 4000,
+            max_tokens = maxTokens,
             system = systemPrompt,
             messages = listOf(Message(role = "user", content = userPrompt))
         )
@@ -551,7 +627,7 @@ class BedrockClient @Inject constructor(
         val jsonString = jsonConfig.encodeToString(ClaudeRequest.serializer(), requestBody)
 
         val request = InvokeModelRequest {
-            modelId = "anthropic.claude-3-haiku-20240307-v1:0"
+            this.modelId = modelId
             contentType = "application/json"
             accept = "application/json"
             body = jsonString.toByteArray()
@@ -561,11 +637,121 @@ class BedrockClient @Inject constructor(
             val responseBody = response.body?.decodeToString() ?: ""
             val outerResponse = jsonConfig.decodeFromString<ClaudeResponse>(responseBody)
             val rawText = outerResponse.content.firstOrNull()?.text ?: ""
-            val jsonRegex = Regex("\\{.*\\}", setOf(RegexOption.DOT_MATCHES_ALL))
-            val match = jsonRegex.find(rawText)
-            return match?.value ?: throw Exception("AI returned invalid format: $rawText")
+            
+            if (outerResponse.stopReason == "max_tokens") {
+                Log.w("BedrockClient", "Model stopped due to max_tokens. Response may be incomplete.")
+            }
+
+            return extractJsonFromText(rawText)
         } catch (e: StreamResetException) {
             throw CancellationException("Bedrock request cancelled")
         }
+    }
+
+    private suspend fun invokeClaudeStreaming(
+        systemPrompt: String,
+        userPrompt: String,
+        modelId: String,
+        thinkingBudget: Int = 0,
+        onThoughtReceived: (String) -> Unit = {}
+    ): String {
+        enforceLimit()
+        
+        val requestBody = ClaudeRequest(
+            max_tokens = 8192 + thinkingBudget,
+            system = systemPrompt,
+            messages = listOf(Message(role = "user", content = userPrompt)),
+            thinking = if (thinkingBudget > 0) ThinkingConfig(budget_tokens = thinkingBudget) else null
+        )
+
+        val jsonString = jsonConfig.encodeToString(ClaudeRequest.serializer(), requestBody)
+
+        val request = InvokeModelWithResponseStreamRequest {
+            this.modelId = modelId
+            contentType = "application/json"
+            accept = "application/json"
+            body = jsonString.toByteArray()
+        }
+
+        val fullText = StringBuilder()
+        var currentThought = StringBuilder()
+
+        try {
+            client.invokeModelWithResponseStream(request) { response ->
+                response.body?.collect { event ->
+                    when (event) {
+                        is ResponseStream.Chunk -> {
+                            val chunkText = event.value.bytes?.decodeToString() ?: ""
+                            try {
+                                val streamEvent = jsonConfig.decodeFromString<StreamEvent>(chunkText)
+                                when (streamEvent.type) {
+                                    "content_block_delta" -> {
+                                        streamEvent.delta?.text?.let { fullText.append(it) }
+                                        streamEvent.delta?.thinking?.let { 
+                                            currentThought.append(it)
+                                            // Send summarized thought updates
+                                            onThoughtReceived(summarizeThinking(currentThought.toString()))
+                                        }
+                                    }
+                                }
+                            } catch (e: Exception) {}
+                        }
+                        else -> {}
+                    }
+                }
+            }
+            
+            val finalJson = extractJsonFromText(fullText.toString())
+            return finalJson
+        } catch (e: Exception) {
+            Log.e("BedrockClient", "Streaming request failed", e)
+            throw e
+        }
+    }
+
+    private fun summarizeThinking(thought: String): String {
+        val lowercaseThought = thought.lowercase()
+        return when {
+            lowercaseThought.contains("calculating progressive overload") || lowercaseThought.contains("intensity") -> "Optimizing Progressive Overload..."
+            lowercaseThought.contains("volume") || lowercaseThought.contains("sets") || lowercaseThought.contains("reps") -> "Calculating training volume..."
+            lowercaseThought.contains("muscle") || lowercaseThought.contains("split") || lowercaseThought.contains("days") -> "Structuring workout split..."
+            lowercaseThought.contains("history") || lowercaseThought.contains("past") || lowercaseThought.contains("previous") -> "Analyzing performance history..."
+            lowercaseThought.contains("nutrition") || lowercaseThought.contains("calories") -> "Syncing nutritional data..."
+            lowercaseThought.contains("exercise") || lowercaseThought.contains("selection") || lowercaseThought.contains("variation") -> "Curating exercise selection..."
+            lowercaseThought.contains("deload") || lowercaseThought.contains("fatigue") -> "Planning recovery strategy..."
+            else -> {
+                // Fallback to a cleaner version of the last sentence if no keyword match
+                val sentences = thought.split(Regex("(?<=[.!?])\\s+"))
+                val last = sentences.lastOrNull { it.length > 10 } ?: ""
+                if (last.length > 60) last.take(57) + "..." else last
+            }
+        }
+    }
+
+    private fun extractJsonFromText(text: String): String {
+        val start = text.indexOf('{')
+        if (start == -1) throw Exception("AI returned invalid format (no opening brace found in response).")
+        
+        var balance = 0
+        var inString = false
+        var escaped = false
+        
+        for (i in start until text.length) {
+            val c = text[i]
+            if (escaped) {
+                escaped = false
+                continue
+            }
+            when (c) {
+                '\\' -> escaped = true
+                '\"' -> inString = !inString
+                '{' -> if (!inString) balance++
+                '}' -> if (!inString) {
+                    balance--
+                    if (balance == 0) return text.substring(start, i + 1)
+                }
+            }
+        }
+        throw Exception("AI response was truncated (unbalanced braces).")
     }
 }

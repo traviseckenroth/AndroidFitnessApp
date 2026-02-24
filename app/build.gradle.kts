@@ -36,13 +36,17 @@ android {
         }
 
         // --- AWS CONFIG ---
-        val awsRegion = localProperties.getProperty("AWS_REGION") ?: "us-east-1"
-        val cognitoPoolId = localProperties.getProperty("COGNITO_IDENTITY_POOL_ID") ?: ""
+        val awsRegion = localProperties.getProperty("AWS_REGION")?.trim('\"', '\'') ?: "us-east-1"
+        val cognitoPoolId = localProperties.getProperty("COGNITO_IDENTITY_POOL_ID")?.trim('\"', '\'') ?: ""
 
         buildConfigField("String", "AWS_REGION", "\"$awsRegion\"")
         buildConfigField("String", "COGNITO_IDENTITY_POOL_ID", "\"$cognitoPoolId\"")
-        buildConfigField("String", "COGNITO_USER_POOL_ID", "\"${localProperties.getProperty("COGNITO_USER_POOL_ID")}\"")
-        buildConfigField("String", "COGNITO_CLIENT_ID", "\"${localProperties.getProperty("COGNITO_CLIENT_ID")}\"")
+        buildConfigField("String", "COGNITO_USER_POOL_ID", "\"${localProperties.getProperty("COGNITO_USER_POOL_ID")?.trim('\"', '\'')}\"")
+        buildConfigField("String", "COGNITO_CLIENT_ID", "\"${localProperties.getProperty("COGNITO_CLIENT_ID")?.trim('\"', '\'')}\"")
+
+        // --- ELEVENLABS CONFIG ---
+        val elevenLabsApiKey = localProperties.getProperty("ELEVENLABS_API_KEY")?.trim('\"', '\'') ?: ""
+        buildConfigField("String", "ELEVENLABS_API_KEY", "\"$elevenLabsApiKey\"")
     }
     buildTypes {
         release {
@@ -112,6 +116,8 @@ dependencies {
 
     // --- WorkManager ---
     implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
     // --- Health Connect ---
     implementation("androidx.health.connect:connect-client:1.1.0-alpha07")

@@ -25,7 +25,7 @@ import javax.inject.Inject
 // Helper data classes (Defined strictly in this file)
 private data class Biometrics(
     val userName: String,
-    val height: Int,
+    val height: Double,
     val weight: Double,
     val age: Int,
     val gender: String,
@@ -71,7 +71,7 @@ class ProfileViewModel @Inject constructor(
             ) { args ->
                 Biometrics(
                     userName = args[0] as String,
-                    height = args[1] as Int,
+                    height = args[1] as Double,
                     weight = args[2] as Double,
                     age = args[3] as Int,
                     gender = args[4] as String,
@@ -132,7 +132,7 @@ class ProfileViewModel @Inject constructor(
     }
 
     fun saveProfile(
-        h: Int,
+        h: Double,
         w: Double,
         a: Int,
         g: String,
@@ -163,15 +163,31 @@ class ProfileViewModel @Inject constructor(
             try {
                 val isLinked = healthConnectManager.hasPermissions()
                 
-                // Fetch Sleep for Recovery Score
+                // 1. Fetch Sleep for Recovery Score
                 val sleepDuration = healthConnectManager.getLastNightSleepDuration()
                 val sleepHours = sleepDuration.toMinutes() / 60.0
-                
-                // Calculate Recovery Score (Simple heuristic: 8 hours = 100%, 4 hours = 50%)
                 val recoveryScore = ((sleepHours / 8.0) * 100).toInt().coerceIn(0, 100)
                 userPrefs.updateRecoveryScore(recoveryScore)
+
+                // 2. Fetch Latest Weight
+                val latestWeight = healthConnectManager.getLatestWeight()
+                if (latestWeight != null) {
+                    Log.d("ProfileVM", "Bio-Sync: Weight fetched = $latestWeight lbs. Updating Prefs...")
+                    userPrefs.updateWeight(latestWeight)
+                } else {
+                    Log.w("ProfileVM", "Bio-Sync: Weight fetched was null")
+                }
+
+                // 3. Fetch Latest Height
+                val latestHeight = healthConnectManager.getLatestHeight()
+                if (latestHeight != null) {
+                    Log.d("ProfileVM", "Bio-Sync: Height fetched = $latestHeight inches. Updating Prefs...")
+                    userPrefs.updateHeight(latestHeight)
+                } else {
+                    Log.w("ProfileVM", "Bio-Sync: Height fetched was null")
+                }
                 
-                Log.d("ProfileVM", "Bio-Sync: Sleep=$sleepHours hrs, Recovery=$recoveryScore%")
+                Log.d("ProfileVM", "Bio-Sync Trace: Sleep=$sleepHours hrs, Recovery=$recoveryScore%")
 
                 delay(500) // Aesthetic delay for UI feedback
 
@@ -186,9 +202,10 @@ class ProfileViewModel @Inject constructor(
                     )
                 }
 
-                Toast.makeText(application, "Bio-Sync Complete: Recovery at $recoveryScore%", Toast.LENGTH_SHORT).show()
+                Toast.makeText(application, "Bio-Sync Complete!", Toast.LENGTH_SHORT).show()
 
             } catch (e: Exception) {
+                Log.e("ProfileVM", "Bio-Sync Trace: FAILED", e)
                 _uiState.update { it.copy(isHealthConnectSyncing = false) }
                 Toast.makeText(application, "Sync Failed: ${e.message}", Toast.LENGTH_SHORT).show()
             }

@@ -57,7 +57,7 @@ fun ProfileScreen(
     LaunchedEffect(height, weight, age, gender, activityLevel, bodyFat, dietType, goalPace) {
         delay(1000)
         viewModel.saveProfile(
-            h = height.toIntOrNull() ?: 0,
+            h = height.toDoubleOrNull() ?: 0.0,
             w = weight.toDoubleOrNull() ?: 0.0,
             a = age.toIntOrNull() ?: 0,
             g = gender,

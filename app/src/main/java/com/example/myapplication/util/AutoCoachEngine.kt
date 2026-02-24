@@ -3,6 +3,7 @@ package com.example.myapplication.util
 import android.util.Log
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
+import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.remote.BedrockClient
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,7 +19,8 @@ class AutoCoachEngine @Inject constructor(
     private val voice: NativeAutoCoachVoice,
     private val sttManager: SpeechToTextManager,
     private val bleHeartRateManager: BleHeartRateManager,
-    private val bedrockClient: BedrockClient
+    private val bedrockClient: BedrockClient,
+    private val userPrefs: UserPreferencesRepository
 ) {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var job: Job? = null
@@ -44,7 +46,7 @@ class AutoCoachEngine @Inject constructor(
                     for ((index, set) in sets.withIndex()) {
                         if (set.isCompleted) continue
 
-                        // 1. Announce Set
+                        // 1. Announce Set (Intro + Countdown)
                         _state.value = AutoCoachState.SPEAKING
                         val weight = (set.actualLbs ?: set.suggestedLbs.toFloat())
                         val reps = set.actualReps ?: set.suggestedReps
@@ -59,20 +61,18 @@ class AutoCoachEngine @Inject constructor(
                             )
                         } catch (e: Exception) {
                             Log.e("AutoCoach", "Failed to gen intro script", e)
-                            "Next up, ${exercise.name}. Set ${index + 1} of ${sets.size}. $reps reps at $weight lbs."
+                            "Next up, ${exercise.name}. Set ${index + 1} of ${sets.size}. $reps reps at $weight lbs. Starting in 3. 2. 1. Go."
                         }
 
                         voice.speakAndWait(introScript)
                         
                         if (index == 0) {
+                            // Short prep for first exercise of the day
                             _state.value = AutoCoachState.RESTING
-                            delay(30000) // 30 sec setup for first set
+                            delay(10000) 
                         }
 
-                        // 2. Countdown & Set
-                        _state.value = AutoCoachState.SPEAKING
-                        voice.speakAndWait("Starting in 3. 2. 1. Go.")
-
+                        // 2. Set Execution
                         _state.value = AutoCoachState.SET_IN_PROGRESS
                         // Wait an estimated amount of time for the set to finish (e.g., 4 secs per rep)
                         delay((reps * 4000L))
@@ -84,7 +84,7 @@ class AutoCoachEngine @Inject constructor(
                             bedrockClient.generatePostSetScript(reps, weight)
                         } catch (e: Exception) {
                             Log.e("AutoCoach", "Failed to gen post script", e)
-                            "Set done. Did you hit all $reps reps at $weight lbs?"
+                            "Set complete. Did you get all $reps reps?"
                         }
                         
                         voice.speakAndWait(postSetScript)
@@ -98,56 +98,73 @@ class AutoCoachEngine @Inject constructor(
 
                         // Basic local NLP to adjust UI fields based on speech
                         if (response.contains("no") || response.contains("only")) {
-                            // Try to extract a number if they failed
                             val detectedNumber = response.replace(Regex("[^0-9]"), "")
                             if (detectedNumber.isNotBlank()) {
-                                voice.speakAndWait("Got it, changing reps to $detectedNumber and logging.")
+                                voice.speakAndWait("Got it, changing reps to $detectedNumber.")
                                 onUpdateReps(set, detectedNumber)
                             } else {
-                                voice.speakAndWait("I didn't catch the number. I'll log it as prescribed, you can change it on the screen.")
+                                voice.speakAndWait("Understood. I'll log it as prescribed, adjust it on screen if you need.")
                             }
                         } else if (response.contains("too heavy") || response.contains("lower")) {
-                            voice.speakAndWait("Alright, dropping the weight by 10 pounds for the next set.")
-                            onUpdateWeight(set, (weight - 10).toString())
+                            voice.speakAndWait("Alright, I'll drop the weight for next time.")
+                            onUpdateWeight(set, (weight - 5).toString())
                         } else {
-                            voice.speakAndWait("Perfect. Logging it.")
+                            voice.speakAndWait("Solid.")
                         }
 
                         // 4. Update UI & Start Rest Timer
-                        onSetCompleted(set) // Checks the box
-                        onStartTimer(exercise.exerciseId) // Starts the UI timer
+                        onSetCompleted(set)
+                        onStartTimer(exercise.exerciseId)
 
                         // 5. Announce Rest with Live HR Monitoring
                         if (index < sets.lastIndex) {
-                            val currentHR = bleHeartRateManager.heartRate.value
-                            voice.speakAndWait("Your heart rate is currently at $currentHR. Take a break, I will let you know when it drops below 115.")
-                            _state.value = AutoCoachState.RESTING
-                            
-                            // Dynamic recovery: Wait for HR < 115 or 2.5 min timeout
-                            withTimeoutOrNull(150000L) {
-                                bleHeartRateManager.heartRate.first { it in 1..114 }
+                            if (bleHeartRateManager.isConnected.value) {
+                                val currentHR = bleHeartRateManager.heartRate.value
+                                val age = userPrefs.userAge.first()
+                                val targetHR = ((220 - age) * 0.60).toInt()
+                                
+                                voice.speakAndWait("Your heart rate is currently at $currentHR. Based on your profile, we are waiting until it hits $targetHR.")
+                                _state.value = AutoCoachState.RESTING
+                                
+                                // Dynamic recovery: Wait for HR < targetHR or 2.5 min timeout
+                                withTimeoutOrNull(150000L) {
+                                    bleHeartRateManager.heartRate.first { it in 1..targetHR }
+                                }
+                                
+                                _state.value = AutoCoachState.SPEAKING
+                                voice.speakAndWait("Heart rate recovered. Ready for the next set?")
+                            } else {
+                                // If no HR monitor, just give a standard verbal cue for the timer started in step 4
+                                _state.value = AutoCoachState.RESTING
+                                voice.speakAndWait("Take a breather. I've started your rest timer.")
+                                // We don't suspend here because the UI timer handles it, 
+                                // but we might want a short delay so the coach doesn't immediately jump to next set
+                                delay(30000) // Default 30s verbal break before coach checks in again
+                                _state.value = AutoCoachState.SPEAKING
+                                voice.speakAndWait("Ready for the next set?")
                             }
-                            
-                            _state.value = AutoCoachState.SPEAKING
-                            voice.speakAndWait("Heart rate recovered. Let's hit the next set.")
                         }
                     }
 
                     _state.value = AutoCoachState.SPEAKING
-                    voice.speakAndWait("All sets complete for ${exercise.name}.")
+                    voice.speakAndWait("Nice work on ${exercise.name}.")
                 }
 
-                voice.speakAndWait("Workout complete. Incredible job today.")
+                voice.speakAndWait("Session complete. You crushed it.")
                 _state.value = AutoCoachState.OFF
 
             } catch (e: CancellationException) {
-                voice.speakAndWait("Auto coach paused.")
+                Log.d("AutoCoach", "Engine cancelled")
             } catch (e: Exception) {
-                Log.e("AutoCoach", "Engine loop error", e)
-                voice.speakAndWait("Something went wrong with the engine. Resetting.")
+                Log.e("AutoCoach", "Engine error", e)
                 _state.value = AutoCoachState.OFF
             }
         }
+    }
+
+    fun stopSpeaking() {
+        job?.cancel()
+        _state.value = AutoCoachState.OFF
     }
 
     fun stop() {

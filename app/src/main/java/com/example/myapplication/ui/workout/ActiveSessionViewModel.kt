@@ -252,8 +252,14 @@ class ActiveSessionViewModel @Inject constructor(
         viewModelScope.launch {
             audioStreamer.interruptionFlow.collect {
                 if (_isListening.value) {
-                    Log.d("FullDuplex", "Interruption detected. Resetting transcription to prioritize new speech.")
-                    startLiveTranscription() 
+                    Log.d("FullDuplex", "Interruption detected.")
+
+                    // 1. SHUT THE AI UP IMMEDIATELY
+                    voiceManager.stop()
+                    autoCoachEngine.stopSpeaking() // Add a function to pause NativeAutoCoachVoice
+
+                    // 2. LISTEN TO THE USER
+                    startLiveTranscription()
                 }
             }
         }
@@ -573,6 +579,13 @@ class ActiveSessionViewModel @Inject constructor(
     private suspend fun handleLocalIntent(userText: String): Boolean {
         val lowerText = userText.lowercase()
 
+        // 0. Clear Memory Intent
+        if (lowerText.contains("clear coach memory") || lowerText.contains("reset coach memory") || lowerText.contains("forget everything")) {
+            clearCoachMemories()
+            addCoachResponse("Done. I've cleared my memory of any previous injuries or preferences. We're starting fresh.")
+            return true
+        }
+
         // 1. Swap Intent
         if (lowerText.contains("swap") || lowerText.contains("alternative") || lowerText.contains("different")) {
             val exerciseToSwap = _exerciseStates.value.find { state ->
@@ -605,6 +618,14 @@ class ActiveSessionViewModel @Inject constructor(
         }
 
         return false
+    }
+
+    fun clearCoachMemories() {
+        viewModelScope.launch {
+            memoryDao.deleteAllMemories()
+            // Reset briefing to trigger a reload without stale context
+            _coachBriefing.value = "Loading briefing..."
+        }
     }
 
     private fun addCoachResponse(text: String) {

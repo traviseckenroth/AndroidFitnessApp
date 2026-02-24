@@ -43,13 +43,13 @@ class PlanRepository @Inject constructor(
         duration: Int,
         days: List<String>,
         programType: String = "Hypertrophy",
-        block: Int = 1
+        block: Int = 1,
+        onThoughtReceived: (String) -> Unit = {}
     ): Long {
         Log.d("PlanRepo", "Generating Plan for: $goal, Block: $block")
         val previousPlan = if (block > 1) workoutDao.getLatestPlan() else null
         val existingNutritionJson = previousPlan?.nutritionJson
 
-        // If Block 1, we start fresh. If Block 2+, we transition.
         if (block == 1) {
             workoutDao.deleteFutureUncompletedWorkouts(System.currentTimeMillis())
         }
@@ -63,14 +63,17 @@ class PlanRepository @Inject constructor(
             eq.isNullOrBlank() || !excludedEquipment.contains(eq)
         }
 
-        val height = userPrefs.userHeight.first()
-        val weight = userPrefs.userWeight.first()
-        val age = userPrefs.userAge.first()
-
-        // Fetch Health Connect Data for Bio-Syncing
+        val hcHeight = healthConnectManager.getLatestHeight()
+        val hcWeight = healthConnectManager.getLatestWeight()
         val lastNightSleep = healthConnectManager.getLastNightSleepDuration()
         val sleepHours = lastNightSleep.toMinutes() / 60.0
-        Log.d("PlanRepo", "Fetched Sleep Data: $sleepHours hours")
+
+        val prefHeight = userPrefs.userHeight.first()
+        val prefWeight = userPrefs.userWeight.first()
+        val age = userPrefs.userAge.first()
+
+        val finalHeight = hcHeight ?: prefHeight
+        val finalWeight = hcWeight ?: prefWeight
 
         val aiResponse = bedrockClient.generateWorkoutPlan(
             goal = goal,
@@ -80,10 +83,11 @@ class PlanRepository @Inject constructor(
             workoutHistory = workoutHistory,
             availableExercises = availableExercises,
             userAge = age,
-            userHeight = height,
-            userWeight = weight,
+            userHeight = finalHeight,
+            userWeight = finalWeight,
             block = block,
-            sleepHours = if (sleepHours > 0) sleepHours else 8.0 // Use real data if available
+            sleepHours = if (sleepHours > 0) sleepHours else 8.0,
+            onThoughtReceived = onThoughtReceived
         )
 
         val startDate = if (block > 1 && previousPlan != null) {
@@ -110,7 +114,6 @@ class PlanRepository @Inject constructor(
 
         val adjustedSchedule = enforceTimeConstraints(aiResponse.schedule, duration.toFloat())
         
-        // Use AI determined mesocycle length (4-6 weeks)
         val totalWeeks = aiResponse.mesocycleLengthWeeks.coerceIn(4, 6)
         val deloadWeekIndex = totalWeeks 
 
@@ -155,10 +158,6 @@ class PlanRepository @Inject constructor(
         return workoutDao.saveFullWorkoutPlan(planEntity, fullPlanData)
     }
 
-    /**
-     * Reactive eligibility for next block.
-     * Returns the next block number if user has <= 3 uncompleted workouts in current active plan.
-     */
     fun getNextBlockNumberFlow(): Flow<Int?> = workoutDao.getActivePlanFlow().flatMapLatest { activePlan ->
         if (activePlan == null) flowOf(null)
         else {
@@ -174,9 +173,6 @@ class PlanRepository @Inject constructor(
         return if (remaining <= 3) activePlan.block + 1 else null
     }
 
-    /**
-     * Reactive progress for the current active plan.
-     */
     fun getActivePlanProgressFlow(): Flow<PlanProgress?> = workoutDao.getActivePlanFlow().flatMapLatest { activePlan ->
         if (activePlan == null) flowOf(null)
         else {
@@ -319,6 +315,9 @@ class PlanRepository @Inject constructor(
                         tier = 3,
                         loadability = aiEx.loadability,
                         fatigue = aiEx.fatigue,
+                        movementPattern = "Mobility",
+                        localRecoveryHours = 0,
+                        resistanceProfile = "Bodyweight",
                         notes = cleanedNotes,
                         description = cleanedNotes,
                         estimatedTimePerSet = holdTimeInMinutes
@@ -333,6 +332,9 @@ class PlanRepository @Inject constructor(
                     equipment = aiEx.equipment,
                     loadability = aiEx.loadability,
                     fatigue = aiEx.fatigue,
+                    movementPattern = "Mobility",
+                    localRecoveryHours = 0,
+                    resistanceProfile = "Bodyweight",
                     description = cleanedNotes,
                     tier = 3,
                     estimatedTimePerSet = holdTimeInMinutes,
@@ -399,7 +401,6 @@ class PlanRepository @Inject constructor(
         return workoutDao.getWorkoutByDate(startOfDay, endOfDay)
     }
 
-    // --- UTILS ---
     private fun getDayNameFromDate(date: Long): String {
         val cal = Calendar.getInstance()
         cal.timeInMillis = date

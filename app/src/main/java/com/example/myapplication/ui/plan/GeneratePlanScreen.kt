@@ -43,10 +43,8 @@ fun GeneratePlanScreen(
     val planProgress by viewModel.planProgress.collectAsState()
     val context = LocalContext.current
 
-    // -- LOCAL UI STATE --
     var showExerciseDialog by remember { mutableStateOf(false) }
 
-    // -- FORM STATE --
     var goalInput by remember { mutableStateOf("") }
     val programs = listOf("Strength", "Physique", "Endurance")
     var selectedProgram by remember { mutableStateOf(programs[0]) }
@@ -55,7 +53,6 @@ fun GeneratePlanScreen(
     val daysOfWeek = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
     val selectedDays = remember { mutableStateListOf<String>() }
 
-    // Auto-open dialog on success if not accepted
     LaunchedEffect(uiState, isAccepted) {
         if (uiState is PlanUiState.Success && !isAccepted) {
             showExerciseDialog = true
@@ -78,11 +75,9 @@ fun GeneratePlanScreen(
                 style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(16.dp))
 
-            // --- CYCLE BLOCK (Macrocycle -> Mesocycle Link) ---
             CycleInformationBlock(goalInput, selectedProgram)
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 1. NEXT BLOCK OFFER (If Eligible)
             if (nextBlockNumber != null && uiState !is PlanUiState.Loading) {
                 ElevatedCard(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
@@ -117,7 +112,6 @@ fun GeneratePlanScreen(
                 Spacer(modifier = Modifier.height(24.dp))
             }
 
-            // 2. INPUT FORM (Action Plan)
             Text(
                 text = "Action Plan",
                 style = MaterialTheme.typography.titleLarge,
@@ -138,7 +132,6 @@ fun GeneratePlanScreen(
                 uiState is PlanUiState.Loading
             )
 
-            // 3. ACTIVE PLAN CARD (If Accepted)
             if (isAccepted && uiState is PlanUiState.Success) {
                 val plan = (uiState as PlanUiState.Success).plan
                 Spacer(modifier = Modifier.height(24.dp))
@@ -160,7 +153,6 @@ fun GeneratePlanScreen(
                         ) {
                             Text("Workout Schedule", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                             
-                            // Progress Counter
                             planProgress?.let {
                                 Surface(
                                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f),
@@ -179,7 +171,6 @@ fun GeneratePlanScreen(
                         
                         Text(plan.explanation, style = MaterialTheme.typography.bodyMedium, maxLines = 2, color = MaterialTheme.colorScheme.onPrimaryContainer)
                         
-                        // Progress Bar
                         planProgress?.let {
                             Spacer(modifier = Modifier.height(12.dp))
                             LinearProgressIndicator(
@@ -198,7 +189,6 @@ fun GeneratePlanScreen(
             }
         }
 
-        // --- SMOOTH SKELETON LOADER OVERLAY ---
         AnimatedVisibility(
             visible = uiState is PlanUiState.Loading,
             enter = fadeIn(),
@@ -210,11 +200,10 @@ fun GeneratePlanScreen(
                     .background(MaterialTheme.colorScheme.background.copy(alpha = 0.95f))
                     .padding(16.dp)
             ) {
-                SkeletonPlanLoader()
+                SkeletonPlanLoader(currentThought = (uiState as? PlanUiState.Loading)?.thought)
             }
         }
 
-        // -- EXERCISE DIALOG --
         if (showExerciseDialog && uiState is PlanUiState.Success) {
             val plan = (uiState as PlanUiState.Success).plan
             androidx.compose.ui.window.Dialog(onDismissRequest = { showExerciseDialog = false }) {
@@ -260,8 +249,8 @@ fun GeneratePlanScreen(
 }
 
 @Composable
-fun SkeletonPlanLoader() {
-    val thoughts = listOf(
+fun SkeletonPlanLoader(currentThought: String? = null) {
+    val defaultThoughts = listOf(
         "Analyzing past volume...",
         "Calculating Progressive Overload...",
         "Tailoring exercise selection...",
@@ -270,14 +259,18 @@ fun SkeletonPlanLoader() {
     )
     var thoughtIndex by remember { mutableIntStateOf(0) }
     
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(2500)
-            thoughtIndex = (thoughtIndex + 1) % thoughts.size
+    // Auto-cycle through default thoughts if no real thinking is provided yet
+    LaunchedEffect(currentThought) {
+        if (currentThought == null) {
+            while (true) {
+                delay(2500)
+                thoughtIndex = (thoughtIndex + 1) % defaultThoughts.size
+            }
         }
     }
 
-    // Professional Shimmer Animation
+    val displayThought = currentThought ?: defaultThoughts[thoughtIndex]
+
     val transition = rememberInfiniteTransition(label = "shimmer")
     val shimmerTranslate by transition.animateFloat(
         initialValue = 0f,
@@ -306,7 +299,6 @@ fun SkeletonPlanLoader() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // Skeleton Cards with Gradient Shimmer (Less "flashy")
         repeat(3) {
             Box(
                 modifier = Modifier
@@ -330,7 +322,7 @@ fun SkeletonPlanLoader() {
         Spacer(modifier = Modifier.height(16.dp))
         
         AnimatedContent(
-            targetState = thoughts[thoughtIndex],
+            targetState = displayThought,
             transitionSpec = {
                 fadeIn(animationSpec = tween(800)) + slideInVertically { it / 2 } togetherWith
                 fadeOut(animationSpec = tween(800)) + slideOutVertically { -it / 2 }
@@ -351,7 +343,6 @@ fun SkeletonPlanLoader() {
 
 @Composable
 fun CycleInformationBlock(goal: String, programType: String) {
-    // Offset from the gradient start/end to create the moving effect
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -377,7 +368,6 @@ fun CycleInformationBlock(goal: String, programType: String) {
             
             Spacer(modifier = Modifier.height(12.dp))
             
-            // Macrocycle link
             Text(
                 text = "Macrocycle: ${if (goal.isBlank()) "Define your goal" else goal}",
                 style = MaterialTheme.typography.bodyLarge,
@@ -392,7 +382,6 @@ fun CycleInformationBlock(goal: String, programType: String) {
             
             Spacer(modifier = Modifier.height(16.dp))
             
-            // Mesocycle explanation
             Row(verticalAlignment = Alignment.Top) {
                 Icon(
                     imageVector = Icons.Default.Sync,

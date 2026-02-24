@@ -1,9 +1,6 @@
 package com.example.myapplication.data.local
 
-import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
-import androidx.room.Query
+import androidx.room.*
 
 @Dao
 interface MemoryDao {
@@ -15,4 +12,10 @@ interface MemoryDao {
 
     @Query("SELECT * FROM user_memories ORDER BY timestamp DESC LIMIT :limit")
     suspend fun getRecentMemories(limit: Int): List<UserMemoryEntity>
+
+    @Query("DELETE FROM user_memories")
+    suspend fun deleteAllMemories(): Int
+
+    @Delete
+    suspend fun deleteMemory(memory: UserMemoryEntity): Int
 }

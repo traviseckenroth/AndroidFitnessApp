@@ -388,6 +388,7 @@ fun ActiveWorkoutScreen(
                         },
                         onToggleLive = { viewModel.toggleLiveCoaching() },
                         onQuickAction = { actionText -> viewModel.interactWithCoach(actionText) },
+                        onClearMemory = { viewModel.clearCoachMemories() },
                         onDismiss = {
                             scope.launch { sheetState.hide() }.invokeOnCompletion {
                                 if (!sheetState.isVisible) showChatSheet = false
@@ -639,8 +640,13 @@ fun ExerciseHeader(
                     color = MaterialTheme.colorScheme.secondaryContainer,
                     shape = RoundedCornerShape(4.dp)
                 ) {
+                    val tierLabel = when(exercise.tier) {
+                        1 -> "Compound"
+                        2 -> "Secondary"
+                        else -> "Isolation"
+                    }
                     Text(
-                        "T${exercise.tier}",
+                        tierLabel,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold
@@ -874,6 +880,7 @@ fun CoachChatContent(
     onVoiceInput: () -> Unit,
     onToggleLive: () -> Unit,
     onQuickAction: (String) -> Unit,
+    onClearMemory: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val chatListState = rememberLazyListState()
@@ -905,6 +912,13 @@ fun CoachChatContent(
             val suggestions = listOf("I'm feeling pain", "Swap this", "Need form tips", "I'm tired")
             items(suggestions) { text ->
                 SuggestionChip(onClick = { onQuickAction(text) }, label = { Text(text) })
+            }
+            item {
+                SuggestionChip(
+                    onClick = onClearMemory,
+                    label = { Text("Clear Coach Memory", color = MaterialTheme.colorScheme.error) },
+                    colors = SuggestionChipDefaults.suggestionChipColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f))
+                )
             }
         }
 
