@@ -17,7 +17,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
-// FIXED: Added hasFinished property
 data class TimerState(
     val isRunning: Boolean = false,
     val remainingTime: Int = 0,
@@ -36,7 +35,10 @@ class WorkoutTimerService : Service() {
 
         const val ACTION_START = "ACTION_START"
         const val ACTION_STOP = "ACTION_STOP"
+        const val ACTION_ADD_TIME = "ACTION_ADD_TIME" // NEW: Used for dynamic rest auto-regulation
+
         const val EXTRA_SECONDS = "EXTRA_SECONDS"
+        const val EXTRA_ADD_TIME_SECONDS = "EXTRA_ADD_TIME_SECONDS"
         const val EXTRA_EXERCISE_ID = "EXTRA_EXERCISE_ID"
         const val CHANNEL_ID = "workout_timer_channel"
         const val NOTIFICATION_ID = 1
@@ -52,6 +54,13 @@ class WorkoutTimerService : Service() {
                 startTimer(seconds, exerciseId)
             }
             ACTION_STOP -> stopTimer()
+            ACTION_ADD_TIME -> {
+                val additionalSeconds = intent.getIntExtra(EXTRA_ADD_TIME_SECONDS, 0)
+                if (additionalSeconds > 0 && _timerState.value.isRunning) {
+                    _timerState.update { it.copy(remainingTime = it.remainingTime + additionalSeconds) }
+                    updateNotification(_timerState.value.remainingTime)
+                }
+            }
         }
         return START_STICKY
     }
@@ -61,27 +70,24 @@ class WorkoutTimerService : Service() {
         createNotificationChannel()
 
         timerJob = serviceScope.launch {
-            var timeLeft = durationSeconds
-
             // Reset state: running = true, hasFinished = false
             _timerState.update {
                 TimerState(
                     isRunning = true,
-                    remainingTime = timeLeft,
+                    remainingTime = durationSeconds,
                     activeExerciseId = exerciseId,
                     hasFinished = false
                 )
             }
-            startForeground(NOTIFICATION_ID, buildNotification(timeLeft))
+            startForeground(NOTIFICATION_ID, buildNotification(durationSeconds))
 
-            while (timeLeft > 0) {
+            // FIX: Loop now reads directly from state, allowing external modifications (like Auto-Regulation)
+            while (_timerState.value.remainingTime > 0) {
                 delay(1000L)
-                timeLeft--
-                _timerState.update { it.copy(remainingTime = timeLeft) }
-                updateNotification(timeLeft)
+                _timerState.update { it.copy(remainingTime = it.remainingTime - 1) }
+                updateNotification(_timerState.value.remainingTime)
             }
 
-            // FIXED: Set hasFinished = true when done, keep activeExerciseId so UI knows what finished
             _timerState.update {
                 it.copy(
                     isRunning = false,
@@ -91,7 +97,6 @@ class WorkoutTimerService : Service() {
             }
 
             stopForeground(STOP_FOREGROUND_REMOVE)
-            // Note: We do not call stopSelf() immediately so the UI has time to react to the state change
         }
     }
 

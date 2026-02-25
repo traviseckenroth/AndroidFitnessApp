@@ -464,7 +464,9 @@ class ActiveSessionViewModel @Inject constructor(
     }
     
     // --- 6. AUTO COACH LOGIC ---
-    
+
+// --- 6. AUTO COACH LOGIC ---
+
     fun toggleAutoCoach() {
         if (autoCoachState.value == AutoCoachState.OFF) {
             // Prepare a list of incomplete sets for the coach to handle
@@ -474,21 +476,38 @@ class ActiveSessionViewModel @Inject constructor(
                     state.exercise to incompleteSets
                 } else null
             }
-            
+
             if (exercisesToCoach.isNotEmpty()) {
-                 autoCoachEngine.startWorkout(
+                // 1. Build Historical Data Map
+                // This maps the exercise ID to a string describing their previous performance
+                val historyMap = exercisesToCoach.associate { (exercise, sets) ->
+                    val lastWeight = sets.firstOrNull()?.suggestedLbs ?: 0
+                    val lastReps = sets.firstOrNull()?.suggestedReps ?: 0
+                    exercise.exerciseId to "Last time: $lastWeight lbs for $lastReps reps"
+                }
+
+                autoCoachEngine.startWorkout(
                     exercises = exercisesToCoach,
                     onUpdateReps = { set, reps -> updateSetReps(set, reps) },
                     onUpdateWeight = { set, weight -> updateSetWeight(set, weight) },
-                    onUpdateRpe = { set, rpe -> updateSetRpe(set, rpe) },
                     onSetCompleted = { set -> updateSetCompletion(set, true) },
                     onStartTimer = { exerciseId -> startSetTimer(exerciseId) },
-                    onGenericIntent = { text -> interactWithCoach(text) }
+                    onExtendTimer = { extraTimeMs -> extendSetTimer(extraTimeMs) },
+                    historicalData = historyMap
                 )
             }
         } else {
             autoCoachEngine.stop()
         }
+    }
+
+    private fun extendSetTimer(extraTimeMs: Long) {
+        val extraSeconds = (extraTimeMs / 1000).toInt()
+        val intent = Intent(application, WorkoutTimerService::class.java).apply {
+            action = WorkoutTimerService.ACTION_ADD_TIME
+            putExtra(WorkoutTimerService.EXTRA_ADD_TIME_SECONDS, extraSeconds)
+        }
+        application.startService(intent)
     }
 
     // --- 7. AI & CHAT INTERACTION ---
