@@ -964,6 +964,14 @@ fun PlateCalculatorDialog(lbs: Double, bar: Double, gender: String, onDismiss: (
 fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
     val timerState = exerciseState.timerState
 
+    // Calculate the current set number based on completed sets
+    val completedSets = exerciseState.sets.count { it.isCompleted }
+    val totalSets = exerciseState.sets.size
+
+    // Determine the active set (completed + 1). Cap it at totalSets so it doesn't overshoot when all are done.
+    val currentSetNumber = if (completedSets < totalSets) completedSets + 1 else totalSets.coerceAtLeast(1)
+    val timerTitle = "SET $currentSetNumber TIMER"
+
     Card(
         modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
@@ -976,7 +984,12 @@ fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column {
-                Text("WORKOUT TIMER", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    text = timerTitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
                 Text(
                     text = String.format(Locale.US, "%02d:%02d", timerState.remainingTime / 60, timerState.remainingTime % 60),
                     style = MaterialTheme.typography.headlineMedium,
@@ -990,6 +1003,7 @@ fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
                 },
                 shape = RoundedCornerShape(8.dp)
             ) {
+                // I left "SKIP REST" as you had it, but you can change it to "SKIP TIMER" if it fits your unified timer concept better!
                 Text(if (timerState.isRunning) "SKIP REST" else "START TIMER", fontWeight = FontWeight.Bold)
             }
         }

@@ -12,6 +12,12 @@ import android.util.Base64
 import android.util.Log
 import com.example.myapplication.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -32,7 +38,35 @@ class ElevenLabsStreamer @Inject constructor(
     private var audioTrack: AudioTrack? = null
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private val audioQueue = Channel<ByteArray>(Channel.UNLIMITED)
     private val sampleRate = 16000
+
+    init {
+        // Launch a dedicated player coroutine
+        scope.launch(Dispatchers.IO) {
+            for (chunk in audioQueue) {
+                // Wait for audioTrack to be available
+                var track = audioTrack
+                while (track == null) {
+                    delay(50)
+                    track = audioTrack
+                }
+                
+                try {
+                    if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
+                        track.play()
+                    }
+                    val result = track.write(chunk, 0, chunk.size)
+                    if (result < 0) {
+                        Log.e("ElevenLabsStreamer", "AudioTrack write error: $result")
+                    }
+                } catch (e: Exception) {
+                    Log.e("ElevenLabsStreamer", "Error writing to AudioTrack", e)
+                }
+            }
+        }
+    }
 
     fun connect() {
         if (webSocket != null) return
@@ -52,14 +86,24 @@ class ElevenLabsStreamer @Inject constructor(
                 AudioFormat.ENCODING_PCM_16BIT
             )
 
-            audioTrack = AudioTrack(
-                AudioManager.STREAM_MUSIC,
-                sampleRate,
-                AudioFormat.CHANNEL_OUT_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-                minBufferSize * 2,
-                AudioTrack.MODE_STREAM
-            )
+            audioTrack = AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setSampleRate(sampleRate)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build()
+                )
+                .setBufferSizeInBytes(minBufferSize * 2)
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build()
+
             audioTrack?.play()
         }
 
@@ -75,7 +119,6 @@ class ElevenLabsStreamer @Inject constructor(
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.d("AutoCoach", "ElevenLabs WS Opened")
-                // Initial space message to wake up the stream is now handled in startNewGeneration
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -85,10 +128,7 @@ class ElevenLabsStreamer @Inject constructor(
                         val audioBase64 = json.getString("audio")
                         if (audioBase64.isNotEmpty()) {
                             val audioBytes = Base64.decode(audioBase64.replace("\n", "").replace("\r", ""), Base64.DEFAULT)
-                            if (audioTrack?.playState != AudioTrack.PLAYSTATE_PLAYING) {
-                                audioTrack?.play()
-                            }
-                            audioTrack?.write(audioBytes, 0, audioBytes.size)
+                            audioQueue.trySend(audioBytes)
                         }
                     }
 
@@ -113,7 +153,6 @@ class ElevenLabsStreamer @Inject constructor(
     }
 
     fun startNewGeneration() {
-        // If websocket is dead or not yet opened, connect.
         if (webSocket == null) {
             connect()
         }
@@ -125,7 +164,6 @@ class ElevenLabsStreamer @Inject constructor(
                 put("stability", 0.5)
                 put("similarity_boost", 0.75)
             })
-            // Only send output_format on the first message of a connection
             put("output_format", "pcm_16000")
         }
         webSocket?.send(initPayload.toString())
@@ -159,14 +197,18 @@ class ElevenLabsStreamer @Inject constructor(
         Log.d("AutoCoach", "ElevenLabs: Flushing text buffer")
         webSocket?.send(JSONObject().apply { put("text", "") }.toString())
         
-        // We close and nullify the websocket here to ensure the NEXT generation starts with a fresh connection.
-        // ElevenLabs handles multiple generations poorly on a single long-lived socket if there are gaps.
-        webSocket?.close(1000, "Generation complete")
-        webSocket = null
+        // Wait a bit before closing to allow audio to finish streaming back
+        scope.launch {
+            delay(2000) 
+            webSocket?.close(1000, "Generation complete")
+            webSocket = null
+        }
     }
 
     fun interrupt() {
         Log.d("AutoCoach", "ElevenLabs: Interrupting audio")
+        // Clear the queue to stop pending audio
+        while (audioQueue.tryReceive().isSuccess) { }
         audioTrack?.pause()
         audioTrack?.flush()
         audioTrack?.play()

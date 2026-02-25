@@ -342,7 +342,20 @@ class ActiveSessionViewModel @Inject constructor(
     // --- 4. EXERCISE & SET UPDATES ---
 
     fun updateSetCompletion(set: WorkoutSetEntity, isCompleted: Boolean) {
-        viewModelScope.launch { repository.updateSet(set.copy(isCompleted = isCompleted)) }
+        viewModelScope.launch { 
+            repository.updateSet(set.copy(isCompleted = isCompleted))
+            
+            // Notify AutoCoach if it's waiting for a set to be finished
+            if (isCompleted && autoCoachState.value != AutoCoachState.OFF) {
+                autoCoachEngine.notifySetCompletedManually()
+            }
+        }
+    }
+    
+    fun notifyUserReady() {
+        if (autoCoachState.value == AutoCoachState.WAITING_FOR_READY) {
+            autoCoachEngine.notifyUserReadyManually()
+        }
     }
 
     fun updateSetReps(set: WorkoutSetEntity, newReps: String) {
@@ -467,8 +480,10 @@ class ActiveSessionViewModel @Inject constructor(
                     exercises = exercisesToCoach,
                     onUpdateReps = { set, reps -> updateSetReps(set, reps) },
                     onUpdateWeight = { set, weight -> updateSetWeight(set, weight) },
+                    onUpdateRpe = { set, rpe -> updateSetRpe(set, rpe) },
                     onSetCompleted = { set -> updateSetCompletion(set, true) },
-                    onStartTimer = { exerciseId -> startSetTimer(exerciseId) }
+                    onStartTimer = { exerciseId -> startSetTimer(exerciseId) },
+                    onGenericIntent = { text -> interactWithCoach(text) }
                 )
             }
         } else {
@@ -666,7 +681,7 @@ class ActiveSessionViewModel @Inject constructor(
 
         transcribeJob = viewModelScope.launch {
             try {
-                speechToTextManager.startListening()
+                speechToTextManager.startListeningForSingleUtterance()
                     .collect { transcript ->
                         Log.d("LiveCoach", "Heard: $transcript")
                         interactWithCoach(transcript)
