@@ -513,6 +513,94 @@ class BedrockClient @Inject constructor(
         }
     }
 
+    private fun sanitizeHistory(history: List<Message>): List<Message> {
+        if (history.isEmpty()) return emptyList()
+
+        val sanitized = mutableListOf<Message>()
+        for (msg in history) {
+            if (sanitized.isEmpty()) {
+                if (msg.role == "user") {
+                    sanitized.add(msg)
+                } else {
+                    continue
+                }
+            } else {
+                val last = sanitized.last()
+                if (last.role == msg.role) {
+                    val merged = Message(last.role, last.content + "\n" + msg.content)
+                    sanitized[sanitized.size - 1] = merged
+                } else {
+                    sanitized.add(msg)
+                }
+            }
+        }
+        
+        if (sanitized.isNotEmpty() && sanitized.last().role != "user") {
+            sanitized.add(Message("user", "..."))
+        }
+
+        return sanitized
+    }
+
+    suspend fun streamConversationalResponse(
+        chatHistory: List<Message>,
+        onTextChunkReceived: (String) -> Unit
+    ): String = withContext(Dispatchers.IO) {
+        enforceLimit()
+
+        // 1. Give Claude strict instructions on how to act live
+        val systemPrompt = """
+            You are an elite, highly conversational fitness coach currently on a live audio call with your client during their workout. 
+            CRITICAL RULES:
+            - Responses MUST be extremely brief (1 to 3 short sentences max). 
+            - Speak like a human. Use filler words occasionally (e.g., 'Alright', 'Yeah', 'Hmm', 'Got it').
+            - NEVER use formatting like asterisks, emojis, or bullet points. This text is being fed directly into a Text-To-Speech engine.
+            - Provide hype, brief form cues, and ask how the weight feels.
+        """.trimIndent()
+
+        val sanitizedMessages = sanitizeHistory(chatHistory)
+        if (sanitizedMessages.isEmpty()) return@withContext "Let's get back to work!"
+
+        val requestBody = ClaudeRequest(
+            max_tokens = 300, // Short burst generation
+            system = systemPrompt,
+            messages = sanitizedMessages
+        )
+
+        val jsonString = jsonConfig.encodeToString(ClaudeRequest.serializer(), requestBody)
+
+        val request = InvokeModelWithResponseStreamRequest {
+            this.modelId = CLAUDE_HAIKU // Use Haiku for ultra-low latency conversational speed
+            contentType = "application/json"
+            accept = "application/json"
+            body = jsonString.toByteArray()
+        }
+
+        val fullText = StringBuilder()
+
+        try {
+            client.invokeModelWithResponseStream(request) { response ->
+                response.body?.collect { event ->
+                    if (event is ResponseStream.Chunk) {
+                        val chunkText = event.value.bytes?.decodeToString() ?: ""
+                        try {
+                            val streamEvent = jsonConfig.decodeFromString<StreamEvent>(chunkText)
+                            if (streamEvent.type == "content_block_delta") {
+                                streamEvent.delta?.text?.let { token ->
+                                    fullText.append(token)
+                                    onTextChunkReceived(token) // Yield the word instantly
+                                }
+                            }
+                        } catch (e: Exception) {}
+                    }
+                }
+            }
+        } catch (e: Exception) {
+             Log.e("BedrockClient", "Streaming conversational response failed", e)
+             return@withContext "Keep pushing, you're doing great!"
+        }
+        return@withContext fullText.toString()
+    }
     suspend fun generatePreWorkoutScript(
         recovery: Int,
         workoutTitle: String?,
@@ -520,39 +608,41 @@ class BedrockClient @Inject constructor(
         userMemories: List<UserMemoryEntity>,
         recentFatigueState: String
     ): String = withContext(Dispatchers.Default) {
-        val memoriesList = userMemories.joinToString("\n") { 
+        val memoriesList = if (userMemories.isEmpty()) "None recorded." else userMemories.joinToString("\n") { 
             "- ${it.category}: ${it.note} ${it.exerciseName?.let { name -> "($name)" } ?: ""}" 
         }
         
         val workoutContext = if (workoutTitle != null) "The user's workout for today is: $workoutTitle." else "No workout scheduled today."
         val firstExerciseContext = if (firstExercise != null) "The first exercise is: $firstExercise." else ""
         
-        val rawPrompt = promptRepository.getKnowledgeBriefingPrompt()
-        val basePrompt = rawPrompt.replace("{workoutContext}", workoutContext)
-
         val systemPrompt = """
-            $basePrompt
+            You are a professional Fitness Auto-Coach. Your goal is to provide a concise (max 3 sentences) pre-workout briefing based strictly on the user data provided.
+            
+            CONTEXT:
+            $workoutContext
             $firstExerciseContext
             RECOVERY SCORE: $recovery%
             
-            USER MEMORIES (RAG TEXT):
+            USER MEMORIES (PAIN/PREFERENCES):
             $memoriesList
             
-            RECENT FATIGUE STATE (SQL DATA):
+            RECENT FATIGUE STATE (VOLUME DATA):
             $recentFatigueState
             
             INSTRUCTIONS:
-            1. Proactively mention the relevant user memories (especially pain or preferences).
-            2. If userMemories mentions previous pain for today's exercises, the coach MUST acknowledge it.
-            3. Proactively mention the recent fatigue state. If recentFatigueState shows heavy recent volume for muscles targeted in today's workout, proactively mention it and suggest they focus on form rather than heavy loads today.
-            4. Explain how today's session or advice accounts for these memories and fatigue. DO NOT hallucinate or assume injuries that are not present in USER MEMORIES.
-            5. Keep the tone supportive and professional.
-            6. Synthesize the context into a concise pre-workout briefing.
-            7. MANDATORY: Return ONLY a JSON object: {"briefing": "your briefing here"}
+            1. Analyze the context above.
+            2. If there are USER MEMORIES regarding pain or injuries related to today's exercises, you MUST acknowledge them and advise caution.
+            3. If RECENT FATIGUE STATE shows high volume for today's target muscles, advise focusing on form or slightly lower intensity.
+            4. If RECOVERY SCORE is low, suggest a more conservative approach.
+            5. STRICT RULE: DO NOT mention any injuries, pains, or history that are not explicitly listed in the USER MEMORIES or FATIGUE STATE above. Do not hallucinate trends.
+            6. If everything looks good (high recovery, no pain, low fatigue), be purely encouraging about the session.
+            7. Keep the tone professional, supportive, and data-driven.
+            
+            MANDATORY: Return ONLY a JSON object: {"briefing": "your briefing here"}
         """.trimIndent()
 
         try {
-            val cleanJson = invokeClaude(systemPrompt, "Generate a briefing addressing memories and fatigue.", CLAUDE_HAIKU)
+            val cleanJson = invokeClaude(systemPrompt, "Generate my pre-workout briefing.", CLAUDE_HAIKU)
             val json = JSONObject(cleanJson)
             json.getString("briefing")
         } catch (e: Exception) {
@@ -569,13 +659,12 @@ class BedrockClient @Inject constructor(
         totalSets: Int
     ): String = withContext(Dispatchers.Default) {
         val systemPrompt = """
-            You are a helpful, professional Fitness Auto-Coach. 
+            You are a charismatic and professional Fitness Coach. 
             The user is about to start a set. 
-            Write a single, natural, highly varied sentence telling the user to perform the exercise. 
-            Acknowledge what set they are on out of the total sets.
-            IMPORTANT: END the sentence with a countdown: "Starting in 3... 2... 1... Go!"
-            Example: 'Alright, set 2 of 4 for Bench Press. Let's hit 8 reps at 185. Starting in 3... 2... 1... Go!'
-            Return the response as a JSON object: {"script": "your sentence here"}
+            Generate a short, varied, and natural sentence encouraging the user and stating the prescribed work.
+            Avoid being repetitive. Use coaching cues or motivational phrases.
+            IMPORTANT: End the sentence with a countdown: "3... 2... 1... Go!"
+            Return as JSON: {"script": "your sentence here"}
         """.trimIndent()
 
         val userPrompt = "Exercise: $exerciseName, Reps: $reps, Weight: $weight lbs, Set: $setNumber of $totalSets"
@@ -586,17 +675,18 @@ class BedrockClient @Inject constructor(
             json.getString("script")
         } catch (e: Exception) {
             Log.e("Bedrock", "Set intro script failed", e)
-            "Set $setNumber of $totalSets: $exerciseName. $reps reps at ${weight.toInt()} lbs. Starting in 3... 2... 1... Go."
+            "Alright, set $setNumber of $totalSets. $reps reps at ${weight.toInt()} lbs. 3... 2... 1... Go!"
         }
     }
 
     suspend fun generatePostSetScript(reps: Int, weight: Float): String = withContext(Dispatchers.Default) {
         val systemPrompt = """
-            You are a helpful, professional Fitness Auto-Coach. 
+            You are a charismatic and professional Fitness Coach. 
             The user just finished a set.
-            Write a short, encouraging post-set phrase asking the user if they successfully completed the prescribed reps and weight.
-            Example: 'Solid work. Did you hit all 8 reps?'
-            Return the response as a JSON object: {"script": "your sentence here"}
+            Generate a short, conversational phrase checking in on the set. 
+            Vary your tone—sometimes be impressed, sometimes just clinical.
+            Example: 'Solid. Did you nail all 8 reps?' or 'That looked heavy. Get all of them?'
+            Return as JSON: {"script": "your sentence here"}
         """.trimIndent()
 
         val userPrompt = "Prescribed: $reps reps at $weight lbs"
@@ -607,7 +697,7 @@ class BedrockClient @Inject constructor(
             json.getString("script")
         } catch (e: Exception) {
             Log.e("Bedrock", "Post-set script failed", e)
-            "Set complete. Did you get all $reps reps?"
+            "Nice work. Did you get all $reps reps?"
         }
     }
 

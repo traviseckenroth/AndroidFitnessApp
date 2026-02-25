@@ -26,33 +26,27 @@ class ElevenLabsClient @Inject constructor(
 
     private val apiKey = BuildConfig.ELEVENLABS_API_KEY
 
-    // Voice ID for "Marcus" (a deep, professional, coaching voice on ElevenLabs)
-    private val voiceId = "bVMeCyTHy58xNoL34h3p"
+    // Switching to "Eric" (xctasy8XvGp2cVO9HL9k) which is confirmed working for the user
+    private val voiceId = "xctasy8XvGp2cVO9HL9k"
 
-    /**
-     * Hits the ElevenLabs API, generates speech, saves it to a temp file,
-     * plays it, and suspends the coroutine until the playback finishes.
-     * Returns true if successful, false otherwise.
-     */
     suspend fun generateAndPlay(text: String): Boolean = suspendCancellableCoroutine { continuation ->
         var mediaPlayer: MediaPlayer? = null
         var tempAudioFile: File? = null
 
         if (apiKey.isBlank()) {
-            Log.w("ElevenLabs", "API Key is empty in BuildConfig. Please check your local.properties.")
+            Log.e("AutoCoach", "ElevenLabs: API Key is empty!")
             if (continuation.isActive) continuation.resume(false)
             return@suspendCancellableCoroutine
         }
 
         try {
-            Log.d("ElevenLabs", "Attempting speech generation for: \"$text\"")
+            Log.d("AutoCoach", "ElevenLabs: Requesting REST TTS for: $text")
             
-            // 1. Build the API Request
             val url = "https://api.elevenlabs.io/v1/text-to-speech/$voiceId?output_format=mp3_44100_128"
 
             val jsonBody = JSONObject().apply {
                 put("text", text)
-                put("model_id", "eleven_monolingual_v1") // Fastest model for short commands
+                put("model_id", "eleven_monolingual_v1")
                 put("voice_settings", JSONObject().apply {
                     put("stability", 0.5)
                     put("similarity_boost", 0.75)
@@ -64,20 +58,18 @@ class ElevenLabsClient @Inject constructor(
             val request = Request.Builder()
                 .url(url)
                 .post(requestBody)
-                .addHeader("xi-api-key", apiKey.trim()) // Ensure no extra whitespace
+                .addHeader("xi-api-key", apiKey.trim())
                 .addHeader("Accept", "audio/mpeg")
                 .build()
 
-            // 2. Execute Request
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     val errorBody = response.body?.string() ?: "No error body"
-                    Log.e("ElevenLabs", "API Error: ${response.code} - $errorBody")
+                    Log.e("AutoCoach", "ElevenLabs: REST API Error: ${response.code} - $errorBody")
                     if (continuation.isActive) continuation.resume(false)
                     return@suspendCancellableCoroutine
                 }
 
-                // 3. Save Audio Stream to Temp File
                 val tempFile = File(context.cacheDir, "temp_coach_audio_${System.currentTimeMillis()}.mp3")
                 tempAudioFile = tempFile
                 response.body?.byteStream()?.use { input ->
@@ -89,27 +81,26 @@ class ElevenLabsClient @Inject constructor(
 
             val fileToPlay = tempAudioFile
             if (fileToPlay == null || !fileToPlay.exists()) {
-                Log.e("ElevenLabs", "Failed to save audio to temp file")
+                Log.e("AutoCoach", "ElevenLabs: Failed to save audio file")
                 if (continuation.isActive) continuation.resume(false)
                 return@suspendCancellableCoroutine
             }
 
-            // 4. Play the Audio using MediaPlayer
             val mp = MediaPlayer().apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setUsage(AudioAttributes.USAGE_ASSISTANT)
                         .build()
                 )
                 setDataSource(fileToPlay.absolutePath)
                 setOnCompletionListener { player ->
                     player.release()
-                    fileToPlay.delete() // Clean up
+                    fileToPlay.delete()
                     if (continuation.isActive) continuation.resume(true)
                 }
                 setOnErrorListener { player, what, extra ->
-                    Log.e("ElevenLabs", "MediaPlayer Error: $what, $extra")
+                    Log.e("AutoCoach", "ElevenLabs: MediaPlayer Error: $what, $extra")
                     player.release()
                     fileToPlay.delete()
                     if (continuation.isActive) continuation.resume(false)
@@ -120,17 +111,14 @@ class ElevenLabsClient @Inject constructor(
             }
             mediaPlayer = mp
 
-            // Handle Coroutine Cancellation (e.g., user hits 'Stop Coach')
             continuation.invokeOnCancellation {
-                try {
-                    if (mp.isPlaying) mp.stop()
-                } catch (e: Exception) { /* already stopped */ }
+                try { if (mp.isPlaying) mp.stop() } catch (e: Exception) { }
                 mp.release()
                 fileToPlay.delete()
             }
 
         } catch (e: Exception) {
-            Log.e("ElevenLabs", "Network or Playback Error", e)
+            Log.e("AutoCoach", "ElevenLabs: Network or Playback Error", e)
             mediaPlayer?.release()
             tempAudioFile?.delete()
             if (continuation.isActive) continuation.resume(false)

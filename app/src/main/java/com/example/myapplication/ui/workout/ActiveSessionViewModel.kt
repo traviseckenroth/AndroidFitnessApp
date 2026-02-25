@@ -29,6 +29,7 @@ import com.example.myapplication.util.AutoCoachEngine
 import com.example.myapplication.util.AutoCoachState
 import com.example.myapplication.util.BleHeartRateManager
 import com.example.myapplication.util.ContinuousAudioStreamer
+import com.example.myapplication.util.NativeAutoCoachVoice
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
@@ -69,7 +70,8 @@ class ActiveSessionViewModel @Inject constructor(
     private val autoCoachEngine: AutoCoachEngine,
     private val bleHeartRateManager: BleHeartRateManager,
     private val memoryDao: MemoryDao,
-    private val audioStreamer: ContinuousAudioStreamer
+    private val audioStreamer: ContinuousAudioStreamer,
+    private val nativeAutoCoachVoice: NativeAutoCoachVoice
 ) : ViewModel() {
 
     // --- 1. STATE PROPERTIES ---
@@ -256,7 +258,8 @@ class ActiveSessionViewModel @Inject constructor(
 
                     // 1. SHUT THE AI UP IMMEDIATELY
                     voiceManager.stop()
-                    autoCoachEngine.stopSpeaking() // Add a function to pause NativeAutoCoachVoice
+                    nativeAutoCoachVoice.shutdown() // Shutdown ElevenLabs playback if any
+                    autoCoachEngine.interrupt()
 
                     // 2. LISTEN TO THE USER
                     startLiveTranscription()
@@ -514,12 +517,11 @@ class ActiveSessionViewModel @Inject constructor(
             newHistory.add(ChatMessage("Coach", response.explanation))
             _chatHistory.value = newHistory
 
-            voiceManager.speak(response.explanation) {
-                if (wasListening && _isListening.value) {
-                    viewModelScope.launch {
-                        startLiveTranscription()
-                    }
-                }
+            // Use ElevenLabs for chat response
+            nativeAutoCoachVoice.speakAndWait(response.explanation)
+
+            if (wasListening && _isListening.value) {
+                startLiveTranscription()
             }
 
             if (response.exercises.isNotEmpty()) {
@@ -632,7 +634,9 @@ class ActiveSessionViewModel @Inject constructor(
         val newHistory = _chatHistory.value.toMutableList()
         newHistory.add(ChatMessage("Coach", text))
         _chatHistory.value = newHistory
-        voiceManager.speak(text) {}
+        viewModelScope.launch {
+            nativeAutoCoachVoice.speakAndWait(text)
+        }
     }
 
     private fun calculatePlateMath(target: Double): String {
@@ -680,6 +684,7 @@ class ActiveSessionViewModel @Inject constructor(
         transcribeJob?.cancel()
         transcribeJob = null
         voiceManager.stop()
+        nativeAutoCoachVoice.shutdown()
         audioStreamer.stopStreaming()
     }
 
@@ -705,6 +710,7 @@ class ActiveSessionViewModel @Inject constructor(
         super.onCleared()
         stopLiveTranscription()
         voiceManager.stop()
+        nativeAutoCoachVoice.shutdown()
         stopTimerService()
         autoCoachEngine.stop()
         bleHeartRateManager.cleanup()
