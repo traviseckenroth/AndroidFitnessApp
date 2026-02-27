@@ -31,5 +31,8 @@ data class InsightsUiState(
     // Knowledge Hub Optimizations
     val knowledgeBriefing: String = "",
     val selectedKnowledgeCategory: String = "All", // "All", "Articles", "Videos"
-    val isBriefingLoading: Boolean = false
+    val isBriefingLoading: Boolean = false,
+
+    // Muscle Fatigue Map
+    val muscleFatigue: Map<String, Float> = emptyMap()
 )

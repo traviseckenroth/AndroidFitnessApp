@@ -33,4 +33,5 @@ sealed class Screen(val route: String, val title: String? = null, val icon: Imag
     object ContentDiscovery : Screen("content_discovery/{contentId}") {
         fun createRoute(contentId: Long) = "content_discovery/$contentId"
     }
+    object LiveCoach : Screen("live_coach")
 }

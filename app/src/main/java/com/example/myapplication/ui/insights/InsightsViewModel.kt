@@ -186,9 +186,26 @@ class InsightsViewModel @Inject constructor(
                     )
                 }.sortedByDescending { it.date }.take(5)
 
-                Triple(volumeByMuscle, tonnage, topExercises to groupedHistory)
-            }.collect { (muscleVol, tonnage, exerciseHistory) ->
-                val (topExercises, groupedHistory) = exerciseHistory
+                // 5. Muscle Fatigue (Last 7 Days)
+                val fatigueMap = mutableMapOf<String, Float>()
+                val now = Instant.now().toEpochMilli()
+                val sevenDaysAgo = Instant.now().minus(7, ChronoUnit.DAYS).toEpochMilli()
+
+                completedSets.filter { it.completedWorkout.date >= sevenDaysAgo }.forEach { set ->
+                    val daysAgo = (now - set.completedWorkout.date) / (1000 * 60 * 60 * 24).toFloat()
+                    if (daysAgo in 0f..7f) {
+                        val baseImpact = 0.08f * (1f - (daysAgo / 7f))
+                        val primary = set.exercise.muscleGroup?.lowercase()
+                        if (primary != null) {
+                            fatigueMap[primary] = (fatigueMap[primary] ?: 0f) + baseImpact
+                        }
+                    }
+                }
+                val finalFatigueMap = fatigueMap.mapValues { it.value.coerceIn(0f, 1f) }
+
+                Triple(Triple(volumeByMuscle, tonnage, topExercises), groupedHistory, finalFatigueMap)
+            }.collect { (tripleStats, groupedHistory, finalFatigueMap) ->
+                val (volumeByMuscle, tonnage, topExercises) = tripleStats
                 _uiState.update { state ->
                     val newSelected = if (state.selectedExercise == null) topExercises.firstOrNull() else state.selectedExercise
                     if (newSelected != null && _selectedExerciseId.value == null) {
@@ -197,10 +214,11 @@ class InsightsViewModel @Inject constructor(
 
                     state.copy(
                         isLoading = false,
-                        muscleVolumeDistribution = muscleVol,
+                        muscleVolumeDistribution = volumeByMuscle,
                         weeklyTonnage = tonnage,
                         topExercises = topExercises,
-                        recentWorkouts = groupedHistory
+                        recentWorkouts = groupedHistory,
+                        muscleFatigue = finalFatigueMap
                     )
                 }
             }

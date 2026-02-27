@@ -40,6 +40,26 @@ class PlanViewModel @Inject constructor(
 
     private var currentPlanId: Long = -1L
 
+    init {
+        loadActivePlan()
+    }
+
+    private fun loadActivePlan() {
+        viewModelScope.launch {
+            val activePlan = repository.getActivePlan()
+            if (activePlan != null) {
+                try {
+                    val fullPlan = repository.getPlanDetails(activePlan.planId)
+                    _uiState.value = PlanUiState.Success(fullPlan)
+                    _isPlanAccepted.value = true
+                    currentPlanId = activePlan.planId
+                } catch (e: Exception) {
+                    // silent fail or handle
+                }
+            }
+        }
+    }
+
     fun generatePlan(goal: String, program: String, duration: Float, days: List<String>, block: Int = 1) {
         if (goal.isBlank()) {
             _uiState.value = PlanUiState.Error("Please enter a goal.")

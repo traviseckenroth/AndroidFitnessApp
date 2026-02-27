@@ -15,6 +15,7 @@ import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.flow.*
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.roundToInt
 
 data class WorkoutSummaryResult(
     val title: String,
@@ -112,7 +113,7 @@ class WorkoutExecutionRepository @Inject constructor(
             workout
         }
         return workoutDao.insertDailyWorkout(
-            com.example.myapplication.data.local.DailyWorkoutEntity(
+            DailyWorkoutEntity(
                 planId = 0,
                 scheduledDate = workout.date,
                 title = finalWorkout.name
@@ -213,8 +214,18 @@ class WorkoutExecutionRepository @Inject constructor(
         val exerciseGroups = completedSets.groupBy { it.exerciseId }
         
         for ((exerciseId, sets) in exerciseGroups) {
+            val exercise = workoutDao.getExerciseById(exerciseId) ?: continue
+            val isBodyweight = exercise.equipment?.contains("Bodyweight", ignoreCase = true) == true
+            
             val futureSets = workoutDao.getFutureSetsForExercise(exerciseId, currentDate)
             if (futureSets.isEmpty()) continue
+
+            if (isBodyweight) {
+                // For bodyweight, just sync suggestedLbs to 0 to be safe, but don't increase weight.
+                val updatedFutureSets = futureSets.map { it.copy(suggestedLbs = 0) }
+                workoutDao.insertSets(updatedFutureSets)
+                continue
+            }
 
             // Determine Progression based on actual performance today.
             // Fall back to suggested weight if actualLbs is null (user didn't change the suggested weight).
@@ -234,16 +245,33 @@ class WorkoutExecutionRepository @Inject constructor(
         }
     }
 
-    suspend fun injectWarmUpSets(workoutId: Long, exerciseId: Long, workingWeight: Int) {
+    suspend fun injectWarmUpSets(workoutId: Long, exerciseId: Long, workingWeight: Int, equipment: String? = null) {
         val currentSets = workoutDao.getSetsForWorkoutList(workoutId).filter { it.exerciseId == exerciseId }.sortedBy { it.setNumber }
         if (currentSets.isEmpty()) return
 
-        fun roundToFive(w: Double) = (w / 5).toInt() * 5
+        fun roundToFive(w: Double) = (w / 5).roundToInt() * 5
+
+        val isBarbell = equipment?.contains("Barbell", ignoreCase = true) == true
+        
+        // Calculate appropriate warmup weights
+        val weight1 = if (isBarbell && workingWeight > 45) 45 else roundToFive(workingWeight * 0.35)
+        var w2 = roundToFive(workingWeight * 0.55)
+        var w3 = roundToFive(workingWeight * 0.75)
+        
+        // Ensure strictly increasing logic so w2/w3 don't drop below bar or w1
+        if (isBarbell && workingWeight > 45) {
+            w2 = maxOf(45, w2)
+            w3 = maxOf(45, w3)
+        }
+        
+        // Safety cap at working weight (should generally not happen with multipliers < 1)
+        if (w2 > workingWeight) w2 = workingWeight
+        if (w3 > workingWeight) w3 = workingWeight
 
         val warmups = listOf(
-            WorkoutSetEntity(workoutId = workoutId, exerciseId = exerciseId, setNumber = 1, suggestedReps = 10, suggestedLbs = 45, suggestedRpe = 0, isCompleted = false),
-            WorkoutSetEntity(workoutId = workoutId, exerciseId = exerciseId, setNumber = 2, suggestedReps = 5, suggestedLbs = roundToFive(workingWeight * 0.5), suggestedRpe = 0, isCompleted = false),
-            WorkoutSetEntity(workoutId = workoutId, exerciseId = exerciseId, setNumber = 3, suggestedReps = 3, suggestedLbs = roundToFive(workingWeight * 0.75), suggestedRpe = 0, isCompleted = false)
+            WorkoutSetEntity(workoutId = workoutId, exerciseId = exerciseId, setNumber = 1, suggestedReps = 10, suggestedLbs = weight1, suggestedRpe = 0, isCompleted = false),
+            WorkoutSetEntity(workoutId = workoutId, exerciseId = exerciseId, setNumber = 2, suggestedReps = 5, suggestedLbs = w2, suggestedRpe = 0, isCompleted = false),
+            WorkoutSetEntity(workoutId = workoutId, exerciseId = exerciseId, setNumber = 3, suggestedReps = 3, suggestedLbs = w3, suggestedRpe = 0, isCompleted = false)
         )
         val updatedOriginalSets = currentSets.map { it.copy(setNumber = it.setNumber + 3) }
         updatedOriginalSets.forEach { workoutDao.updateSet(it) }

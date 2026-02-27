@@ -12,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
@@ -124,11 +125,29 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
 
                 is NutritionUiState.Empty -> EmptyNutritionCard(onGenerateClick = { viewModel.generateNutrition() })
 
-                is NutritionUiState.Success -> NutritionDetailCard(
-                    state.plan,
-                    consumed,
-                    onRegenerateClick = { viewModel.generateNutrition() }
-                )
+                is NutritionUiState.Success -> {
+                    Column {
+                        if (state.alignedGoal.isNotBlank()) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                            ) {
+                                Text(
+                                    text = "Nutrition automatically optimized for: ${state.alignedGoal}",
+                                    modifier = Modifier.padding(12.dp),
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            }
+                        }
+                        NutritionDetailCard(
+                            plan = state.plan,
+                            consumed = consumed,
+                            onRegenerateClick = { viewModel.generateNutrition() }
+                        )
+                    }
+                }
 
                 is NutritionUiState.Error -> {
                     Text("Error: ${state.msg}", color = MaterialTheme.colorScheme.error)

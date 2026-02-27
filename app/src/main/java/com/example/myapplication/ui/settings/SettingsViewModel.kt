@@ -19,6 +19,7 @@ class SettingsViewModel @Inject constructor(
 
     val gymType = userPrefs.gymType
     val excludedEquipment = userPrefs.excludedEquipment
+    val userVoiceSid = userPrefs.userVoiceSid
 
     val isHealthConnected = mutableStateOf(false)
     val permissions = healthConnectManager.permissions // FIXED: Exposed permissions
@@ -77,6 +78,12 @@ class SettingsViewModel @Inject constructor(
     fun toggleEquipment(equipment: String, isExcluded: Boolean) {
         viewModelScope.launch {
             userPrefs.toggleEquipmentExclusion(equipment, isExcluded)
+        }
+    }
+
+    fun setCoachVoice(sid: Int) {
+        viewModelScope.launch {
+            userPrefs.saveUserVoiceSid(sid)
         }
     }
 }

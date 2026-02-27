@@ -1,6 +1,7 @@
 package com.example.myapplication.di
 
 import android.content.Context
+import android.os.StrictMode
 import android.util.Log
 import androidx.room.Room
 import com.example.myapplication.data.local.AppDatabase
@@ -28,46 +29,59 @@ object AppModule {
         passphraseManager: DatabasePassphraseManager
     ): AppDatabase {
         val dbName = "workout_database"
-        val passphrase = passphraseManager.getPassphrase()
         
-        // Ensure SQLCipher libraries are loaded before any DB operation
-        SQLiteDatabase.loadLibs(context)
-        
-        val dbFile = context.getDatabasePath(dbName)
-        if (dbFile.exists()) {
-            try {
-                // Verify if the database can be opened with the current passphrase.
-                val db = SQLiteDatabase.openDatabase(
-                    dbFile.absolutePath,
-                    passphrase,
-                    null,
-                    SQLiteDatabase.OPEN_READONLY
-                )
+        // Fix: StrictMode policy violation; ~duration=68 ms: android.os.strictmode.DiskReadViolation
+        // Initial database check, passphrase retrieval, and verification involve disk I/O 
+        // which can happen on the main thread during DI.
+        val oldPolicy = StrictMode.allowThreadDiskReads()
+        val oldWritePolicy = StrictMode.allowThreadDiskWrites()
+        try {
+            val passphrase = passphraseManager.getPassphrase()
+            
+            // Ensure SQLCipher libraries are loaded before any DB operation
+            SQLiteDatabase.loadLibs(context)
+            
+            val dbFile = context.getDatabasePath(dbName)
+            if (dbFile.exists()) {
                 try {
-                    db.rawQuery("SELECT count(*) FROM sqlite_master", null).use { cursor ->
-                        cursor.moveToFirst()
+                    // Verify if the database can be opened with the current passphrase.
+                    val db = SQLiteDatabase.openDatabase(
+                        dbFile.absolutePath,
+                        passphrase,
+                        null,
+                        SQLiteDatabase.OPEN_READONLY
+                    )
+                    try {
+                        db.rawQuery("SELECT count(*) FROM sqlite_master", null).use { cursor ->
+                            cursor.moveToFirst()
+                        }
+                    } finally {
+                        db.close()
                     }
-                } finally {
-                    db.close()
+                } catch (e: Exception) {
+                    Log.e("AppModule", "Failed to open database, it might be corrupted or unencrypted. Deleting...", e)
+                    context.deleteDatabase(dbName)
+                    context.getDatabasePath("$dbName-wal").delete()
+                    context.getDatabasePath("$dbName-shm").delete()
                 }
-            } catch (e: Exception) {
-                Log.e("AppModule", "Failed to open database, it might be corrupted or unencrypted. Deleting...", e)
-                context.deleteDatabase(dbName)
-                context.getDatabasePath("$dbName-wal").delete()
-                context.getDatabasePath("$dbName-shm").delete()
             }
-        }
 
-        // SupportFactory can take a String or a ByteArray. Using ByteArray for broad compatibility.
-        val factory = SupportFactory(passphrase.toByteArray())
-        return Room.databaseBuilder(
-            context.applicationContext,
-            AppDatabase::class.java,
-            dbName
-        )
-            .openHelperFactory(factory)
-            .fallbackToDestructiveMigration()
-            .build()
+            // SupportFactory can take a String or a ByteArray. Using ByteArray for broad compatibility.
+            val factory = SupportFactory(passphrase.toByteArray())
+            return Room.databaseBuilder(
+                context.applicationContext,
+                AppDatabase::class.java,
+                dbName
+            )
+                .openHelperFactory(factory)
+                .fallbackToDestructiveMigration()
+                .build()
+        } finally {
+            StrictMode.setThreadPolicy(oldPolicy)
+            // Note: oldWritePolicy might be same as oldPolicy depending on implementation, 
+            // but setThreadPolicy restores the whole policy anyway.
+            // StrictMode.allowThreadDiskWrites returns the old policy.
+        }
     }
 
     @Provides

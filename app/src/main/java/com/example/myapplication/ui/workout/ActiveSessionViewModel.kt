@@ -43,7 +43,8 @@ import javax.inject.Inject
 data class ExerciseTimerState(
     val remainingTime: Long = 0L,
     val isRunning: Boolean = false,
-    val isFinished: Boolean = false
+    val isFinished: Boolean = false,
+    val isRest: Boolean = false
 )
 
 data class ExerciseState(
@@ -64,7 +65,7 @@ class ActiveSessionViewModel @Inject constructor(
     private val userPrefs: UserPreferencesRepository,
     private val healthConnectManager: HealthConnectManager,
     private val voiceManager: VoiceManager,
-    private val speechToTextManager: SpeechToTextManager,
+    private val sttManager: SpeechToTextManager,
     private val bedrockClient: BedrockClient,
     private val readinessEngine: ReadinessEngine,
     private val autoCoachEngine: AutoCoachEngine,
@@ -101,8 +102,9 @@ class ActiveSessionViewModel @Inject constructor(
     )
     val chatHistory: StateFlow<List<ChatMessage>> = _chatHistory
 
-    private val _isListening = MutableStateFlow(false)
-    val isListening: StateFlow<Boolean> = _isListening
+    // FIXED: Properly wired hardware states without naming conflicts
+    val isListening: StateFlow<Boolean> = sttManager.isListening
+    val partialTranscript: StateFlow<String> = sttManager.partialTranscript
 
     val autoCoachState: StateFlow<AutoCoachState> = autoCoachEngine.state
 
@@ -110,6 +112,9 @@ class ActiveSessionViewModel @Inject constructor(
     val heartRate: StateFlow<Int> = bleHeartRateManager.heartRate
     val isBleConnected: StateFlow<Boolean> = bleHeartRateManager.isConnected
     val foundBleDevices: StateFlow<List<BluetoothDevice>> = bleHeartRateManager.foundDevices
+
+    private val _selectedVoiceSid = MutableStateFlow(nativeAutoCoachVoice.currentVoiceSid)
+    val selectedVoiceSid: StateFlow<Int> = _selectedVoiceSid
 
     private var workoutStartTime: Instant = Instant.now()
     private var transcribeJob: Job? = null
@@ -144,13 +149,21 @@ class ActiveSessionViewModel @Inject constructor(
             userPrefs.updateRecoveryScore(formaScore.score)
         }
 
+        // Sync Voice Preference
+        viewModelScope.launch {
+            userPrefs.userVoiceSid.collect { sid ->
+                setCoachVoice(sid)
+            }
+        }
+
         // Sync with Timer Service
         viewModelScope.launch {
             WorkoutTimerService.timerState.collect { serviceState ->
                 updateLocalTimerState(
                     activeExerciseId = serviceState.activeExerciseId,
                     remainingTime = serviceState.remainingTime.toLong(),
-                    isRunning = serviceState.isRunning
+                    isRunning = serviceState.isRunning,
+                    isRest = serviceState.isRest
                 )
 
                 if (serviceState.hasFinished && serviceState.activeExerciseId != null) {
@@ -160,7 +173,7 @@ class ActiveSessionViewModel @Inject constructor(
 
                     if (currentSet != null) {
                         updateSetCompletion(currentSet, true)
-                        startSetTimer(exerciseId)
+                        startSetTimer(exerciseId, isRest = false)
                     }
                 }
             }
@@ -214,7 +227,12 @@ class ActiveSessionViewModel @Inject constructor(
                 val sessionExerciseIds = sessionSets.map { it.exerciseId }.toSet()
                 val sessionExercises = allExercises
                     .filter { it.exerciseId in sessionExerciseIds }
-                    .sortedBy { it.tier }
+                    .sortedWith(
+                        // FIXED: Barbell Compound exercises always first.
+                        // Order: Tier 1 Barbell -> Tier 1 Other -> Tier 2 -> Tier 3
+                        compareBy<ExerciseEntity> { it.tier }
+                            .thenByDescending { it.equipment?.contains("Barbell", ignoreCase = true) == true }
+                    )
 
                 // Dynamic Pre-Workout Briefing Loop
                 if (sessionExercises.isNotEmpty() && _coachBriefing.value == "Loading briefing...") {
@@ -224,15 +242,21 @@ class ActiveSessionViewModel @Inject constructor(
                 val setsByExercise = sessionSets.groupBy { it.exerciseId }
 
                 sessionExercises.map { exercise ->
+                    val isBodyweight = exercise.equipment?.contains("Bodyweight", ignoreCase = true) == true
                     val rawSets = setsByExercise[exercise.exerciseId] ?: emptyList()
                     val adjustedSets = rawSets.map { set ->
+                        var s = set
                         if (rpeReduction > 0) {
-                            set.copy(suggestedRpe = (set.suggestedRpe - rpeReduction).coerceAtLeast(1))
-                        } else set
+                            s = s.copy(suggestedRpe = (s.suggestedRpe - rpeReduction).coerceAtLeast(1))
+                        }
+                        if (isBodyweight) {
+                            s = s.copy(suggestedLbs = 0, actualLbs = null)
+                        }
+                        s
                     }.sortedBy { it.setNumber }
 
                     val existingState = _exerciseStates.value.find { it.exercise.exerciseId == exercise.exerciseId }
-                    
+
                     val isAllCompleted = adjustedSets.isNotEmpty() && adjustedSets.all { it.isCompleted }
                     val wasAllCompletedBefore = existingState?.sets?.isNotEmpty() == true && existingState.sets.all { it.isCompleted }
 
@@ -253,12 +277,12 @@ class ActiveSessionViewModel @Inject constructor(
         // Full Duplex Interruption Logic
         viewModelScope.launch {
             audioStreamer.interruptionFlow.collect {
-                if (_isListening.value) {
+                if (isListening.value) {
                     Log.d("FullDuplex", "Interruption detected.")
 
                     // 1. SHUT THE AI UP IMMEDIATELY
                     voiceManager.stop()
-                    nativeAutoCoachVoice.shutdown() // Shutdown ElevenLabs playback if any
+                    nativeAutoCoachVoice.shutdown()
                     autoCoachEngine.interrupt()
 
                     // 2. LISTEN TO THE USER
@@ -270,7 +294,7 @@ class ActiveSessionViewModel @Inject constructor(
 
     private fun triggerCloudBriefing(recovery: Int, exercises: List<ExerciseEntity>) {
         if (briefingJob?.isActive == true) return
-        
+
         briefingJob = viewModelScope.launch {
             try {
                 val memories = memoryDao.getRecentMemories(5)
@@ -278,12 +302,12 @@ class ActiveSessionViewModel @Inject constructor(
                 val workoutId = _workoutId.value
                 val workout = repository.getWorkoutById(workoutId)
                 val workoutTitle = workout?.title ?: "Today's Session"
-                val firstExercise = exercises.firstOrNull()?.name
+                val exerciseNames = exercises.map { it.name }
 
                 val script = bedrockClient.generatePreWorkoutScript(
                     recovery = recovery,
                     workoutTitle = workoutTitle,
-                    firstExercise = firstExercise,
+                    exercises = exerciseNames,
                     userMemories = memories,
                     recentFatigueState = fatigueState
                 )
@@ -312,7 +336,6 @@ class ActiveSessionViewModel @Inject constructor(
     fun finishWorkout(workoutId: Long) {
         stopTimerService()
         viewModelScope.launch {
-            // 1. Mark as complete in Room (Critical & Fast)
             val report = repository.completeWorkout(workoutId)
             _workoutSummary.value = report
 
@@ -320,7 +343,6 @@ class ActiveSessionViewModel @Inject constructor(
             val durationMin = ChronoUnit.MINUTES.between(workoutStartTime, endTime)
             val estimatedCalories = (durationMin * 4.5).coerceAtLeast(10.0)
 
-            // 2. Offload Health Connect Sync to WorkManager (Background)
             val syncRequest = OneTimeWorkRequestBuilder<WorkoutSyncWorker>()
                 .setInputData(workDataOf(
                     "workoutId" to workoutId,
@@ -342,19 +364,12 @@ class ActiveSessionViewModel @Inject constructor(
     // --- 4. EXERCISE & SET UPDATES ---
 
     fun updateSetCompletion(set: WorkoutSetEntity, isCompleted: Boolean) {
-        viewModelScope.launch { 
+        viewModelScope.launch {
             repository.updateSet(set.copy(isCompleted = isCompleted))
-            
-            // Notify AutoCoach if it's waiting for a set to be finished
+
             if (isCompleted && autoCoachState.value != AutoCoachState.OFF) {
                 autoCoachEngine.notifySetCompletedManually()
             }
-        }
-    }
-    
-    fun notifyUserReady() {
-        if (autoCoachState.value == AutoCoachState.WAITING_FOR_READY) {
-            autoCoachEngine.notifyUserReadyManually()
         }
     }
 
@@ -405,18 +420,18 @@ class ActiveSessionViewModel @Inject constructor(
         return repository.getBestAlternatives(exercise)
     }
 
-    fun addWarmUpSets(exerciseId: Long, workingWeight: Int) {
+    fun addWarmUpSets(exerciseId: Long, workingWeight: Int, equipment: String? = null) {
         viewModelScope.launch {
             val workoutId = _workoutId.value
             if (workoutId != -1L) {
-                repository.injectWarmUpSets(workoutId, exerciseId, workingWeight)
+                repository.injectWarmUpSets(workoutId, exerciseId, workingWeight, equipment)
             }
         }
     }
 
     // --- 5. TIMER LOGIC ---
 
-    fun startSetTimer(exerciseId: Long) {
+    fun startSetTimer(exerciseId: Long, isRest: Boolean = false) {
         val exerciseState = _exerciseStates.value.find { it.exercise.exerciseId == exerciseId } ?: return
         val durationSeconds = (exerciseState.exercise.estimatedTimePerSet * 60).toInt()
 
@@ -424,6 +439,7 @@ class ActiveSessionViewModel @Inject constructor(
             action = WorkoutTimerService.ACTION_START
             putExtra(WorkoutTimerService.EXTRA_SECONDS, durationSeconds)
             putExtra(WorkoutTimerService.EXTRA_EXERCISE_ID, exerciseId)
+            putExtra(WorkoutTimerService.EXTRA_IS_REST, isRest)
         }
         application.startService(intent)
     }
@@ -434,7 +450,7 @@ class ActiveSessionViewModel @Inject constructor(
         if (currentSet != null) {
             updateSetCompletion(currentSet, true)
         }
-        startSetTimer(exerciseId)
+        startSetTimer(exerciseId, isRest = false)
     }
 
     private fun stopTimerService() {
@@ -444,32 +460,38 @@ class ActiveSessionViewModel @Inject constructor(
         application.startService(intent)
     }
 
-    private fun updateLocalTimerState(activeExerciseId: Long?, remainingTime: Long, isRunning: Boolean) {
+    private fun updateLocalTimerState(activeExerciseId: Long?, remainingTime: Long, isRunning: Boolean, isRest: Boolean) {
         _exerciseStates.value = _exerciseStates.value.map { state ->
             if (state.exercise.exerciseId == activeExerciseId) {
                 state.copy(timerState = ExerciseTimerState(
                     remainingTime = remainingTime,
                     isRunning = isRunning,
-                    isFinished = !isRunning && remainingTime == 0L
+                    isFinished = !isRunning && remainingTime == 0L,
+                    isRest = isRest
                 ))
             } else {
                 val defaultDuration = (state.exercise.estimatedTimePerSet * 60).toLong()
-                state.copy(timerState = ExerciseTimerState(
+                // Optimization: Only update if the timer state actually needs resetting
+                // This prevents recreating ExerciseState for inactive exercises on every tick
+                val newTimerState = ExerciseTimerState(
                     remainingTime = defaultDuration,
                     isRunning = false,
-                    isFinished = false
-                ))
+                    isFinished = false,
+                    isRest = false
+                )
+                if (state.timerState != newTimerState) {
+                    state.copy(timerState = newTimerState)
+                } else {
+                    state
+                }
             }
         }
     }
-    
-    // --- 6. AUTO COACH LOGIC ---
 
-// --- 6. AUTO COACH LOGIC ---
+    // --- 6. AUTO COACH LOGIC ---
 
     fun toggleAutoCoach() {
         if (autoCoachState.value == AutoCoachState.OFF) {
-            // Prepare a list of incomplete sets for the coach to handle
             val exercisesToCoach = _exerciseStates.value.mapNotNull { state ->
                 val incompleteSets = state.sets.filter { !it.isCompleted }
                 if (incompleteSets.isNotEmpty()) {
@@ -478,8 +500,6 @@ class ActiveSessionViewModel @Inject constructor(
             }
 
             if (exercisesToCoach.isNotEmpty()) {
-                // 1. Build Historical Data Map
-                // This maps the exercise ID to a string describing their previous performance
                 val historyMap = exercisesToCoach.associate { (exercise, sets) ->
                     val lastWeight = sets.firstOrNull()?.suggestedLbs ?: 0
                     val lastReps = sets.firstOrNull()?.suggestedReps ?: 0
@@ -491,14 +511,20 @@ class ActiveSessionViewModel @Inject constructor(
                     onUpdateReps = { set, reps -> updateSetReps(set, reps) },
                     onUpdateWeight = { set, weight -> updateSetWeight(set, weight) },
                     onSetCompleted = { set -> updateSetCompletion(set, true) },
-                    onStartTimer = { exerciseId -> startSetTimer(exerciseId) },
+                    onStartTimer = { exerciseId, isRest -> startSetTimer(exerciseId, isRest) },
                     onExtendTimer = { extraTimeMs -> extendSetTimer(extraTimeMs) },
-                    historicalData = historyMap
+                    historicalData = historyMap,
+                    onWorkoutCompleted = { finishWorkout(_workoutId.value) }
                 )
             }
         } else {
             autoCoachEngine.stop()
         }
+    }
+
+    fun stopAutoCoach() {
+        autoCoachEngine.stop()
+        stopLiveTranscription()
     }
 
     private fun extendSetTimer(extraTimeMs: Long) {
@@ -510,9 +536,16 @@ class ActiveSessionViewModel @Inject constructor(
         application.startService(intent)
     }
 
+    fun setCoachVoice(sid: Int) {
+        nativeAutoCoachVoice.currentVoiceSid = sid
+        _selectedVoiceSid.value = sid
+    }
+
     // --- 7. AI & CHAT INTERACTION ---
 
     fun interactWithCoach(userText: String) {
+        if (userText.isBlank()) return
+
         val currentHistory = _chatHistory.value.toMutableList()
         currentHistory.add(ChatMessage("User", userText))
         _chatHistory.value = currentHistory
@@ -531,7 +564,7 @@ class ActiveSessionViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            val wasListening = _isListening.value
+            val wasListening = isListening.value
             if (wasListening) {
                 transcribeJob?.cancel()
             }
@@ -543,7 +576,7 @@ class ActiveSessionViewModel @Inject constructor(
             val currentExercisesList = _exerciseStates.value.filter {
                 it.sets.any { set -> !set.isCompleted }
             }.map { it.exercise.name }
-            
+
             val available = repository.getAllExercises().first()
             val response = bedrockClient.coachInteraction(currentExercisesList.joinToString("\n"), userText, available)
 
@@ -551,19 +584,16 @@ class ActiveSessionViewModel @Inject constructor(
             newHistory.add(ChatMessage("Coach", response.explanation))
             _chatHistory.value = newHistory
 
-            // Use ElevenLabs for chat response
             nativeAutoCoachVoice.speakAndWait(response.explanation)
 
-            if (wasListening && _isListening.value) {
+            if (wasListening) {
                 startLiveTranscription()
             }
 
             if (response.exercises.isNotEmpty()) {
                 val workoutId = _workoutId.value
-                
-                // Identify all exercises to replace (explicitly named OR matching new suggestions)
                 val suggestedNames = response.exercises.map { it.name.lowercase().trim() }
-                
+
                 val exercisesToReplace = _exerciseStates.value.filter { existing ->
                     val existingName = existing.exercise.name.lowercase().trim()
                     val isExplicitlyNamed = response.replacingExerciseName?.lowercase()?.trim() == existingName
@@ -571,7 +601,6 @@ class ActiveSessionViewModel @Inject constructor(
                     isExplicitlyNamed || matchesSuggested
                 }
 
-                // Remove uncompleted sets for identified exercises
                 exercisesToReplace.forEach { ex ->
                     val incompleteSets = ex.sets.filter { !it.isCompleted }
                     if (incompleteSets.isNotEmpty()) {
@@ -579,15 +608,13 @@ class ActiveSessionViewModel @Inject constructor(
                     }
                 }
 
-                // Insert NEW suggested sets
                 val setsToInsert = response.exercises.mapNotNull { genEx ->
                     val match = available.find {
                         it.name.equals(genEx.name, ignoreCase = true) ||
-                        it.name.contains(genEx.name, ignoreCase = true)
+                                it.name.contains(genEx.name, ignoreCase = true)
                     }
 
                     if (match != null) {
-                        // Find if we already had completed sets for this exercise to keep numbering correct
                         val completedCountForThisExercise = _exerciseStates.value
                             .find { it.exercise.exerciseId == match.exerciseId }
                             ?.sets?.count { it.isCompleted } ?: 0
@@ -659,7 +686,6 @@ class ActiveSessionViewModel @Inject constructor(
     fun clearCoachMemories() {
         viewModelScope.launch {
             memoryDao.deleteAllMemories()
-            // Reset briefing to trigger a reload without stale context
             _coachBriefing.value = "Loading briefing..."
         }
     }
@@ -686,10 +712,9 @@ class ActiveSessionViewModel @Inject constructor(
     // --- 8. LIVE VOICE COACHING ---
 
     fun toggleLiveCoaching() {
-        if (_isListening.value) {
+        if (isListening.value) {
             stopLiveTranscription()
         } else {
-            _isListening.value = true
             startLiveTranscription()
         }
     }
@@ -700,26 +725,25 @@ class ActiveSessionViewModel @Inject constructor(
 
         transcribeJob = viewModelScope.launch {
             try {
-                speechToTextManager.startListeningForSingleUtterance()
+                sttManager.startListeningForSingleUtterance()
                     .collect { transcript ->
                         Log.d("LiveCoach", "Heard: $transcript")
                         interactWithCoach(transcript)
                     }
             } catch (e: Exception) {
                 Log.e("LiveCoach", "Speech error: ${e.message}")
-                _isListening.value = false
                 audioStreamer.stopStreaming()
             }
         }
     }
 
     private fun stopLiveTranscription() {
-        _isListening.value = false
         transcribeJob?.cancel()
         transcribeJob = null
         voiceManager.stop()
         nativeAutoCoachVoice.shutdown()
         audioStreamer.stopStreaming()
+        sttManager.shutdown()
     }
 
     // --- BLE HEART RATE ---

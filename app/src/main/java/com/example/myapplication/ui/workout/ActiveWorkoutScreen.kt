@@ -1,27 +1,21 @@
 package com.example.myapplication.ui.workout
 
 import android.Manifest
-import android.app.Activity
 import android.bluetooth.BluetoothDevice
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import android.speech.RecognizerIntent
-import android.view.KeyEvent
-import android.view.View
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import com.example.myapplication.util.AutoCoachState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -30,15 +24,11 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
@@ -49,9 +39,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,111 +52,64 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
+import com.example.myapplication.util.AutoCoachState
 import com.example.myapplication.util.PlateCalculator
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import java.util.Locale
+
+private val BackgroundColor = Color(0xFFF9F9F9)
+private val CardBackgroundColor = Color.White
+private val TextColor = Color.Black
+private val SecondaryTextColor = Color(0xFF8E8E93)
+private val AccentColor = Color.Black
+private val BorderColor = Color(0xFFE5E5EA)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ActiveWorkoutScreen(
     workoutId: Long,
-    viewModel: ActiveSessionViewModel = hiltViewModel(),
     onBack: () -> Unit,
-    onWorkoutComplete: (Long) -> Unit
+    onWorkoutComplete: (Long) -> Unit,
+    onNavigateToLiveCoach: () -> Unit,
+    viewModel: ActiveSessionViewModel = hiltViewModel()
 ) {
-    val exerciseStates by viewModel.exerciseStates.collectAsState()
-    val coachBriefing by viewModel.coachBriefing.collectAsState()
-    val workoutSummary by viewModel.workoutSummary.collectAsState()
-    val estimatedTime by viewModel.totalEstimatedTime.collectAsState()
-    val autoCoachState by viewModel.autoCoachState.collectAsState()
+    val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+    val view = LocalView.current
 
-    // BLE states
-    val heartRate by viewModel.heartRate.collectAsState()
+    // Keep screen on while this screen is active
+    DisposableEffect(Unit) {
+        view.keepScreenOn = true
+        onDispose {
+            view.keepScreenOn = false
+        }
+    }
+
+    val exerciseStates by viewModel.exerciseStates.collectAsState()
+    val workoutSummary by viewModel.workoutSummary.collectAsState()
     val isBleConnected by viewModel.isBleConnected.collectAsState()
     val foundDevices by viewModel.foundBleDevices.collectAsState()
-    var showBleDialog by remember { mutableStateOf(false) }
-
-    // --- POCKET MODE STATE ---
-    var isPocketModeActive by remember { mutableStateOf(false) }
-
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var showChatSheet by remember { mutableStateOf(false) }
-    var userText by remember { mutableStateOf("") }
-    val chatHistory by viewModel.chatHistory.collectAsState()
-    val isListening by viewModel.isListening.collectAsState()
-    val scope = rememberCoroutineScope()
-    val barWeight by viewModel.barWeight.collectAsState()
-    val userGender by viewModel.userGender.collectAsState()
+    val autoCoachState by viewModel.autoCoachState.collectAsState()
+    val coachBriefing by viewModel.coachBriefing.collectAsState()
+    val totalEstimatedTime by viewModel.totalEstimatedTime.collectAsState()
 
     var showAddExerciseDialog by remember { mutableStateOf(false) }
-
-    val context = LocalContext.current
-    val currentView = LocalView.current
+    var showBleDialog by remember { mutableStateOf(false) }
+    var isPocketModeActive by remember { mutableStateOf(false) }
     val workoutListState = rememberLazyListState()
 
     val totalSets = remember(exerciseStates) { exerciseStates.sumOf { it.sets.size } }
     val completedSets = remember(exerciseStates) { exerciseStates.sumOf { it.sets.count { s -> s.isCompleted } } }
     val progress = if (totalSets > 0) completedSets.toFloat() / totalSets else 0f
 
-    // Track completed exercises to trigger the scroll only when an exercise is fully finished
-    val completedExercisesCount = remember(exerciseStates) {
-        exerciseStates.count { state -> state.sets.isNotEmpty() && state.sets.all { it.isCompleted } }
-    }
-
-    // Auto-Scroll Logic: When an exercise is completed, move the next one to the top.
-    LaunchedEffect(completedExercisesCount) {
-        if (exerciseStates.isNotEmpty() && completedExercisesCount > 0) {
-            // Wait for the collapse animation to finish before scrolling to avoid "blinking" jumps
-            delay(600)
-            val nextExerciseIndex = exerciseStates.indexOfFirst { state ->
-                state.sets.any { !it.isCompleted }
-            }
-            if (nextExerciseIndex != -1) {
-                // Index + 1 because of the CoachBriefingCard at position 0
-                workoutListState.animateScrollToItem(nextExerciseIndex + 1)
-            }
-        }
-    }
-
-    DisposableEffect(Unit) {
-        currentView.keepScreenOn = true
-        currentView.setOnKeyListener { v, keyCode, event ->
-            if (event.action == KeyEvent.ACTION_DOWN &&
-                (keyCode == KeyEvent.KEYCODE_HEADSETHOOK || keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)) {
-
-                val activeExercise = viewModel.exerciseStates.value.firstOrNull { state ->
-                    state.sets.any { !it.isCompleted }
-                }
-
-                if (activeExercise != null) {
-                    if (activeExercise.timerState.isRunning) {
-                        viewModel.startSetTimer(activeExercise.exercise.exerciseId)
-                    } else {
-                        val nextSet = activeExercise.sets.firstOrNull { !it.isCompleted }
-                        if (nextSet != null) {
-                            viewModel.updateSetCompletion(nextSet, true)
-                            viewModel.startSetTimer(activeExercise.exercise.exerciseId)
-                        }
-                    }
-                    return@setOnKeyListener true
-                }
-            }
-            false
-        }
-        onDispose { currentView.keepScreenOn = false }
-    }
-
     var permissionsGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED &&
-            (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
-                ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
-            } else {
-                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            })
+                    (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
+                                ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+                    } else {
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    })
         )
     }
 
@@ -193,13 +139,6 @@ fun ActiveWorkoutScreen(
         }
     }
 
-    val voiceLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val spokenText = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.get(0)
-            if (!spokenText.isNullOrBlank()) { userText = spokenText }
-        }
-    }
-
     if (showAddExerciseDialog) {
         AddExerciseDialog(
             viewModel = viewModel,
@@ -225,31 +164,33 @@ fun ActiveWorkoutScreen(
         )
     }
 
-    // --- WRAP SCAFFOLD IN BOX FOR POCKET MODE OVERLAY ---
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(BackgroundColor)) {
         Scaffold(
-            containerColor = MaterialTheme.colorScheme.background,
+            containerColor = BackgroundColor,
             topBar = {
                 Column {
                     TopAppBar(
                         title = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("Active Session", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                                    Text("Est. Time: $estimatedTime min", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                if (isBleConnected) {
-                                    HeartRateDisplay(heartRate = heartRate)
-                                }
+                            Column {
+                                Text(
+                                    text = "Active Session",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextColor
+                                )
+                                Text(
+                                    text = "Est. Time: $totalEstimatedTime min",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = SecondaryTextColor
+                                )
                             }
                         },
                         navigationIcon = {
                             IconButton(onClick = onBack) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextColor)
                             }
                         },
                         actions = {
-                            // --- HEART RATE BUTTON ---
                             IconButton(onClick = {
                                 viewModel.startBleScan()
                                 showBleDialog = true
@@ -257,365 +198,284 @@ fun ActiveWorkoutScreen(
                                 Icon(
                                     imageVector = Icons.Default.Favorite,
                                     contentDescription = "Connect Heart Rate",
-                                    tint = if (isBleConnected) Color.Red else MaterialTheme.colorScheme.onSurfaceVariant
+                                    tint = if (isBleConnected) Color.Red else TextColor
                                 )
                             }
 
-                            // --- LOCK BUTTON TO TRIGGER POCKET MODE ---
                             IconButton(onClick = { isPocketModeActive = true }) {
                                 Icon(
                                     imageVector = Icons.Default.Lock,
                                     contentDescription = "Lock Screen",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    tint = TextColor
                                 )
                             }
-                            // --- AUTO COACH BUTTON ---
-                            IconButton(onClick = { viewModel.toggleAutoCoach() }) {
+                            IconButton(
+                                onClick = {
+                                    onNavigateToLiveCoach()
+                                    if (autoCoachState == AutoCoachState.OFF) {
+                                        viewModel.toggleAutoCoach()
+                                    }
+                                }
+                            ) {
                                 Icon(
-                                    imageVector = if (autoCoachState == AutoCoachState.OFF) Icons.Default.RecordVoiceOver else Icons.Default.VoiceOverOff,
-                                    contentDescription = "Toggle Auto-Coach",
-                                    tint = if (autoCoachState != AutoCoachState.OFF) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    imageVector = Icons.Default.RecordVoiceOver,
+                                    contentDescription = "Open Auto-Coach",
+                                    tint = if (autoCoachState != AutoCoachState.OFF) Color(0xFF4CAF50) else TextColor
                                 )
                             }
                         },
-                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundColor)
                     )
                     LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.fillMaxWidth().height(4.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                        progress = progress,
+                        modifier = Modifier.fillMaxWidth().height(2.dp),
+                        color = Color.Black,
+                        trackColor = Color.Transparent
                     )
-                    AnimatedVisibility(visible = autoCoachState != AutoCoachState.OFF) {
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            shape = RoundedCornerShape(12.dp),
-                            onClick = { viewModel.toggleAutoCoach() } // Tap to turn off
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = when(autoCoachState) {
-                                            AutoCoachState.SPEAKING -> Icons.Default.VolumeUp
-                                            AutoCoachState.LISTENING -> Icons.Default.Mic
-                                            AutoCoachState.RESTING -> Icons.Default.Timer
-                                            else -> Icons.Default.Headphones
-                                        },
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column {
-                                        Text("Auto-Coach Active", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                                        Text(
-                                            text = "Status: ${autoCoachState.name}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                                        )
-                                    }
-                                }
-                                if (autoCoachState == AutoCoachState.LISTENING) {
-                                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                                }
-                            }
-                        }
-                    }
                 }
             },
             floatingActionButton = {
                 Column(horizontalAlignment = Alignment.End) {
                     FloatingActionButton(
                         onClick = { showAddExerciseDialog = true },
-                        containerColor = MaterialTheme.colorScheme.secondary,
-                        contentColor = MaterialTheme.colorScheme.onSecondary,
-                        modifier = Modifier.padding(bottom = 16.dp),
-                        shape = CircleShape
-                    ) { Icon(Icons.Default.Add, "Add Exercise") }
-
-                    FloatingActionButton(
-                        onClick = { showChatSheet = true },
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                        shape = CircleShape
+                        containerColor = Color(0xFF4D4D4D),
+                        contentColor = Color.White,
+                        shape = CircleShape,
+                        modifier = Modifier.size(56.dp)
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.Chat, "AI Coach")
-                            if (isListening) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(56.dp),
-                                    color = MaterialTheme.colorScheme.error,
-                                    strokeWidth = 2.dp
-                                )
-                            }
-                        }
+                        Icon(Icons.Default.Add, contentDescription = "Add Exercise")
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    FloatingActionButton(
+                        onClick = { viewModel.finishWorkout(workoutId) },
+                        containerColor = Color.Black,
+                        contentColor = Color.White,
+                        shape = CircleShape,
+                        modifier = Modifier.size(64.dp)
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = "Finish Workout")
                     }
                 }
             }
-        ) { padding ->
-            if (showChatSheet) {
-                ModalBottomSheet(
-                    onDismissRequest = {
-                        showChatSheet = false
-                        if (isListening) viewModel.toggleLiveCoaching()
-                    },
-                    sheetState = sheetState,
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    dragHandle = { BottomSheetDefaults.DragHandle() }
-                ) {
-                    CoachChatContent(
-                        chatHistory = chatHistory,
-                        userText = userText,
-                        isListening = isListening,
-                        onUserTextChange = { userText = it },
-                        onSend = {
-                            if (userText.isNotBlank()) {
-                                viewModel.interactWithCoach(userText)
-                                userText = ""
-                            }
-                        },
-                        onVoiceInput = {
-                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                            }
-                            voiceLauncher.launch(intent)
-                        },
-                        onToggleLive = { viewModel.toggleLiveCoaching() },
-                        onQuickAction = { actionText -> viewModel.interactWithCoach(actionText) },
-                        onClearMemory = { viewModel.clearCoachMemories() },
-                        onDismiss = {
-                            scope.launch { sheetState.hide() }.invokeOnCompletion {
-                                if (!sheetState.isVisible) showChatSheet = false
-                            }
-                        }
+        ) { innerPadding ->
+            LazyColumn(
+                state = workoutListState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                item { Spacer(modifier = Modifier.height(8.dp)) }
+
+                item {
+                    CoachBriefingCard(briefing = coachBriefing)
+                }
+
+                items(exerciseStates, key = { it.exercise.exerciseId }) { state ->
+                    ExerciseCard(
+                        state = state,
+                        viewModel = viewModel,
+                        haptic = haptic,
+                        modifier = Modifier.animateItemPlacement()
                     )
                 }
-            }
 
-            if (exerciseStates.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(padding),
-                    state = workoutListState,
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    item(key = "coach_briefing") {
-                        CoachBriefingCard(
-                            briefing = coachBriefing
-                        )
-                    }
-
-                    items(exerciseStates, key = { it.exercise.exerciseId }) { exerciseState ->
-                        ExerciseCard(
-                            exerciseState = exerciseState,
-                            viewModel = viewModel,
-                            barWeight = barWeight,
-                            userGender = userGender
-                        )
-                    }
-
-                    item(key = "finish_workout") {
-                        Button(
-                            onClick = { viewModel.finishWorkout(workoutId) },
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                        ) {
-                            Text("FINISH WORKOUT", fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-                        }
-                        Spacer(modifier = Modifier.height(80.dp))
-                    }
-                }
+                item { Spacer(modifier = Modifier.height(100.dp)) }
             }
         }
 
-        // --- POCKET MODE RENDER LAYER ---
-        AnimatedVisibility(
-            visible = isPocketModeActive,
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            // Find current exercise to show on lock screen
-            val activeExercise = exerciseStates.firstOrNull { state -> state.sets.any { !it.isCompleted } }
-            val currentExerciseName = activeExercise?.exercise?.name ?: "Workout Complete"
-
+        if (isPocketModeActive) {
             PocketModeOverlay(
-                currentExercise = currentExerciseName,
-                coachState = autoCoachState,
-                onUnlock = { isPocketModeActive = false }
+                onUnlock = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    isPocketModeActive = false
+                }
             )
         }
     }
 }
 
 @Composable
-fun HeartRateDisplay(heartRate: Int) {
-    val infiniteTransition = rememberInfiniteTransition(label = "Pulse")
-    val scale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.2f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "HeartScale"
-    )
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(end = 8.dp)
+fun CoachBriefingCard(briefing: String) {
+    if (briefing.isBlank() || briefing == "Loading briefing...") return
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+        shape = RoundedCornerShape(16.dp)
     ) {
-        Icon(
-            imageVector = Icons.Default.Favorite,
-            contentDescription = null,
-            tint = Color.Red,
-            modifier = Modifier
-                .size(24.dp)
-                .scale(scale)
-        )
-        Spacer(modifier = Modifier.width(4.dp))
-        Text(
-            text = "$heartRate",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = Color.Red
-        )
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.AutoAwesome,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Coach Briefing",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = briefing,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                lineHeight = 20.sp
+            )
+        }
     }
 }
 
-@Composable
-fun BleDeviceDialog(
-    foundDevices: List<BluetoothDevice>,
-    onDismiss: () -> Unit,
-    onConnect: (BluetoothDevice) -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Connect Heart Rate Monitor") },
-        text = {
-            Column {
-                Text(
-                    "Note for Garmin users: You must enable 'Broadcast Heart Rate' in your watch settings.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                
-                if (foundDevices.isEmpty()) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("Scanning for devices...")
-                    }
-                } else {
-                    LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
-                        items(foundDevices) { device ->
-                            ListItem(
-                                headlineContent = { Text(device.name ?: "Unknown Device") },
-                                supportingContent = { Text(device.address) },
-                                modifier = Modifier.clickable { onConnect(device) }
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
-    )
+fun getTierName(tier: Int): String {
+    return when (tier) {
+        1 -> "Compound"
+        2 -> "Secondary"
+        3 -> "Isolation"
+        else -> "Tier $tier"
+    }
 }
 
 @Composable
 fun ExerciseCard(
-    modifier: Modifier = Modifier,
-    exerciseState: ExerciseState,
+    state: ExerciseState,
     viewModel: ActiveSessionViewModel,
-    barWeight: Double,
-    userGender: String
+    haptic: androidx.compose.ui.hapticfeedback.HapticFeedback,
+    modifier: Modifier = Modifier
 ) {
-    val isActive = exerciseState.sets.any { !it.isCompleted }
-    
-    val containerColor by animateColorAsState(
-        targetValue = if (isActive) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-        animationSpec = spring(stiffness = Spring.StiffnessLow),
-        label = "ExerciseCardColor"
-    )
+    val exercise = state.exercise
+    val isBodyweight = exercise.equipment?.contains("Bodyweight", ignoreCase = true) == true
+    var showSwapDialog by remember { mutableStateOf(false) }
+    var showDescriptionDialog by remember { mutableStateOf(false) }
 
     Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessLow)),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = containerColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        colors = CardDefaults.cardColors(containerColor = CardBackgroundColor),
+        border = BorderStroke(1.dp, BorderColor)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            ExerciseHeader(
-                exerciseState = exerciseState,
-                viewModel = viewModel,
-                onToggleVisibility = { viewModel.toggleExerciseVisibility(exerciseState.exercise.exerciseId) }
-            )
+            // Header
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = exercise.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = TextColor
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            imageVector = Icons.Default.HelpOutline,
+                            contentDescription = "Description",
+                            tint = SecondaryTextColor,
+                            modifier = Modifier.size(16.dp).clickable { showDescriptionDialog = true }
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "${exercise.muscleGroup} • ${getTierName(exercise.tier)} • ${exercise.equipment ?: ""}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SecondaryTextColor
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFFF2F2F7),
+                            modifier = Modifier.clickable { showSwapDialog = true }
+                        ) {
+                            Text(
+                                text = "Swap",
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                fontSize = 10.sp,
+                                color = SecondaryTextColor,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+                Icon(
+                    imageVector = if (state.areSetsVisible) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = SecondaryTextColor,
+                    modifier = Modifier.clickable { viewModel.toggleExerciseVisibility(exercise.exerciseId) }
+                )
+            }
 
-            if (exerciseState.areSetsVisible) {
-                Column {
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp).alpha(0.2f))
-                    SetsTable(
-                        exerciseId = exerciseState.exercise.exerciseId,
-                        sets = exerciseState.sets,
-                        equipment = exerciseState.exercise.equipment,
-                        viewModel = viewModel,
-                        barWeight = barWeight,
-                        userGender = userGender
+            if (state.areSetsVisible) {
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Table Header
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    val headerStyle = MaterialTheme.typography.labelSmall.copy(
+                        color = Color(0xFFC7C7CC),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp
                     )
-                    
-                    SetTimer(exerciseState = exerciseState, viewModel = viewModel)
+                    Text("SET", modifier = Modifier.weight(0.8f), style = headerStyle, textAlign = TextAlign.Center)
+                    if (!isBodyweight) {
+                        Text("LBS", modifier = Modifier.weight(1.5f), style = headerStyle, textAlign = TextAlign.Center)
+                    }
+                    Text("REPS", modifier = Modifier.weight(if (isBodyweight) 2.4f else 1.2f), style = headerStyle, textAlign = TextAlign.Center)
+                    Text("RPE", modifier = Modifier.weight(1f), style = headerStyle, textAlign = TextAlign.Center)
+                    Text("DONE", modifier = Modifier.weight(1f), style = headerStyle, textAlign = TextAlign.Center)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Set Rows
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    state.sets.forEach { set ->
+                        SetRow(set = set, exercise = exercise, viewModel = viewModel, haptic = haptic)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Footer
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { viewModel.addSet(exercise.exerciseId) }
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = TextColor)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Add Set", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    }
+
+                    if (!isBodyweight) {
+                        Spacer(modifier = Modifier.width(24.dp))
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { viewModel.addWarmUpSets(exercise.exerciseId, state.sets.firstOrNull()?.suggestedLbs ?: 135, exercise.equipment) }
+                        ) {
+                            Icon(Icons.Default.Whatshot, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFFC7C7CC))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Warm Up", style = MaterialTheme.typography.labelMedium, color = SecondaryTextColor)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    SetTimerPill(
+                        timerState = state.timerState,
+                        onStart = { viewModel.startSetTimer(exercise.exerciseId, isRest = false) },
+                        onSkip = { viewModel.skipSetTimer(exercise.exerciseId) }
+                    )
                 }
             }
         }
     }
-}
-
-@Composable
-fun ExerciseHeader(
-    exerciseState: ExerciseState,
-    viewModel: ActiveSessionViewModel,
-    onToggleVisibility: () -> Unit
-) {
-    val exercise = exerciseState.exercise
-    var showDescriptionDialog by remember { mutableStateOf(false) }
-    var showSwapDialog by remember { mutableStateOf(false) }
-    var alternatives by remember { mutableStateOf<List<ExerciseEntity>>(emptyList()) }
-    val scope = rememberCoroutineScope()
-    val isAllCompleted = exerciseState.sets.all { it.isCompleted }
-
-    val titleColor by animateColorAsState(
-        targetValue = if (isAllCompleted) Color.Gray else MaterialTheme.colorScheme.onSurface,
-        label = "HeaderTitleColor"
-    )
-
-    if (showDescriptionDialog) {
-        AlertDialog(
-            onDismissRequest = { showDescriptionDialog = false },
-            title = { Text(exercise.name) },
-            text = { Text(exercise.description) },
-            confirmButton = { TextButton(onClick = { showDescriptionDialog = false }) { Text("Close") } }
-        )
-    }
 
     if (showSwapDialog) {
         SwapExerciseDialog(
-            alternatives = alternatives,
+            originalExercise = exercise,
+            viewModel = viewModel,
             onDismiss = { showSwapDialog = false },
             onSwap = { newExerciseId ->
                 viewModel.swapExercise(exercise.exerciseId, newExerciseId)
@@ -624,529 +484,433 @@ fun ExerciseHeader(
         )
     }
 
-    Row(
-        modifier = Modifier.fillMaxWidth().clickable { onToggleVisibility() },
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = exercise.name,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = titleColor
-            )
-            Row(modifier = Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    val tierLabel = when(exercise.tier) {
-                        1 -> "Compound"
-                        2 -> "Secondary"
-                        else -> "Isolation"
-                    }
-                    Text(
-                        tierLabel,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold
-                    )
+    if (showDescriptionDialog) {
+        AlertDialog(
+            onDismissRequest = { showDescriptionDialog = false },
+            title = { Text(exercise.name) },
+            text = { Text(exercise.description) },
+            confirmButton = {
+                TextButton(onClick = { showDescriptionDialog = false }) {
+                    Text("Close")
                 }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(exercise.equipment ?: "Bodyweight", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-            }
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { showDescriptionDialog = true }) {
-                Icon(Icons.AutoMirrored.Filled.Help, "Info", tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
-            }
-
-            IconButton(onClick = {
-                scope.launch {
-                    alternatives = viewModel.getTopAlternatives(exercise)
-                    showSwapDialog = true
-                }
-            }) {
-                Icon(Icons.Default.SwapHoriz, "Swap", tint = Color.Gray)
-            }
-
-            Icon(
-                imageVector = if (exerciseState.areSetsVisible) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                contentDescription = null,
-                tint = Color.Gray,
-                modifier = Modifier.padding(start = 4.dp)
-            )
-        }
-    }
-}
-
-@Composable
-fun SetsTable(
-    exerciseId: Long,
-    sets: List<WorkoutSetEntity>,
-    equipment: String?,
-    viewModel: ActiveSessionViewModel,
-    barWeight: Double,
-    userGender: String
-) {
-    Column {
-        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("SET", modifier = Modifier.weight(0.5f), style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, color = Color.Gray)
-            Text("LBS", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, color = Color.Gray)
-            Text("REPS", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, color = Color.Gray)
-            Text("RPE", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, color = Color.Gray)
-            Text("DONE", modifier = Modifier.weight(0.5f), style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, color = Color.Gray)
-        }
-        sets.forEachIndexed { index, set ->
-            SetRow(
-                setNumber = index + 1,
-                set = set,
-                isBarbell = equipment?.contains("Barbell", ignoreCase = true) == true,
-                viewModel = viewModel,
-                barWeight = barWeight,
-                userGender = userGender,
-                exerciseId = exerciseId
-            )
-        }
-
-        TextButton(
-            onClick = { viewModel.addSet(exerciseId) },
-            modifier = Modifier.align(Alignment.Start),
-            colors = ButtonDefaults.buttonColors(contentColor = Color.White)
-        ) {
-            Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("ADD SET", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-        }
-    }
-}
-
-@Composable
-fun SetRow(
-    setNumber: Int,
-    set: WorkoutSetEntity,
-    isBarbell: Boolean,
-    viewModel: ActiveSessionViewModel,
-    barWeight: Double,
-    userGender: String,
-    exerciseId: Long
-) {
-    val focusManager = LocalFocusManager.current
-    val haptic = LocalHapticFeedback.current
-    var weightText by remember(set.actualLbs) { mutableStateOf(set.actualLbs?.toInt()?.toString() ?: "") }
-    var repsText by remember(set.actualReps) { mutableStateOf(set.actualReps?.toString() ?: "") }
-    var rpeText by remember(set.actualRpe) { mutableStateOf(set.actualRpe?.toInt()?.toString() ?: "") }
-    var showPlateDialog by remember { mutableStateOf(false) }
-
-    val rowAlpha = if (set.isCompleted) 0.5f else 1f
-    val backgroundColor = if (set.isCompleted) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.1f)
-
-    if (showPlateDialog) {
-        val displayWeight = weightText.toDoubleOrNull() ?: set.actualLbs?.toDouble() ?: set.suggestedLbs.toDouble()
-        PlateCalculatorDialog(displayWeight, barWeight, userGender, onDismiss = { showPlateDialog = false })
-    }
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(backgroundColor)
-            .alpha(rowAlpha),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "$setNumber",
-            modifier = Modifier.weight(0.5f),
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold
+            },
+            containerColor = CardBackgroundColor,
+            shape = RoundedCornerShape(16.dp)
         )
-
-        // WEIGHT FIELD
-        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-            TextField(
-                value = weightText,
-                onValueChange = { weightText = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onFocusChanged { focusState ->
-                        if (focusState.isFocused) {
-                            weightText = ""
-                        } else {
-                            if (weightText.isNotBlank()) {
-                                viewModel.updateSetWeight(set, weightText)
-                            } else {
-                                // Restore value if blurred while empty
-                                weightText = set.actualLbs?.toInt()?.toString() ?: ""
-                            }
-                        }
-                    },
-                placeholder = { Text(set.suggestedLbs.toString(), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
-                textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center, fontWeight = FontWeight.Medium),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                colors = activeSetTextFieldColors()
-            )
-            if (isBarbell && !set.isCompleted) {
-                IconButton(onClick = { showPlateDialog = true }, modifier = Modifier.size(24.dp).padding(start = 4.dp) ) {
-                    Icon(Icons.Default.Album, "Plates", tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), modifier = Modifier.size(14.dp))
-                }
-            }
-        }
-
-        // REPS FIELD
-        TextField(
-            value = repsText,
-            onValueChange = { repsText = it },
-            modifier = Modifier
-                .weight(1f)
-                .onFocusChanged { focusState ->
-                    if (focusState.isFocused) {
-                        repsText = ""
-                    } else {
-                        if (repsText.isNotBlank()) {
-                            viewModel.updateSetReps(set, repsText)
-                        } else {
-                            repsText = set.actualReps?.toString() ?: ""
-                        }
-                    }
-                },
-            placeholder = { Text(set.suggestedReps.toString(), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
-            textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center, fontWeight = FontWeight.Medium),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-            colors = activeSetTextFieldColors()
-        )
-
-        // RPE FIELD
-        TextField(
-            value = rpeText,
-            onValueChange = { rpeText = it },
-            modifier = Modifier
-                .weight(1f)
-                .onFocusChanged { focusState ->
-                    if (focusState.isFocused) {
-                        rpeText = ""
-                    } else {
-                        if (rpeText.isNotBlank()) {
-                            viewModel.updateSetRpe(set, rpeText)
-                        } else {
-                            rpeText = set.actualRpe?.toInt()?.toString() ?: ""
-                        }
-                    }
-                },
-            placeholder = { Text(set.suggestedRpe.toString(), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
-            textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center, fontWeight = FontWeight.Medium),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-            colors = activeSetTextFieldColors()
-        )
-
-        Box(modifier = Modifier.weight(0.5f), contentAlignment = Alignment.Center) {
-            Checkbox(
-                checked = set.isCompleted,
-                onCheckedChange = { isChecked ->
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    if (isChecked) {
-                        if (weightText.isEmpty()) viewModel.updateSetWeight(set, set.suggestedLbs.toString())
-                        if (repsText.isEmpty()) viewModel.updateSetReps(set, set.suggestedReps.toString())
-                        if (rpeText.isEmpty()) viewModel.updateSetRpe(set, set.suggestedRpe.toString())
-                        viewModel.startSetTimer(exerciseId)
-                    }
-                    viewModel.updateSetCompletion(set, isChecked)
-                }
-            )
-        }
     }
 }
 
 @Composable
-fun activeSetTextFieldColors() = TextFieldDefaults.colors(
-    unfocusedContainerColor = Color.Transparent,
-    focusedContainerColor = Color.Transparent,
-    unfocusedIndicatorColor = Color.Transparent,
-    focusedIndicatorColor = Color.Transparent
-)
-
-@Composable
-fun CoachChatContent(
-    chatHistory: List<ChatMessage>,
-    userText: String,
-    isListening: Boolean,
-    onUserTextChange: (String) -> Unit,
-    onSend: () -> Unit,
-    onVoiceInput: () -> Unit,
-    onToggleLive: () -> Unit,
-    onQuickAction: (String) -> Unit,
-    onClearMemory: () -> Unit,
-    onDismiss: () -> Unit
+fun StyledInputBox(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    textStyle: TextStyle = TextStyle.Default,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default
 ) {
-    val chatListState = rememberLazyListState()
-    LaunchedEffect(chatHistory.size) { if (chatHistory.isNotEmpty()) chatListState.animateScrollToItem(chatHistory.size - 1) }
-
-    Column(modifier = Modifier.fillMaxHeight(0.8f).padding(16.dp)) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("AI Coach Interaction", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Close") }
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-
-        LazyColumn(modifier = Modifier.weight(1f), state = chatListState, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(chatHistory) { msg ->
-                val isCoach = msg.sender == "Coach"
-                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = if (isCoach) Alignment.CenterStart else Alignment.CenterEnd) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = if (isCoach) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary),
-                        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = if (isCoach) 0.dp else 16.dp, bottomEnd = if (isCoach) 16.dp else 0.dp),
-                        modifier = Modifier.widthIn(max = 300.dp)
-                    ) {
-                        Text(text = msg.text, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium, color = if (isCoach) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary)
-                    }
-                }
-            }
-        }
-
-        LazyRow(modifier = Modifier.padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val suggestions = listOf("I'm feeling pain", "Swap this", "Need form tips", "I'm tired")
-            items(suggestions) { text ->
-                SuggestionChip(onClick = { onQuickAction(text) }, label = { Text(text) })
-            }
-            item {
-                SuggestionChip(
-                    onClick = onClearMemory,
-                    label = { Text("Clear Coach Memory", color = MaterialTheme.colorScheme.error) },
-                    colors = SuggestionChipDefaults.suggestionChipColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f))
-                )
-            }
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                value = userText,
-                onValueChange = onUserTextChange,
-                placeholder = { Text("Ask your coach...") },
-                modifier = Modifier.weight(1f),
-                shape = CircleShape,
-                leadingIcon = { IconButton(onClick = onVoiceInput) { Icon(Icons.Default.Mic, null) } },
-                trailingIcon = { IconButton(onClick = onSend, enabled = userText.isNotBlank()) { Icon(Icons.Default.Send, null) } },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { onSend() })
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            FloatingActionButton(onClick = onToggleLive, containerColor = if (isListening) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.size(56.dp), shape = CircleShape) {
-                Icon(if (isListening) Icons.Default.Hearing else Icons.Default.HearingDisabled, null)
-            }
-        }
-        Spacer(modifier = Modifier.navigationBarsPadding())
+    var textFieldValueState by remember { 
+        mutableStateOf(TextFieldValue(text = value)) 
     }
-}
+    var isFocused by remember { mutableStateOf(false) }
+    var isStillOriginal by remember { mutableStateOf(true) }
 
-@Composable
-fun PlateCalculatorDialog(lbs: Double, bar: Double, gender: String, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Plate Math: $lbs lbs") },
-        text = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                Text("Per Side:", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
-                Text(PlateCalculator.calculatePlates(lbs, bar), fontSize = 32.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
-                Spacer(modifier = Modifier.height(12.dp))
-                Text("Includes ${bar.toInt()}lb $gender barbell", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-            }
+    // Sync from external value changes (like coach updates) ONLY when not focused
+    LaunchedEffect(value) {
+        if (!isFocused && textFieldValueState.text != value) {
+            textFieldValueState = textFieldValueState.copy(text = value)
+            isStillOriginal = true
+        }
+    }
+
+    // Clear value on focus for easy overwrite
+    val displayValue = if (isFocused && isStillOriginal) {
+        TextFieldValue("", selection = TextRange.Zero)
+    } else {
+        textFieldValueState
+    }
+
+    TextField(
+        value = displayValue,
+        onValueChange = { newValue ->
+            textFieldValueState = newValue
+            isStillOriginal = false
+            onValueChange(newValue.text)
         },
-        confirmButton = { Button(onClick = onDismiss) { Text("Got it") } }
+        modifier = modifier
+            .height(IntrinsicSize.Min)
+            .onFocusChanged { focusState ->
+                if (focusState.isFocused) {
+                    isFocused = true
+                    isStillOriginal = true
+                } else {
+                    isFocused = false
+                    // Restore value if left empty
+                    if (textFieldValueState.text.isEmpty()) {
+                        textFieldValueState = textFieldValueState.copy(text = value)
+                        isStillOriginal = true
+                    }
+                }
+            },
+        placeholder = { 
+            Text(
+                text = value, 
+                style = textStyle.copy(color = textStyle.color.copy(alpha = 0.3f)),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            ) 
+        },
+        textStyle = textStyle.copy(textAlign = TextAlign.Center),
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = Color.Transparent,
+            unfocusedContainerColor = Color.Transparent,
+            disabledContainerColor = Color.Transparent,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            cursorColor = AccentColor
+        ),
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
+        singleLine = true
     )
 }
 
 @Composable
-fun SetTimer(exerciseState: ExerciseState, viewModel: ActiveSessionViewModel) {
-    val timerState = exerciseState.timerState
+fun SetRow(
+    set: WorkoutSetEntity,
+    exercise: ExerciseEntity,
+    viewModel: ActiveSessionViewModel,
+    haptic: androidx.compose.ui.hapticfeedback.HapticFeedback
+) {
+    val focusManager = LocalFocusManager.current
+    var showPlateCalc by remember { mutableStateOf(false) }
+    val isBodyweight = exercise.equipment?.contains("Bodyweight", ignoreCase = true) == true
 
-    // Calculate the current set number based on completed sets
-    val completedSets = exerciseState.sets.count { it.isCompleted }
-    val totalSets = exerciseState.sets.size
+    if (showPlateCalc) {
+        PlateCalculatorDialog(
+            targetWeight = set.actualLbs?.toDouble() ?: set.suggestedLbs.toDouble(),
+            barWeight = viewModel.barWeight.collectAsState().value,
+            onDismiss = { showPlateCalc = false }
+        )
+    }
 
-    // Determine the active set (completed + 1). Cap it at totalSets so it doesn't overshoot when all are done.
-    val currentSetNumber = if (completedSets < totalSets) completedSets + 1 else totalSets.coerceAtLeast(1)
-    val timerTitle = "SET $currentSetNumber TIMER"
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        // SET
+        Text(
+            text = set.setNumber.toString(),
+            modifier = Modifier.weight(0.8f),
+            textAlign = TextAlign.Center,
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp,
+            color = TextColor
+        )
 
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text(
-                    text = timerTitle,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = String.format(Locale.US, "%02d:%02d", timerState.remainingTime / 60, timerState.remainingTime % 60),
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Black
-                )
-            }
-            Button(
-                onClick = {
-                    if (timerState.isRunning) viewModel.skipSetTimer(exerciseState.exercise.exerciseId)
-                    else viewModel.startSetTimer(exerciseState.exercise.exerciseId)
-                },
-                shape = RoundedCornerShape(8.dp)
+        // LBS
+        if (!isBodyweight) {
+            Row(
+                modifier = Modifier.weight(1.5f),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // I left "SKIP REST" as you had it, but you can change it to "SKIP TIMER" if it fits your unified timer concept better!
-                Text(if (timerState.isRunning) "SKIP REST" else "START TIMER", fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
+                val weightStr = set.actualLbs?.let { if (it % 1 == 0f) it.toInt().toString() else it.toString() } ?: set.suggestedLbs.toString()
+                
+                StyledInputBox(
+                    value = weightStr,
+                    onValueChange = { viewModel.updateSetWeight(set, it) },
+                    modifier = Modifier.width(80.dp), // Increased width for triple-digit/double-digit
+                    textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+                )
 
-@Composable
-fun CoachBriefingCard(modifier: Modifier = Modifier, briefing: String) {
-    if (briefing.isBlank()) return
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-            Spacer(modifier = Modifier.width(16.dp))
-            Text(text = briefing, style = MaterialTheme.typography.bodyMedium, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
-        }
-    }
-}
-
-@Composable
-fun SwapExerciseDialog(alternatives: List<ExerciseEntity>, onDismiss: () -> Unit, onSwap: (Long) -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Swap Exercise") },
-        text = {
-            if (alternatives.isEmpty()) Text("No alternatives found.")
-            else Column {
-                alternatives.forEach { ex ->
-                    ListItem(
-                        headlineContent = { Text(ex.name) },
-                        supportingContent = { Text(ex.majorMuscle) },
-                        trailingContent = { Icon(Icons.Default.ChevronRight, null) },
-                        modifier = Modifier.clickable { onSwap(ex.exerciseId) }
+                if (exercise.equipment?.contains("Barbell", ignoreCase = true) == true) {
+                    Icon(
+                        imageVector = Icons.Default.Calculate,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp).clickable { showPlateCalc = true },
+                        tint = Color(0xFFC7C7CC)
                     )
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        }
+
+        // REPS
+        StyledInputBox(
+            value = (set.actualReps ?: set.suggestedReps).toString(),
+            onValueChange = { viewModel.updateSetReps(set, it) },
+            modifier = Modifier.weight(if (isBodyweight) 2.4f else 1.2f),
+            textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, color = SecondaryTextColor),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+        )
+
+        // RPE
+        StyledInputBox(
+            value = (set.actualRpe?.toInt() ?: set.suggestedRpe).toString(),
+            onValueChange = { viewModel.updateSetRpe(set, it) },
+            modifier = Modifier.weight(1f),
+            textStyle = TextStyle(fontSize = 18.sp, color = Color(0xFFC7C7CC)),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+        )
+
+        // DONE
+        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .border(2.dp, if (set.isCompleted) Color.Black else BorderColor, RoundedCornerShape(4.dp))
+                    .clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        viewModel.updateSetCompletion(set, !set.isCompleted)
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                if (set.isCompleted) {
+                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.Black)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SetTimerPill(
+    timerState: ExerciseTimerState,
+    onStart: () -> Unit,
+    onSkip: () -> Unit
+) {
+    val displayMinutes = timerState.remainingTime / 60
+    val displaySeconds = timerState.remainingTime % 60
+    val timeString = String.format(Locale.US, "%02d:%02d", displayMinutes, displaySeconds)
+
+    Surface(
+        color = Color(0xFFF2F2F7),
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.clickable {
+            if (timerState.isRunning) onSkip() else onStart()
+        }
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Timer,
+                contentDescription = null,
+                tint = SecondaryTextColor,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(6.6.dp))
+            Text(
+                text = timeString,
+                style = MaterialTheme.typography.labelLarge,
+                color = TextColor,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+fun PocketModeOverlay(onUnlock: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.95f))
+            .pointerInput(Unit) { detectTapGestures(onLongPress = { onUnlock() }) },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Default.Lock, contentDescription = null, tint = Color.White, modifier = Modifier.size(64.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("Screen Locked", color = Color.White, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text("Long press to unlock", color = Color.LightGray, style = MaterialTheme.typography.bodyLarge)
+        }
+    }
+}
+
+@Composable
+fun SearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        placeholder = { Text(placeholder, color = SecondaryTextColor) },
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = TextColor,
+            unfocusedBorderColor = BorderColor,
+            focusedContainerColor = CardBackgroundColor,
+            unfocusedContainerColor = CardBackgroundColor,
+            cursorColor = TextColor
+        ),
+        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = SecondaryTextColor) },
+        singleLine = true
     )
 }
 
 @Composable
 fun AddExerciseDialog(viewModel: ActiveSessionViewModel, onDismiss: () -> Unit, onExerciseSelected: (Long) -> Unit) {
-    var query by remember { mutableStateOf("") }
     val exercises by viewModel.getAllExercises().collectAsState(initial = emptyList())
-    val filtered = remember(query, exercises) { exercises.filter { it.name.contains(query, true) }.take(15) }
+    var query by remember { mutableStateOf("") }
+    val filtered = exercises.filter { it.name.contains(query, true) || it.muscleGroup?.contains(query, true) == true }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add Exercise") },
-        text = {
-            Column(modifier = Modifier.height(400.dp)) {
-                OutlinedTextField(value = query, onValueChange = { query = it }, placeholder = { Text("Search exercises...") }, modifier = Modifier.fillMaxWidth(), shape = CircleShape)
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.padding(16.dp).clip(RoundedCornerShape(16.dp)),
+        title = {
+            Column {
+                Text(
+                    text = "Add Exercise",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = TextColor
+                )
                 Spacer(modifier = Modifier.height(16.dp))
-                LazyColumn(modifier = Modifier.weight(1f)) {
-                    items(filtered) { ex ->
-                        ListItem(
-                            headlineContent = { Text(ex.name) },
-                            supportingContent = { Text(ex.majorMuscle) },
-                            modifier = Modifier.clickable { onExerciseSelected(ex.exerciseId) }
+                SearchField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = "Search..."
+                )
+            }
+        },
+        text = {
+            LazyColumn(modifier = Modifier.height(400.dp)) {
+                items(filtered) { ex ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onExerciseSelected(ex.exerciseId) }
+                            .padding(vertical = 12.dp, horizontal = 4.dp)
+                    ) {
+                        Text(
+                            text = ex.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextColor
+                        )
+                        Text(
+                            text = "${ex.muscleGroup} • ${getTierName(ex.tier)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SecondaryTextColor
                         )
                     }
+                    HorizontalDivider(color = BorderColor, thickness = 0.5.dp)
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = SecondaryTextColor, fontWeight = FontWeight.Bold)
+            }
+        },
+        containerColor = CardBackgroundColor,
+        shape = RoundedCornerShape(16.dp)
     )
 }
 
 @Composable
-fun PocketModeOverlay(
-    currentExercise: String,
-    coachState: AutoCoachState,
-    onUnlock: () -> Unit
-) {
-    // Pure black background saves OLED battery
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .pointerInput(Unit) {
-                // Consume all generic taps so they don't pass through to the workout UI
-                detectTapGestures { }
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector = Icons.Default.Headphones,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(48.dp)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = currentExercise,
-                style = MaterialTheme.typography.headlineMedium,
-                color = Color.White,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Coach Status: ${coachState.name}",
-                style = MaterialTheme.typography.bodyLarge,
-                color = Color.Gray
-            )
-
-            Spacer(modifier = Modifier.height(64.dp))
-
-            // A simple "Hold to Unlock" button
-            // var progress by remember { mutableStateOf(0f) }
-            val haptic = LocalHapticFeedback.current
-
-            Button(
-                onClick = { /* Do nothing on normal click */ },
-                modifier = Modifier
-                    .fillMaxWidth(0.6f)
-                    .height(56.dp)
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onPress = {
-                                // Simulate holding down to unlock
-                                val startTime = System.currentTimeMillis()
-                                try {
-                                    awaitRelease()
-                                    val holdTime = System.currentTimeMillis() - startTime
-                                    if (holdTime > 1000) { // Held for 1 second
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        onUnlock()
-                                    }
-                                } catch (c: CancellationException) {
-                                    // Touch was cancelled
-                                }
-                            }
-                        )
-                    },
-                colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
+fun BleDeviceDialog(foundDevices: List<BluetoothDevice>, onDismiss: () -> Unit, onConnect: (BluetoothDevice) -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Connect HR Monitor", fontWeight = FontWeight.Bold) },
+        text = {
+            LazyColumn {
+                items(foundDevices) { device ->
+                    ListItem(
+                        headlineContent = { Text(try { device.name ?: "Unknown" } catch (e: SecurityException) { "Unknown" }) },
+                        modifier = Modifier.clickable { onConnect(device) }
+                    )
+                    HorizontalDivider(color = BorderColor, thickness = 0.5.dp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = SecondaryTextColor) }
+        },
+        containerColor = CardBackgroundColor,
+        shape = RoundedCornerShape(16.dp)
+    )
+}
+@Composable
+fun AMRAPPill(isAMRAP: Boolean, timeRemaining: Int?) {
+    if (isAMRAP) {
+        Surface(
+            color = Color(0xFFFF9800), // High-visibility orange for AMRAP
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.padding(vertical = 4.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("HOLD TO UNLOCK", color = Color.White)
+                Icon(Icons.Default.Timer, "AMRAP", tint = Color.White, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = "AMRAP: ${timeRemaining ?: "PUSH TO FAILURE"}",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Black
+                )
             }
         }
     }
+}
+
+@Composable
+fun SwapExerciseDialog(originalExercise: ExerciseEntity, viewModel: ActiveSessionViewModel, onDismiss: () -> Unit, onSwap: (Long) -> Unit) {
+    var alternatives by remember { mutableStateOf<List<ExerciseEntity>>(emptyList()) }
+    LaunchedEffect(originalExercise) { alternatives = viewModel.getTopAlternatives(originalExercise) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Swap ${originalExercise.name}",
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleLarge
+            )
+        },
+        text = {
+            LazyColumn {
+                items(alternatives) { alt ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSwap(alt.exerciseId) }
+                            .padding(vertical = 12.dp)
+                    ) {
+                        Text(text = alt.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                        Text(text = alt.muscleGroup ?: "", style = MaterialTheme.typography.labelSmall, color = SecondaryTextColor)
+                    }
+                    HorizontalDivider(color = BorderColor, thickness = 0.5.dp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = SecondaryTextColor) }
+        },
+        containerColor = CardBackgroundColor,
+        shape = RoundedCornerShape(16.dp)
+    )
+}
+
+@Composable
+fun PlateCalculatorDialog(targetWeight: Double, barWeight: Double, onDismiss: () -> Unit) {
+    val platesText = PlateCalculator.calculatePlates(targetWeight, barWeight)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Load for $targetWeight lbs", fontWeight = FontWeight.Bold) },
+        text = { Text(if (targetWeight <= barWeight) "Just the bar!" else "Plates per side: $platesText") },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("OK", fontWeight = FontWeight.Bold) } },
+        containerColor = CardBackgroundColor,
+        shape = RoundedCornerShape(16.dp)
+    )
 }

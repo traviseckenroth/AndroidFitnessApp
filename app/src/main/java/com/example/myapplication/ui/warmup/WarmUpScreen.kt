@@ -73,10 +73,10 @@ fun WarmUpScreen(onBack: () -> Unit) {
                 )
             )
 
-            // OPTION 2: PHYSIQUE (Hypertrophy)
+            // OPTION 2: HYPERTROPHY (Muscle Growth)
             WarmUpCard(
-                title = "Physique",
-                subtitle = "Hypertrophy & Blood Flow",
+                title = "Hypertrophy",
+                subtitle = "Muscle Growth & Blood Flow",
                 accentColor = PrimaryAccent,
                 icon = Icons.Default.FitnessCenter,
                 goal = "Raise core temp, lubricate joints, and drive blood to muscles.",

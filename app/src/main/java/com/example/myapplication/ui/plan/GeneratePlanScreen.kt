@@ -46,7 +46,7 @@ fun GeneratePlanScreen(
     var showExerciseDialog by remember { mutableStateOf(false) }
 
     var goalInput by remember { mutableStateOf("") }
-    val programs = listOf("Strength", "Physique", "Endurance")
+    val programs = listOf("Strength", "Hypertrophy", "Body Sculpting", "Endurance", "General Fitness")
     var selectedProgram by remember { mutableStateOf(programs[0]) }
     var isDropdownExpanded by remember { mutableStateOf(false) }
     var durationHours by remember { mutableFloatStateOf(1.0f) }
@@ -132,18 +132,20 @@ fun GeneratePlanScreen(
                 uiState is PlanUiState.Loading
             )
 
-            if (isAccepted && uiState is PlanUiState.Success) {
+            if (uiState is PlanUiState.Success) {
                 val plan = (uiState as PlanUiState.Success).plan
                 Spacer(modifier = Modifier.height(24.dp))
                 HorizontalDivider()
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("Active Plan", style = MaterialTheme.typography.titleLarge)
+                Text(if (isAccepted) "Active Plan" else "Generated Block Preview", style = MaterialTheme.typography.titleLarge)
                 Spacer(modifier = Modifier.height(8.dp))
 
                 ElevatedCard(
                     onClick = { showExerciseDialog = true },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                    colors = CardDefaults.elevatedCardColors(
+                        containerColor = if (isAccepted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                    )
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
@@ -151,39 +153,55 @@ fun GeneratePlanScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Workout Schedule", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Text("Workout Schedule", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             
-                            planProgress?.let {
+                            if (isAccepted) {
+                                planProgress?.let {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f),
+                                        shape = MaterialTheme.shapes.small
+                                    ) {
+                                        Text(
+                                            text = "${it.completedWorkouts}/${it.totalWorkouts}",
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            } else {
                                 Surface(
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f),
+                                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f),
                                     shape = MaterialTheme.shapes.small
                                 ) {
                                     Text(
-                                        text = "${it.completedWorkouts}/${it.totalWorkouts}",
+                                        text = "UNACCEPTED",
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                        style = MaterialTheme.typography.labelMedium,
+                                        style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        color = MaterialTheme.colorScheme.secondary
                                     )
                                 }
                             }
                         }
                         
-                        Text(plan.explanation, style = MaterialTheme.typography.bodyMedium, maxLines = 2, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text(plan.explanation, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
                         
-                        planProgress?.let {
-                            Spacer(modifier = Modifier.height(12.dp))
-                            LinearProgressIndicator(
-                                progress = { it.percentage },
-                                modifier = Modifier.fillMaxWidth().height(8.dp),
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                trackColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f),
-                                strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
-                            )
+                        if (isAccepted) {
+                            planProgress?.let {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                LinearProgressIndicator(
+                                    progress = { it.percentage },
+                                    modifier = Modifier.fillMaxWidth().height(8.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
+                                    strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("Tap to view details", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f))
+                        Text("Tap to view details", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                     }
                 }
             }
@@ -271,55 +289,19 @@ fun SkeletonPlanLoader(currentThought: String? = null) {
 
     val displayThought = currentThought ?: defaultThoughts[thoughtIndex]
 
-    val transition = rememberInfiniteTransition(label = "shimmer")
-    val shimmerTranslate by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1000f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "shimmer"
-    )
-
-    val shimmerColors = listOf(
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-    )
-
-    val brush = Brush.linearGradient(
-        colors = shimmerColors,
-        start = Offset(shimmerTranslate - 200f, shimmerTranslate - 200f),
-        end = Offset(shimmerTranslate, shimmerTranslate)
-    )
-
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        repeat(3) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(120.dp)
-                    .padding(vertical = 8.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(brush)
-            )
-        }
-        
-        Spacer(modifier = Modifier.height(48.dp))
-        
         Icon(
             imageVector = Icons.Default.AutoAwesome,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.secondary,
-            modifier = Modifier.size(48.dp)
+            modifier = Modifier.size(64.dp)
         )
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(24.dp))
         
         AnimatedContent(
             targetState = displayThought,
@@ -420,11 +402,20 @@ fun PlanInputForm(
     isLoading: Boolean
 ) {
     val programDefinitions = mapOf(
-        "Strength" to "Prioritize raw power and 1RM",
-        "Physique" to "Focus on muscle size and aesthetics",
-        "Endurance" to "High reps and cardio for stamina"
+        "Strength" to "Build maximum power and lift heavier weights.",
+        "Hypertrophy" to "Focus on building muscle size and gaining mass.",
+        "Body Sculpting" to "Tone your body and lose fat while keeping muscle.",
+        "Endurance" to "Improve your stamina, energy, and heart health.",
+        "General Fitness" to "Stay healthy, move better, and feel fit."
     )
-
+// UI Label Mapping (To show "Hypertrophy / Bulk" etc. in the UI)
+    val programLabels = mapOf(
+        "Strength" to "Strength",
+        "Hypertrophy" to "Hypertrophy / Bulk",
+        "Body Sculpting" to "Sculpting / Fat Loss",
+        "Endurance" to "Endurance",
+        "General Fitness" to "General Fitness"
+    )
     OutlinedTextField(
         value = goalInput,
         onValueChange = onGoalChange,
@@ -439,7 +430,7 @@ fun PlanInputForm(
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
     ) {
         OutlinedTextField(
-            value = selectedProgram,
+            value = programLabels[selectedProgram] ?: selectedProgram,
             onValueChange = {},
             readOnly = true,
             label = { Text("Program Type") },
@@ -455,7 +446,8 @@ fun PlanInputForm(
                 DropdownMenuItem(
                     text = {
                         Column {
-                            Text(text = selectionOption, style = MaterialTheme.typography.titleMedium)
+                            Text(text = programLabels[selectionOption] ?: selectionOption, style = MaterialTheme.typography.titleMedium)
+                            // Show the layman description
                             Text(
                                 text = programDefinitions[selectionOption] ?: "",
                                 style = MaterialTheme.typography.bodySmall,

@@ -17,6 +17,7 @@ import com.example.myapplication.data.remote.BedrockClient
 import com.example.myapplication.data.remote.GeneratedDay
 import com.example.myapplication.data.remote.GeneratedExercise
 import com.example.myapplication.data.remote.RemoteNutritionPlan
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.Json
 import java.util.Calendar
@@ -31,6 +32,7 @@ data class PlanProgress(
     val percentage: Float
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @Singleton
 class PlanRepository @Inject constructor(
     private val workoutDao: WorkoutDao,
@@ -51,7 +53,12 @@ class PlanRepository @Inject constructor(
         val existingNutritionJson = previousPlan?.nutritionJson
 
         if (block == 1) {
-            workoutDao.deleteFutureUncompletedWorkouts(System.currentTimeMillis())
+            val cal = Calendar.getInstance()
+            cal.set(Calendar.HOUR_OF_DAY, 0)
+            cal.set(Calendar.MINUTE, 0)
+            cal.set(Calendar.SECOND, 0)
+            cal.set(Calendar.MILLISECOND, 0)
+            workoutDao.deleteFutureUncompletedWorkouts(cal.timeInMillis)
         }
 
         val workoutHistory = workoutDao.getCompletedWorkoutsWithExercise().first()
@@ -142,7 +149,9 @@ class PlanRepository @Inject constructor(
                                     suggestedReps = aiEx.suggestedReps,
                                     suggestedRpe = if (isDeload) 5 else aiEx.suggestedRpe,
                                     suggestedLbs = if (finalLbs == 0) 45 else finalLbs,
-                                    isCompleted = false
+                                    isCompleted = false,
+                                    isAMRAP = aiEx.isAMRAP,
+                                    isEMOM = aiEx.isEMOM
                                 )
                             )
                         }
@@ -365,7 +374,9 @@ class PlanRepository @Inject constructor(
                     suggestedReps = adjustedSuggestedReps,
                     suggestedRpe = aiEx.suggestedRpe,
                     suggestedLbs = aiEx.suggestedLbs.toInt(),
-                    isCompleted = false
+                    isCompleted = false,
+                    isAMRAP = aiEx.isAMRAP,
+                    isEMOM = aiEx.isEMOM
                 )
             }
         }
@@ -474,7 +485,7 @@ class PlanRepository @Inject constructor(
 
     private fun calculateTotalMinutes(exercises: List<GeneratedExercise>): Double {
         return exercises.sumOf { ex ->
-            val timePerSet = when (ex.tier) { 1 -> 4.0; 2 -> 2.5; else -> 2.0 }
+            val timePerSet = when (ex.tier) { 1 -> 3.0; 2 -> 2.5; else -> 2.0 }
             ex.sets * timePerSet
         }
     }

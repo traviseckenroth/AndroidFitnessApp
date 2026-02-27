@@ -18,8 +18,6 @@ import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,8 +32,8 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
-import com.example.myapplication.data.local.DailyWorkoutEntity
 import com.example.myapplication.data.local.ContentSourceEntity
+import com.example.myapplication.data.local.DailyWorkoutEntity
 import com.example.myapplication.data.local.UserSubscriptionEntity
 import com.example.myapplication.data.remote.CommunityPick
 import com.example.myapplication.data.repository.PlanProgress
@@ -145,7 +143,7 @@ fun HomeScreen(
                     )
                 }
             }
-
+            
             // Discovery Feed & Daily Briefing
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {

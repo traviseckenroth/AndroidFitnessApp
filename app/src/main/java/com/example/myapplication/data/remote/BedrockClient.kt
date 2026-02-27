@@ -97,6 +97,8 @@ data class GeneratedExercise(
     val suggestedRpe: Int = 7,
     val suggestedLbs: Float = 0f,
     val sets: Int = 3,
+    val isAMRAP: Boolean = false,
+    val isEMOM: Boolean = false,
     val estimatedTimeMinutes: Float = 0f,
     val loadability: String? = null
 )
@@ -478,6 +480,8 @@ class BedrockClient @Inject constructor(
     }
 
     suspend fun extractUserMemory(userSpeech: String): UserMemoryEntity? = withContext(Dispatchers.Default) {
+        if (userSpeech.isBlank()) return@withContext null
+        
         val systemPrompt = """
             You are a Fitness Memory Assistant. Analyze the user's speech for mentions of:
             1. Pain or injury (Category: 'Pain')
@@ -604,7 +608,7 @@ class BedrockClient @Inject constructor(
     suspend fun generatePreWorkoutScript(
         recovery: Int,
         workoutTitle: String?,
-        firstExercise: String?,
+        exercises: List<String>,
         userMemories: List<UserMemoryEntity>,
         recentFatigueState: String
     ): String = withContext(Dispatchers.Default) {
@@ -613,14 +617,14 @@ class BedrockClient @Inject constructor(
         }
         
         val workoutContext = if (workoutTitle != null) "The user's workout for today is: $workoutTitle." else "No workout scheduled today."
-        val firstExerciseContext = if (firstExercise != null) "The first exercise is: $firstExercise." else ""
+        val exerciseList = if (exercises.isNotEmpty()) "The planned exercises are: ${exercises.joinToString(", ")}." else ""
         
         val systemPrompt = """
             You are a professional Fitness Auto-Coach. Your goal is to provide a concise (max 3 sentences) pre-workout briefing based strictly on the user data provided.
             
             CONTEXT:
-            $workoutContext
-            $firstExerciseContext
+            ${workoutContext}
+            ${exerciseList}
             RECOVERY SCORE: $recovery%
             
             USER MEMORIES (PAIN/PREFERENCES):
@@ -631,12 +635,13 @@ class BedrockClient @Inject constructor(
             
             INSTRUCTIONS:
             1. Analyze the context above.
-            2. If there are USER MEMORIES regarding pain or injuries related to today's exercises, you MUST acknowledge them and advise caution.
-            3. If RECENT FATIGUE STATE shows high volume for today's target muscles, advise focusing on form or slightly lower intensity.
-            4. If RECOVERY SCORE is low, suggest a more conservative approach.
-            5. STRICT RULE: DO NOT mention any injuries, pains, or history that are not explicitly listed in the USER MEMORIES or FATIGUE STATE above. Do not hallucinate trends.
-            6. If everything looks good (high recovery, no pain, low fatigue), be purely encouraging about the session.
-            7. Keep the tone professional, supportive, and data-driven.
+            2. Mention the primary focus of the workout.
+            3. If there are USER MEMORIES regarding pain or injuries related to today's exercises, you MUST acknowledge them and advise caution.
+            4. If RECENT FATIGUE STATE shows high volume for today's target muscles, advise focusing on form or slightly lower intensity.
+            5. If RECOVERY SCORE is low, suggest a more conservative approach.
+            6. STRICT RULE: DO NOT mention any injuries, pains, or history that are not explicitly listed in the USER MEMORIES or FATIGUE STATE above. Do not hallucinate trends.
+            7. If everything looks good (high recovery, no pain, low fatigue), be purely encouraging about the session.
+            8. Keep the tone professional, supportive, and data-driven.
             
             MANDATORY: Return ONLY a JSON object: {"briefing": "your briefing here"}
         """.trimIndent()
@@ -707,6 +712,8 @@ class BedrockClient @Inject constructor(
         modelId: String, 
         thinkingBudget: Int = 0
     ): String {
+        if (userPrompt.isBlank()) return "{}"
+        
         var lastError: Exception? = null
         repeat(3) { attempt ->
             try {
@@ -784,6 +791,8 @@ class BedrockClient @Inject constructor(
         thinkingBudget: Int = 0,
         onThoughtReceived: (String) -> Unit = {}
     ): String {
+        if (userPrompt.isBlank()) return "{}"
+
         var lastError: Exception? = null
         repeat(3) { attempt ->
             try {

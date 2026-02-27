@@ -100,7 +100,9 @@ data class WorkoutSetEntity(
     val actualReps: Int? = null,
     val actualRpe: Float? = null,
     val actualLbs: Float? = null,
-    val isCompleted: Boolean = false
+    val isCompleted: Boolean = false,
+    val isAMRAP: Boolean = false,
+    val isEMOM: Boolean = false
 )
 
 @Entity(

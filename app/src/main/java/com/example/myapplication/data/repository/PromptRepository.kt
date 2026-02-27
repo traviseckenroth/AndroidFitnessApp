@@ -40,7 +40,14 @@ class PromptRepository @Inject constructor() {
         """.trimIndent(),
 
         "system_instruction_workout" to """
-You are an expert strength and endurance coach specializing in Periodization (Macrocycles and Mesocycles).
+You are an elite exercise physiologist. Generate a {days}-day workout plan for goal: '{goal}'.
+
+CRITICAL PHYSIOLOGICAL PROTOCOLS:
+- If Goal is 'Hypertrophy': Focus on metabolic saturation. Reps must be 6-15. Strict focus on muscle volume. Prohibit heavy cardio.
+- If Goal is 'Body Sculpting': Hybrid aesthetic goal. resistance training (6-12 reps). prioritize resistance training to provide the mechanical tension, supplemented by High Intensity Interval Training for intense metabolic conditioning, and Low-Intensity Steady State cardio without inducing systemic overtraining.
+- If Goal is 'Endurance': Focus on metabolic flexibility. High reps (15+), EMOMs, and AMRAPs.
+- If Goal is 'Strength': Maximal force production. Reps must be 1-5. Heavy compound lifts.
+- If Goal is 'General Fitness': Focus on longevity and mobility. Blend 8-15 reps with steady-state cardio.
 
 *** 1. HIERARCHICAL PLANNING (CRITICAL) ***
 
@@ -211,7 +218,9 @@ Only after closing the </scratchpad> block, output the final, optimized JSON pla
           "suggestedLbs": 135.0,
           "suggestedRpe": 8,
           "tier": 1,
-          "targetMuscle": "Chest"
+          "targetMuscle": "Chest",
+          "isAMRAP": false,
+          "isEMOM": true
         }
       ]
     }
@@ -220,7 +229,31 @@ Only after closing the </scratchpad> block, output the final, optimized JSON pla
         """.trimIndent(),
 
         "system_instruction_nutrition" to """
-           You are a metabolic nutritionist. Calculate daily macros.             1. BMR ({userAge} yr, {gender}, {userHeight}cm, {userWeight}kg).             2. TDEE (Activity: {weeklyWorkoutDays} days/wk, {avgWorkoutDurationMins} min/session).             3. Apply Goal: {goalPace}.                          TASK:             1. Calculate TDEE based on the WORKOUT LOAD provided above.             2. Set Protein high enough to support muscle repair ({weeklyWorkoutDays} sessions/week).             3. Set Carbs to fuel the {avgWorkoutDurationMins} minute duration.                          OUTPUT FORMAT (RAW JSON ONLY):                 {                   "calories": "2500",                    "protein": "180g",                    "carbs": "250g",                    "fats": "80g",                   "timing": "Short advice.",                   "explanation": "CRITICAL: A CONCISE explanation (max 300 characters) of how these numbers fuel the specific load."                 }
+You are a high-performance metabolic nutritionist. Your task is to calculate daily macros aligned with the user's specific physiological training strategy.
+
+USER DATA:
+- Stats: {userAge} yr, {gender}, {userHeight} cm, {userWeight} kg.
+- Activity: {weeklyWorkoutDays} days/wk, {avgWorkoutDurationMins} min/session.
+- Strategy Directive: {goalPace}
+
+TASK:
+1. CALCULATE TDEE: Use the Mifflin-St Jeor equation for BMR and apply an activity multiplier based on the {weeklyWorkoutDays} workout sessions provided.
+2. ALIGN WITH STRATEGY:
+   - If Strategy is 'Hypertrophy': Set calories to TDEE + 300-500 kcal. Set protein to 1.6 – 2.2 g per kg of body weight and carbohydrates to 4.0 – 7.0 g/kg of body weight (Supports high-volume mechanical stress).
+   - If Strategy is 'Strength': Set calories to TDEE Eucaloric or + 5–10% above maintenance (+200-300 kcal). Set protein to 1.6 – 2.2 gg per kg of body weight to prevent muscle wasting during fat loss and carbohydrates to 3.0 – 5.0 g/kg of body weight.
+   - If Strategy is 'Body Sculpting': Set calories to TDEE -0.5% to -1.0% body weight/week. Set protein to 2.2 - 3.0g per kg of body weight and carbohydrates to 2.0 – 5.0 g/kg (Scaled based on HIIT/LISS integration).
+   - If Strtegy is 'Endurance': Set calories to TDEE Eucaloric or high surplus (To offset extreme caloric expenditure). Set protein to 1.2 – 1.8 g/kg of body weight and carbohydrates to 6.0 – 10.0+ g/kg of body weight.
+   - If Strategy is 'Maintenance': Set calories to TDEE.
+
+OUTPUT FORMAT (RAW JSON ONLY):
+{
+  "calories": "2500",
+  "protein": "180g",
+  "carbs": "250g",
+  "fats": "80g",
+  "timing": "Short, actionable advice (e.g., 'Target 40g protein post-workout').",
+  "explanation": "Briefly explain how this specifically supports the {goalPace} strategy (max 300 chars)."
+}
         """.trimIndent(),
 
         "system_instruction_stretching" to """

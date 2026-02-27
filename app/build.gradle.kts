@@ -22,7 +22,9 @@ if (localPropertiesFile.exists()) {
 android {
     namespace = "com.example.myapplication"
     compileSdk = 36
-
+    androidResources {
+        noCompress.addAll(listOf("onnx", "bin", "txt"))
+    }
     defaultConfig {
         applicationId = "com.example.myapplication"
         minSdk = 26
@@ -68,6 +70,13 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+
+    // Ignore manual jniLibs to avoid conflicts with AAR native libs
+    sourceSets {
+        getByName("main") {
+            jniLibs.setSrcDirs(emptyList<String>())
         }
     }
 }
@@ -118,7 +127,7 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-
+    implementation(files("libs/sherpa-onnx-1.12.26.aar"))
     // --- Health Connect ---
     implementation("androidx.health.connect:connect-client:1.1.0-alpha07")
 
@@ -143,14 +152,6 @@ dependencies {
     implementation(libs.firebase.config)
     implementation("com.google.firebase:firebase-config-ktx")
     implementation(libs.play.services.coroutines)
-
-    // --- CameraX ---
-    val cameraxVersion = "1.3.1"
-    implementation("androidx.camera:camera-core:$cameraxVersion")
-    implementation("androidx.camera:camera-camera2:$cameraxVersion")
-    implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
-    implementation("androidx.camera:camera-view:$cameraxVersion")
-    implementation("androidx.camera:camera-video:$cameraxVersion") // Added for VideoCapture
 
     // --- Image Loading ---
     implementation(libs.coil.compose)

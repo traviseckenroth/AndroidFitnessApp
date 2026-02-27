@@ -7,6 +7,8 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -21,13 +23,15 @@ data class TimerState(
     val isRunning: Boolean = false,
     val remainingTime: Int = 0,
     val activeExerciseId: Long? = null,
-    val hasFinished: Boolean = false
+    val hasFinished: Boolean = false,
+    val isRest: Boolean = true
 )
 
 class WorkoutTimerService : Service() {
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
     private var timerJob: Job? = null
+    private var toneGenerator: ToneGenerator? = null
 
     companion object {
         private val _timerState = MutableStateFlow(TimerState())
@@ -35,13 +39,24 @@ class WorkoutTimerService : Service() {
 
         const val ACTION_START = "ACTION_START"
         const val ACTION_STOP = "ACTION_STOP"
-        const val ACTION_ADD_TIME = "ACTION_ADD_TIME" // NEW: Used for dynamic rest auto-regulation
+        const val ACTION_ADD_TIME = "ACTION_ADD_TIME"
 
         const val EXTRA_SECONDS = "EXTRA_SECONDS"
         const val EXTRA_ADD_TIME_SECONDS = "EXTRA_ADD_TIME_SECONDS"
         const val EXTRA_EXERCISE_ID = "EXTRA_EXERCISE_ID"
+        const val EXTRA_IS_REST = "EXTRA_IS_REST"
+        
         const val CHANNEL_ID = "workout_timer_channel"
         const val NOTIFICATION_ID = 1
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        try {
+            toneGenerator = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -51,42 +66,51 @@ class WorkoutTimerService : Service() {
             ACTION_START -> {
                 val seconds = intent.getIntExtra(EXTRA_SECONDS, 60)
                 val exerciseId = intent.getLongExtra(EXTRA_EXERCISE_ID, -1L)
-                startTimer(seconds, exerciseId)
+                val isRest = intent.getBooleanExtra(EXTRA_IS_REST, true)
+                startTimer(seconds, exerciseId, isRest)
             }
             ACTION_STOP -> stopTimer()
             ACTION_ADD_TIME -> {
                 val additionalSeconds = intent.getIntExtra(EXTRA_ADD_TIME_SECONDS, 0)
                 if (additionalSeconds > 0 && _timerState.value.isRunning) {
                     _timerState.update { it.copy(remainingTime = it.remainingTime + additionalSeconds) }
-                    updateNotification(_timerState.value.remainingTime)
+                    updateNotification(_timerState.value.remainingTime, _timerState.value.isRest)
                 }
             }
         }
         return START_STICKY
     }
 
-    private fun startTimer(durationSeconds: Int, exerciseId: Long) {
+    private fun startTimer(durationSeconds: Int, exerciseId: Long, isRest: Boolean) {
         timerJob?.cancel()
         createNotificationChannel()
 
         timerJob = serviceScope.launch {
-            // Reset state: running = true, hasFinished = false
             _timerState.update {
                 TimerState(
                     isRunning = true,
                     remainingTime = durationSeconds,
                     activeExerciseId = exerciseId,
-                    hasFinished = false
+                    hasFinished = false,
+                    isRest = isRest
                 )
             }
-            startForeground(NOTIFICATION_ID, buildNotification(durationSeconds))
+            startForeground(NOTIFICATION_ID, buildNotification(durationSeconds, isRest))
 
-            // FIX: Loop now reads directly from state, allowing external modifications (like Auto-Regulation)
             while (_timerState.value.remainingTime > 0) {
                 delay(1000L)
-                _timerState.update { it.copy(remainingTime = it.remainingTime - 1) }
-                updateNotification(_timerState.value.remainingTime)
+                val newTime = _timerState.value.remainingTime - 1
+                _timerState.update { it.copy(remainingTime = newTime) }
+                updateNotification(newTime, isRest)
+
+                // Beeps at 3, 2, 1
+                if (newTime in 1..3) {
+                    toneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
+                }
             }
+
+            // Long beep at 0
+            toneGenerator?.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 500)
 
             _timerState.update {
                 it.copy(
@@ -107,10 +131,11 @@ class WorkoutTimerService : Service() {
         stopSelf()
     }
 
-    private fun buildNotification(timeLeft: Int): android.app.Notification {
+    private fun buildNotification(timeLeft: Int, isRest: Boolean): android.app.Notification {
         val minutes = timeLeft / 60
         val seconds = timeLeft % 60
         val timeString = String.format("%02d:%02d", minutes, seconds)
+        val title = if (isRest) "Rest Timer" else "Set Timer"
 
         val openAppIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -121,7 +146,7 @@ class WorkoutTimerService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Rest Timer")
+            .setContentTitle(title)
             .setContentText("Time Remaining: $timeString")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(pendingIntent)
@@ -131,9 +156,9 @@ class WorkoutTimerService : Service() {
             .build()
     }
 
-    private fun updateNotification(timeLeft: Int) {
+    private fun updateNotification(timeLeft: Int, isRest: Boolean) {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(NOTIFICATION_ID, buildNotification(timeLeft))
+        manager.notify(NOTIFICATION_ID, buildNotification(timeLeft, isRest))
     }
 
     private fun createNotificationChannel() {
@@ -151,5 +176,7 @@ class WorkoutTimerService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         serviceScope.cancel()
+        toneGenerator?.release()
+        toneGenerator = null
     }
 }

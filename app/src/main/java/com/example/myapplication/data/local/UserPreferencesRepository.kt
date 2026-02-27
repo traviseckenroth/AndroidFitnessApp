@@ -42,6 +42,8 @@ class UserPreferencesRepository @Inject constructor(
         val AI_DAILY_LIMIT = intPreferencesKey("ai_daily_limit")
         val AI_REQUESTS_TODAY = intPreferencesKey("ai_requests_today")
         val LAST_AI_REQUEST_DATE = stringPreferencesKey("last_ai_request_date")
+
+        val USER_VOICE_SID = intPreferencesKey("user_voice_sid")
     }
 
     val userName: Flow<String> = dataStore.data.map { it[PreferencesKeys.USER_NAME] ?: "User" }
@@ -62,6 +64,8 @@ class UserPreferencesRepository @Inject constructor(
     val excludedEquipment: Flow<Set<String>> = dataStore.data.map { it[PreferencesKeys.EXCLUDED_EQUIPMENT] ?: emptySet() }
 
     val healthConnectOnboardingShown: Flow<Boolean> = dataStore.data.map { it[PreferencesKeys.HEALTH_CONNECT_ONBOARDING_SHOWN] ?: false }
+
+    val userVoiceSid: Flow<Int> = dataStore.data.map { it[PreferencesKeys.USER_VOICE_SID] ?: 0 }
 
     // AI Usage Flows
     val aiDailyLimit: Flow<Int> = dataStore.data.map { it[PreferencesKeys.AI_DAILY_LIMIT] ?: 50 }
@@ -143,6 +147,10 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun setHealthConnectOnboardingShown(shown: Boolean) {
         dataStore.edit { it[PreferencesKeys.HEALTH_CONNECT_ONBOARDING_SHOWN] = shown }
+    }
+
+    suspend fun saveUserVoiceSid(sid: Int) {
+        dataStore.edit { it[PreferencesKeys.USER_VOICE_SID] = sid }
     }
 
     // Helper functions to safely handle type migrations (e.g. Int to Double)

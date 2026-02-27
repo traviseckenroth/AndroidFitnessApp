@@ -32,6 +32,9 @@ interface WorkoutDao {
     @Query("SELECT * FROM exercises WHERE exerciseId IN (:exerciseIds)")
     fun getExercisesByIds(exerciseIds: List<Long>): Flow<List<ExerciseEntity>>
 
+    @Query("SELECT * FROM exercises WHERE exerciseId = :exerciseId")
+    suspend fun getExerciseById(exerciseId: Long): ExerciseEntity?
+
     @Query("SELECT * FROM exercises")
     suspend fun getAllExercisesOneShot(): List<ExerciseEntity>
 
@@ -52,10 +55,21 @@ interface WorkoutDao {
     @Query("SELECT * FROM daily_workouts WHERE workoutId = :workoutId")
     suspend fun getWorkoutById(workoutId: Long): DailyWorkoutEntity?
 
-    @Query("SELECT * FROM daily_workouts WHERE scheduledDate >= :startOfDay AND scheduledDate < :endOfDay LIMIT 1")
+    @Query("""
+        SELECT w.* FROM daily_workouts w
+        INNER JOIN workout_plans p ON w.planId = p.planId
+        WHERE w.scheduledDate >= :startOfDay AND w.scheduledDate < :endOfDay
+        AND (p.isActive = 1 OR w.isCompleted = 1)
+        ORDER BY w.isCompleted DESC, p.isActive DESC
+        LIMIT 1
+    """)
     fun getWorkoutByDate(startOfDay: Long, endOfDay: Long): Flow<DailyWorkoutEntity?>
 
-    @Query("SELECT DISTINCT scheduledDate FROM daily_workouts")
+    @Query("""
+        SELECT DISTINCT w.scheduledDate FROM daily_workouts w
+        INNER JOIN workout_plans p ON w.planId = p.planId
+        WHERE p.isActive = 1 OR w.isCompleted = 1
+    """)
     fun getAllWorkoutDates(): Flow<List<Long>>
 
     @Query("SELECT * FROM workout_sets WHERE workoutId = :workoutId ORDER BY exerciseId, setNumber")

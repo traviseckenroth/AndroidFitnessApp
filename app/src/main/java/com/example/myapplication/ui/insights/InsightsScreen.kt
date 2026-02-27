@@ -1,6 +1,7 @@
 package com.example.myapplication.ui.insights
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,9 +20,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.myapplication.R
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.ui.navigation.Screen
 import java.text.SimpleDateFormat
@@ -58,6 +62,11 @@ fun InsightsScreen(
             }
 
             item { AIStatusCard() }
+            
+            // Muscle Recovery (Moved from Home)
+            item {
+                MuscleRecoveryCard(fatigueMap = state.muscleFatigue)
+            }
 
             // 1. Progress Graph with Quick Tabs
             item {
@@ -310,7 +319,136 @@ fun AIStatusCard() {
     }
 }
 
+@Composable
+fun MuscleRecoveryCard(fatigueMap: Map<String, Float>) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text("Muscle Recovery", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                "Red indicates fatigued muscles. Green indicates fully recovered.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Parse Fatigue Data (Consolidating similar names)
+                val chest = fatigueMap.entries.filter { it.key.contains("chest", true) || it.key.contains("pec", true) }.maxOfOrNull { it.value } ?: 0f
+                val back = fatigueMap.entries.filter { it.key.contains("back", true) || it.key.contains("lat", true) }.maxOfOrNull { it.value } ?: 0f
+                val shoulders = fatigueMap.entries.filter { it.key.contains("shoulder", true) || it.key.contains("delt", true) }.maxOfOrNull { it.value } ?: 0f
+                val arms = fatigueMap.entries.filter { it.key.contains("arm", true) || it.key.contains("bicep", true) || it.key.contains("tricep", true) }.maxOfOrNull { it.value } ?: 0f
+                val core = fatigueMap.entries.filter { it.key.contains("ab", true) || it.key.contains("core", true) }.maxOfOrNull { it.value } ?: 0f
+                val quads = fatigueMap.entries.filter { it.key.contains("quad", true) || it.key.contains("leg", true) }.maxOfOrNull { it.value } ?: 0f
+                val hams = fatigueMap.entries.filter { it.key.contains("ham", true) || it.key.contains("glute", true) }.maxOfOrNull { it.value } ?: 0f
+
+                // Left Labels
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                    FatigueLabel("Shoulders", shoulders)
+                    FatigueLabel("Arms", arms)
+                    FatigueLabel("Quads", quads)
+                }
+
+                // IMAGE-BASED HEATMAP WITH PRECISE OVERLAYS
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.height(240.dp).width(120.dp)
+                ) {
+                    // 1. Draw your uploaded image as the base layer
+                    Image(
+                        painter = painterResource(id = R.drawable.male_body), // Must match your drawable filename
+                        contentDescription = "Human Body Outline",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit
+                    )
+
+                    // 2. Draw localized glowing heat spots OVER the image
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val w = size.width
+                        val h = size.height
+
+                        // Helper function to draw a glowing spot
+                        fun drawHeatSpot(xPercent: Float, yPercent: Float, radiusPercent: Float, fatigue: Float) {
+                            if (fatigue <= 0.05f) return // Don't draw if fully rested to keep UI clean
+
+                            val center = Offset(w * xPercent, h * yPercent)
+                            val radius = w * radiusPercent
+                            val color = androidx.compose.ui.graphics.lerp(Color(0xFF34A853), Color(0xFFEA4335), fatigue)
+
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(color.copy(alpha = 0.7f), Color.Transparent),
+                                    center = center,
+                                    radius = radius
+                                ),
+                                radius = radius,
+                                center = center
+                            )
+                        }
+
+                        // --- COORDINATES ---
+                        // Tweak these xPercent and yPercent values to perfectly align with your specific image!
+
+                        // Chest (Pecs)
+                        drawHeatSpot(0.4f, 0.28f, 0.15f, chest) // Left Pec
+                        drawHeatSpot(0.6f, 0.28f, 0.15f, chest) // Right Pec
+
+                        // Core (Abs)
+                        drawHeatSpot(0.5f, 0.42f, 0.18f, core)
+
+                        // Shoulders (Delts)
+                        drawHeatSpot(0.28f, 0.25f, 0.12f, shoulders) // Left Delt
+                        drawHeatSpot(0.72f, 0.25f, 0.12f, shoulders) // Right Delt
+
+                        // Arms (Biceps/Triceps area)
+                        drawHeatSpot(0.22f, 0.38f, 0.12f, arms) // Left Arm
+                        drawHeatSpot(0.78f, 0.38f, 0.12f, arms) // Right Arm
+
+                        // Legs (Quads)
+                        drawHeatSpot(0.4f, 0.65f, 0.18f, maxOf(quads, hams)) // Left Thigh
+                        drawHeatSpot(0.6f, 0.65f, 0.18f, maxOf(quads, hams)) // Right Thigh
+
+                        // Calves
+                        drawHeatSpot(0.42f, 0.85f, 0.1f, maxOf(quads, hams)) // Left Calf
+                        drawHeatSpot(0.58f, 0.85f, 0.1f, maxOf(quads, hams)) // Right Calf
+                    }
+                }
+
+                // Right Labels
+                Column(horizontalAlignment = Alignment.Start, verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                    FatigueLabel("Chest", chest)
+                    FatigueLabel("Core", core)
+                    FatigueLabel("Back", back)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun FatigueLabel(name: String, fatigue: Float) {
+    val isRecovered = fatigue < 0.3f
+    val color = androidx.compose.ui.graphics.lerp(Color(0xFF34A853), Color(0xFFEA4335), fatigue)
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(name, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        Text(
+            text = if (isRecovered) "Ready" else "Fatigued",
+            style = MaterialTheme.typography.bodySmall,
+            color = color,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
 
 @Composable
 fun InsightCard(title: String, content: @Composable () -> Unit) {

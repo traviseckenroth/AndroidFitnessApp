@@ -32,9 +32,15 @@ class ElevenLabsStreamer @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val client = OkHttpClient()
+    
+    @Volatile
     private var webSocket: WebSocket? = null
     private val apiKey = BuildConfig.ELEVENLABS_API_KEY
-    private val voiceId = "hpp4J3VqNfWAUOO0d1Us"
+    
+    // Eric Voice ID
+    private val voiceId = "xctasy8XvGp2cVO9HL9k" 
+    
+    @Volatile
     private var audioTrack: AudioTrack? = null
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
@@ -42,11 +48,13 @@ class ElevenLabsStreamer @Inject constructor(
     private val audioQueue = Channel<ByteArray>(Channel.UNLIMITED)
     private val sampleRate = 16000
 
+    private var _lastConnectionError: String? = null
+    val lastConnectionError: String? get() = _lastConnectionError
+
     init {
         // Launch a dedicated player coroutine
         scope.launch(Dispatchers.IO) {
             for (chunk in audioQueue) {
-                // Wait for audioTrack to be available
                 var track = audioTrack
                 while (track == null) {
                     delay(50)
@@ -68,17 +76,21 @@ class ElevenLabsStreamer @Inject constructor(
         }
     }
 
+    fun isAvailable(): Boolean {
+        return !apiKey.isNullOrBlank() && apiKey != "null"
+    }
+
     fun connect() {
         if (webSocket != null) return
 
-        if (apiKey.isNullOrBlank() || apiKey == "null") {
-            Log.e("AutoCoach", "ElevenLabsStreamer: API Key is empty!")
+        if (!isAvailable()) {
+            _lastConnectionError = "API Key is missing"
+            Log.e("AutoCoach", "ElevenLabsStreamer: API Key is missing or invalid!")
             return
         }
 
         requestAudioFocus()
 
-        // 1. Setup AudioTrack once if needed
         if (audioTrack == null) {
             val minBufferSize = AudioTrack.getMinBufferSize(
                 sampleRate,
@@ -107,21 +119,22 @@ class ElevenLabsStreamer @Inject constructor(
             audioTrack?.play()
         }
 
-        // 2. Connect to WebSocket
-        val url = "wss://api.elevenlabs.io/v1/text-to-speech/$voiceId/stream-input?model_id=eleven_turbo_v2_5"
+        // FIX: Added output_format=pcm_16000 to the URL query parameters as required by ElevenLabs for PCM streaming
+        val url = "wss://api.elevenlabs.io/v1/text-to-speech/$voiceId/stream-input?model_id=eleven_turbo_v2_5&output_format=pcm_16000"
         Log.d("AutoCoach", "Connecting to ElevenLabs WS: $url")
 
         val request = Request.Builder()
             .url(url)
-            .addHeader("xi-api-key", apiKey)
+            .addHeader("xi-api-key", apiKey.trim())
             .build()
 
+        _lastConnectionError = null
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
+            override fun onOpen(_webSocket: WebSocket, _response: Response) {
                 Log.d("AutoCoach", "ElevenLabs WS Opened")
             }
 
-            override fun onMessage(webSocket: WebSocket, text: String) {
+            override fun onMessage(_webSocket: WebSocket, text: String) {
                 try {
                     val json = JSONObject(text)
                     if (json.has("audio") && !json.isNull("audio")) {
@@ -131,21 +144,19 @@ class ElevenLabsStreamer @Inject constructor(
                             audioQueue.trySend(audioBytes)
                         }
                     }
-
-                    if (json.optBoolean("isFinal", false)) {
-                        Log.d("AutoCoach", "ElevenLabs: Received isFinal flag.")
-                    }
                 } catch (e: Exception) {
                     Log.e("AutoCoach", "ElevenLabs WS Parse Error", e)
                 }
             }
 
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e("AutoCoach", "ElevenLabs WS Failed: ${t.message}")
+            override fun onFailure(_webSocket: WebSocket, t: Throwable, _response: Response?) {
+                val errorMsg = t.message ?: "Unknown WS Error"
+                Log.e("AutoCoach", "ElevenLabs WS Failed: $errorMsg")
+                _lastConnectionError = errorMsg
                 this@ElevenLabsStreamer.webSocket = null
             }
 
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+            override fun onClosed(_webSocket: WebSocket, _code: Int, _reason: String) {
                 Log.d("AutoCoach", "ElevenLabs WS Closed")
                 this@ElevenLabsStreamer.webSocket = null
             }
@@ -164,6 +175,7 @@ class ElevenLabsStreamer @Inject constructor(
                 put("stability", 0.5)
                 put("similarity_boost", 0.75)
             })
+            // output_format should be in URL, but keeping here as well for safety
             put("output_format", "pcm_16000")
         }
         webSocket?.send(initPayload.toString())
@@ -197,7 +209,6 @@ class ElevenLabsStreamer @Inject constructor(
         Log.d("AutoCoach", "ElevenLabs: Flushing text buffer")
         webSocket?.send(JSONObject().apply { put("text", "") }.toString())
         
-        // Wait a bit before closing to allow audio to finish streaming back
         scope.launch {
             delay(2000) 
             webSocket?.close(1000, "Generation complete")
@@ -207,7 +218,6 @@ class ElevenLabsStreamer @Inject constructor(
 
     fun interrupt() {
         Log.d("AutoCoach", "ElevenLabs: Interrupting audio")
-        // Clear the queue to stop pending audio
         while (audioQueue.tryReceive().isSuccess) { }
         audioTrack?.pause()
         audioTrack?.flush()

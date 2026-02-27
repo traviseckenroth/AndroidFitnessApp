@@ -1,6 +1,11 @@
 package com.example.myapplication.ui.navigation
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
@@ -28,6 +33,7 @@ import com.example.myapplication.ui.warmup.WarmUpScreen
 import com.example.myapplication.ui.workout.ActiveSessionViewModel
 import com.example.myapplication.ui.workout.ActiveWorkoutScreen
 import com.example.myapplication.ui.workout.StretchingSessionScreen
+import com.example.myapplication.ui.workout.LiveAutoCoachScreen
 
 @Composable
 fun NavGraph(
@@ -35,13 +41,121 @@ fun NavGraph(
     modifier: Modifier = Modifier,
     planViewModel: PlanViewModel = hiltViewModel()
 ) {
+    fun getNavIndex(route: String?): Int {
+        return when (route) {
+            Screen.Home.route -> 0
+            Screen.Plan.route -> 1
+            Screen.GeneratePlan.route -> 1
+            Screen.Nutrition.route -> 2
+            Screen.Insights.route -> 3
+            Screen.Profile.route -> 4
+            else -> -1
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = Screen.Login.route,
-        modifier = modifier
+        modifier = modifier,
+        enterTransition = {
+            val initialIndex = getNavIndex(initialState.destination.route)
+            val targetIndex = getNavIndex(targetState.destination.route)
+
+            if (initialIndex != -1 && targetIndex != -1) {
+                if (targetIndex > initialIndex) {
+                    slideIntoContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Left,
+                        animationSpec = tween(400)
+                    )
+                } else {
+                    slideIntoContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Right,
+                        animationSpec = tween(400)
+                    )
+                }
+            } else {
+                slideIntoContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Left,
+                    animationSpec = tween(400)
+                ) + fadeIn(animationSpec = tween(400))
+            }
+        },
+        exitTransition = {
+            val initialIndex = getNavIndex(initialState.destination.route)
+            val targetIndex = getNavIndex(targetState.destination.route)
+
+            if (initialIndex != -1 && targetIndex != -1) {
+                if (targetIndex > initialIndex) {
+                    slideOutOfContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Left,
+                        animationSpec = tween(400)
+                    )
+                } else {
+                    slideOutOfContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Right,
+                        animationSpec = tween(400)
+                    )
+                }
+            } else {
+                slideOutOfContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Left,
+                    animationSpec = tween(400)
+                ) + fadeOut(animationSpec = tween(400))
+            }
+        },
+        popEnterTransition = {
+            val initialIndex = getNavIndex(initialState.destination.route)
+            val targetIndex = getNavIndex(targetState.destination.route)
+
+            if (initialIndex != -1 && targetIndex != -1) {
+                if (targetIndex > initialIndex) {
+                    slideIntoContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Left,
+                        animationSpec = tween(400)
+                    )
+                } else {
+                    slideIntoContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Right,
+                        animationSpec = tween(400)
+                    )
+                }
+            } else {
+                slideIntoContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Right,
+                    animationSpec = tween(400)
+                ) + fadeIn(animationSpec = tween(400))
+            }
+        },
+        popExitTransition = {
+            val initialIndex = getNavIndex(initialState.destination.route)
+            val targetIndex = getNavIndex(targetState.destination.route)
+
+            if (initialIndex != -1 && targetIndex != -1) {
+                if (targetIndex > initialIndex) {
+                    slideOutOfContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Left,
+                        animationSpec = tween(400)
+                    )
+                } else {
+                    slideOutOfContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Right,
+                        animationSpec = tween(400)
+                    )
+                }
+            } else {
+                slideOutOfContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Right,
+                    animationSpec = tween(400)
+                ) + fadeOut(animationSpec = tween(400))
+            }
+        }
     ) {
         // --- AUTH ROUTES ---
-        composable("login") {
+        composable(
+            route = "login",
+            enterTransition = { fadeIn(animationSpec = tween(500)) },
+            exitTransition = { fadeOut(animationSpec = tween(500)) }
+        ) {
             LoginScreen(
                 onLoginSuccess = { navController.navigate(Screen.Home.route) { popUpTo("login") { inclusive = true } } },
                 onNavigateToSignUp = { navController.navigate("signup") }
@@ -66,7 +180,6 @@ fun NavGraph(
         ) { backStackEntry ->
             val workoutId = backStackEntry.arguments?.getLong("workoutId") ?: return@composable
 
-            // Redirect to the new Stretching workout file
             StretchingSessionScreen(
                 workoutId = workoutId,
                 onBack = { navController.popBackStack() },
@@ -149,11 +262,9 @@ fun NavGraph(
             arguments = listOf(navArgument("workoutId") { type = NavType.LongType })
         ) { backStackEntry ->
             val workoutId = backStackEntry.arguments?.getLong("workoutId") ?: return@composable
-            val viewModel: ActiveSessionViewModel = hiltViewModel()
 
             ActiveWorkoutScreen(
                 workoutId = workoutId,
-                viewModel = viewModel,
                 onBack = {
                     navController.popBackStack()
                 },
@@ -161,8 +272,51 @@ fun NavGraph(
                     navController.navigate(Screen.WorkoutSummary.createRoute(completedId)) {
                         popUpTo(Screen.Home.route) { inclusive = false }
                     }
+                },
+                onNavigateToLiveCoach = {
+                    navController.navigate(Screen.LiveCoach.route)
                 }
             )
+        }
+
+        composable(
+            route = Screen.LiveCoach.route,
+            enterTransition = {
+                slideIntoContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Up,
+                    animationSpec = tween(400)
+                )
+            },
+            exitTransition = {
+                slideOutOfContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Down,
+                    animationSpec = tween(400)
+                )
+            },
+            popEnterTransition = { fadeIn(animationSpec = tween(400)) },
+            popExitTransition = {
+                slideOutOfContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Down,
+                    animationSpec = tween(400)
+                )
+            }
+        ) {
+            // Safer way to retrieve the shared ViewModel from the previous backstack entry
+            val parentEntry = remember(it) {
+                try {
+                    navController.getBackStackEntry(Screen.ActiveWorkout.route)
+                } catch (e: Exception) {
+                    null
+                }
+            }
+
+            if (parentEntry != null) {
+                val viewModel: ActiveSessionViewModel = hiltViewModel(parentEntry)
+                LiveAutoCoachScreen(
+                    viewModel = viewModel,
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
         }
 
         composable(

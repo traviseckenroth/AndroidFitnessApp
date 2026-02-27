@@ -40,9 +40,10 @@ class ContinuousAudioStreamer @Inject constructor(
     private var streamingJob: Job? = null
 
     // VAD Configuration
-    private val rmsThreshold = 1200.0 // Adjusted for typical speech volume
+    // FIX: Increased RMS threshold to 2500.0 to reduce false interruptions from background gym noise
+    private val rmsThreshold = 2500.0 
     private var lastInterruptionTime = 0L
-    private val interruptionCooldown = 2000L // 2 seconds between interruptions
+    private val interruptionCooldown = 2500L 
 
     @SuppressLint("MissingPermission")
     fun startStreaming() {
@@ -108,10 +109,8 @@ class ContinuousAudioStreamer @Inject constructor(
                 Log.d("AudioStreamer", "VAD: User speech detected (RMS: $rms). Stopping AI.")
                 lastInterruptionTime = currentTime
                 
-                // 1. Immediately shut the AI up
                 voiceManager.stop()
                 
-                // 2. Notify system to handle interruption (e.g. restart STT)
                 scope.launch {
                     _interruptionFlow.emit(Unit)
                 }
