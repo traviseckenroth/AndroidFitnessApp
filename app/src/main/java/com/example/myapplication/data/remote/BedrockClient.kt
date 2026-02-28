@@ -74,7 +74,7 @@ data class GeneratedPlanResponse(
     val explanation: String = "",
     val schedule: List<GeneratedDay> = emptyList(),
     val nutrition: RemoteNutritionPlan? = null,
-    val mesocycleLengthWeeks: Int = 4 
+    val mesocycleLengthWeeks: Int = 4
 )
 
 @Serializable
@@ -264,29 +264,27 @@ class BedrockClient @Inject constructor(
 
             val totalMinutes = (duration * 60).toInt()
 
-            val rawPrompt = promptRepository.getWorkoutSystemPrompt()
-            
-            val systemPrompt = rawPrompt
-                .replace("{userAge}", userAge.toString())
-                .replace("{userHeight}", userHeight.toString())
-                .replace("{userWeight}", userWeight.toString())
-                .replace("{goal}", goal)
-                .replace("{block}", block.toString())
-                .replace("{days}", days.joinToString())
-                .replace("{totalMinutes}", totalMinutes.toString())
-                .replace("{historySummary}", if (historySummary.isBlank()) "No previous history." else historySummary)
-                .replace("{exerciseListString}", exerciseListString)
-                .replace("{tierDefinitions}", tierDefinitions)
-                .replace("{totalMinutesMinus5}", (totalMinutes - 5).toString())
+            // FIX: Ask the PromptRepository to build the complete string safely
+            val systemPrompt = promptRepository.getWorkoutSystemPrompt(
+                goal = goal,
+                programType = programType,
+                days = days,
+                totalMinutes = totalMinutes,
+                userAge = userAge,
+                userHeight = userHeight,
+                userWeight = userWeight,
+                exerciseListString = exerciseListString,
+                historySummary = historySummary
+            )
 
             // Switched to non-streaming invokeClaude as per user request to avoid instability and redundant prompts.
             val cleanJson = invokeClaude(
-                systemPrompt = systemPrompt, 
-                userPrompt = "Generate Block $block plan", 
+                systemPrompt = systemPrompt,
+                userPrompt = "Generate Block $block plan",
                 modelId = CLAUDE_SONNET,
                 thinkingBudget = 4000
             )
-            
+
             Log.d("BedrockClient", "Workout Plan Response: $cleanJson")
 
             jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
@@ -312,7 +310,7 @@ class BedrockClient @Inject constructor(
         val exerciseList = availableExercises.joinToString("\n") { "- ${it.name}" }
 
         val rawPrompt = promptRepository.getCoachInteractionPrompt()
-        
+
         val systemPrompt = rawPrompt
             .replace("{currentWorkout}", currentWorkout)
             .replace("{exerciseList}", exerciseList)
@@ -462,10 +460,10 @@ class BedrockClient @Inject constructor(
         workoutTitle: String? = null
     ): String = withContext(Dispatchers.Default) {
         if (content.isEmpty() && workoutTitle == null) return@withContext "No news yet."
-        
+
         val contentList = content.joinToString("\n") { "- ${it.title}: ${it.summary}" }
         val workoutContext = if (workoutTitle != null) "The user's workout for today is: $workoutTitle." else "No workout scheduled today."
-        
+
         val rawPrompt = promptRepository.getKnowledgeBriefingPrompt()
         val systemPrompt = rawPrompt.replace("{workoutContext}", workoutContext)
 
@@ -481,7 +479,7 @@ class BedrockClient @Inject constructor(
 
     suspend fun extractUserMemory(userSpeech: String): UserMemoryEntity? = withContext(Dispatchers.Default) {
         if (userSpeech.isBlank()) return@withContext null
-        
+
         val systemPrompt = """
             You are a Fitness Memory Assistant. Analyze the user's speech for mentions of:
             1. Pain or injury (Category: 'Pain')
@@ -501,10 +499,10 @@ class BedrockClient @Inject constructor(
         try {
             val cleanJson = invokeClaude(systemPrompt, userSpeech, CLAUDE_HAIKU)
             if (cleanJson == "{}") return@withContext null
-            
+
             val json = JSONObject(cleanJson)
             if (!json.has("category")) return@withContext null
-            
+
             UserMemoryEntity(
                 timestamp = System.currentTimeMillis(),
                 category = json.getString("category"),
@@ -538,7 +536,7 @@ class BedrockClient @Inject constructor(
                 }
             }
         }
-        
+
         if (sanitized.isNotEmpty() && sanitized.last().role != "user") {
             sanitized.add(Message("user", "..."))
         }
@@ -600,8 +598,8 @@ class BedrockClient @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-             Log.e("BedrockClient", "Streaming conversational response failed", e)
-             return@withContext "Keep pushing, you're doing great!"
+            Log.e("BedrockClient", "Streaming conversational response failed", e)
+            return@withContext "Keep pushing, you're doing great!"
         }
         return@withContext fullText.toString()
     }
@@ -612,13 +610,13 @@ class BedrockClient @Inject constructor(
         userMemories: List<UserMemoryEntity>,
         recentFatigueState: String
     ): String = withContext(Dispatchers.Default) {
-        val memoriesList = if (userMemories.isEmpty()) "None recorded." else userMemories.joinToString("\n") { 
-            "- ${it.category}: ${it.note} ${it.exerciseName?.let { name -> "($name)" } ?: ""}" 
+        val memoriesList = if (userMemories.isEmpty()) "None recorded." else userMemories.joinToString("\n") {
+            "- ${it.category}: ${it.note} ${it.exerciseName?.let { name -> "($name)" } ?: ""}"
         }
-        
+
         val workoutContext = if (workoutTitle != null) "The user's workout for today is: $workoutTitle." else "No workout scheduled today."
         val exerciseList = if (exercises.isNotEmpty()) "The planned exercises are: ${exercises.joinToString(", ")}." else ""
-        
+
         val systemPrompt = """
             You are a professional Fitness Auto-Coach. Your goal is to provide a concise (max 3 sentences) pre-workout briefing based strictly on the user data provided.
             
@@ -707,13 +705,13 @@ class BedrockClient @Inject constructor(
     }
 
     private suspend fun invokeClaude(
-        systemPrompt: String, 
-        userPrompt: String, 
-        modelId: String, 
+        systemPrompt: String,
+        userPrompt: String,
+        modelId: String,
         thinkingBudget: Int = 0
     ): String {
         if (userPrompt.isBlank()) return "{}"
-        
+
         var lastError: Exception? = null
         repeat(3) { attempt ->
             try {
@@ -721,12 +719,12 @@ class BedrockClient @Inject constructor(
             } catch (e: Exception) {
                 lastError = e
                 if (e is CancellationException) throw e
-                
-                val isRetryable = e is SSLException || 
-                                 e is IOException || 
-                                 e.message?.contains("Software caused connection abort") == true ||
-                                 e is StreamResetException
-                
+
+                val isRetryable = e is SSLException ||
+                        e is IOException ||
+                        e.message?.contains("Software caused connection abort") == true ||
+                        e is StreamResetException
+
                 if (isRetryable && attempt < 2) {
                     val delayMs = (attempt + 1) * 2000L
                     Log.w("BedrockClient", "InvokeClaude attempt ${attempt + 1} failed, retrying in ${delayMs}ms...", e)
@@ -741,15 +739,16 @@ class BedrockClient @Inject constructor(
     }
 
     private suspend fun doInvokeClaude(
-        systemPrompt: String, 
-        userPrompt: String, 
-        modelId: String, 
+        systemPrompt: String,
+        userPrompt: String,
+        modelId: String,
         thinkingBudget: Int = 0
     ): String {
         Log.d("BedrockClient", "InvokeClaude System Instruction: $systemPrompt")
         enforceLimit()
+        val maxTokensToUse = if (modelId.contains("sonnet", ignoreCase = true)) 8192 else 4096
         val requestBody = ClaudeRequest(
-            max_tokens = 8192 + thinkingBudget,
+            max_tokens = maxTokensToUse,
             system = systemPrompt,
             messages = listOf(Message(role = "user", content = userPrompt)),
             thinking = if (thinkingBudget > 0) ThinkingConfig(budget_tokens = thinkingBudget) else null
@@ -767,7 +766,7 @@ class BedrockClient @Inject constructor(
         val response = client.invokeModel(request)
         val responseBody = response.body?.decodeToString() ?: ""
         val outerResponse = jsonConfig.decodeFromString<ClaudeResponse>(responseBody)
-        
+
         // Log thinking/scratchpad if available in non-streaming response
         outerResponse.content.forEach { block ->
             if (block.thinking != null) {
@@ -776,7 +775,7 @@ class BedrockClient @Inject constructor(
         }
 
         val rawText = outerResponse.content.firstOrNull { it.type == "text" }?.text ?: ""
-        
+
         if (outerResponse.stopReason == "max_tokens") {
             Log.w("BedrockClient", "Model stopped due to max_tokens. Response may be incomplete.")
         }
@@ -800,12 +799,12 @@ class BedrockClient @Inject constructor(
             } catch (e: Exception) {
                 lastError = e
                 if (e is CancellationException) throw e
-                
-                val isRetryable = e is SSLException || 
-                                 e is IOException || 
-                                 e.message?.contains("Software caused connection abort") == true ||
-                                 e is StreamResetException
-                
+
+                val isRetryable = e is SSLException ||
+                        e is IOException ||
+                        e.message?.contains("Software caused connection abort") == true ||
+                        e is StreamResetException
+
                 if (isRetryable && attempt < 2) {
                     val delayMs = (attempt + 1) * 2000L
                     Log.w("BedrockClient", "Streaming attempt ${attempt + 1} failed, retrying in ${delayMs}ms...", e)
@@ -828,9 +827,9 @@ class BedrockClient @Inject constructor(
     ): String {
         Log.d("BedrockClient", "InvokeClaudeStreaming System Instruction: $systemPrompt")
         enforceLimit()
-        
+        val maxTokensToUse = if (modelId.contains("sonnet", ignoreCase = true)) 8192 else 4096
         val requestBody = ClaudeRequest(
-            max_tokens = 8192 + thinkingBudget,
+            max_tokens = maxTokensToUse,
             system = systemPrompt,
             messages = listOf(Message(role = "user", content = userPrompt)),
             thinking = if (thinkingBudget > 0) ThinkingConfig(budget_tokens = thinkingBudget) else null
@@ -858,7 +857,7 @@ class BedrockClient @Inject constructor(
                             when (streamEvent.type) {
                                 "content_block_delta" -> {
                                     streamEvent.delta?.text?.let { fullText.append(it) }
-                                    streamEvent.delta?.thinking?.let { 
+                                    streamEvent.delta?.thinking?.let {
                                         currentThought.append(it)
                                         // Send summarized thought updates
                                         onThoughtReceived(summarizeThinking(currentThought.toString()))
@@ -871,7 +870,7 @@ class BedrockClient @Inject constructor(
                 }
             }
         }
-        
+
         Log.d("BedrockClient", "Claude Scratchpad/Thinking Output: ${currentThought.toString()}")
         val finalJson = extractJsonFromText(fullText.toString())
         return finalJson
@@ -899,11 +898,11 @@ class BedrockClient @Inject constructor(
     private fun extractJsonFromText(text: String): String {
         val start = text.indexOf('{')
         if (start == -1) throw Exception("AI returned invalid format (no opening brace found in response).")
-        
+
         var balance = 0
         var inString = false
         var escaped = false
-        
+
         for (i in start until text.length) {
             val c = text[i]
             if (escaped) {

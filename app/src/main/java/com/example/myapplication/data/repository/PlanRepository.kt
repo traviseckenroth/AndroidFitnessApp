@@ -135,10 +135,60 @@ class PlanRepository @Inject constructor(
                 val setsForThisWorkout = mutableListOf<WorkoutSetEntity>()
 
                 templateDay.exercises.forEach { aiEx ->
-                    val realEx = availableExercises.find { it.name.equals(aiEx.name, ignoreCase = true) }
+                    // FIX: Changed 'val' to 'var' so it can be reassigned when the AI generates a custom AMRAP circuit
+                    var realEx = availableExercises.find { it.name.equals(aiEx.name, ignoreCase = true) }
+
+                    if (realEx == null && (aiEx.isAMRAP || aiEx.isEMOM || aiEx.name.contains(
+                            "AMRAP",
+                            true
+                        ) || aiEx.name.contains("EMOM", true))
+                    ) {
+                        val newExId = workoutDao.insertExercise(
+                            ExerciseEntity(
+                                name = aiEx.name,
+                                muscleGroup = aiEx.muscleGroup ?: "Conditioning",
+                                majorMuscle = aiEx.muscleGroup ?: "Conditioning",
+                                minorMuscle = null,
+                                equipment = aiEx.equipment ?: "Bodyweight",
+                                tier = aiEx.tier,
+                                loadability = aiEx.loadability ?: "Bodyweight",
+                                fatigue = aiEx.fatigue ?: "High",
+                                movementPattern = "Circuit",
+                                localRecoveryHours = 24,
+                                resistanceProfile = "Conditioning",
+                                notes = aiEx.notes,
+                                description = aiEx.notes,
+                                estimatedTimePerSet = aiEx.estimatedTimeMinutes.toDouble()
+                                    .let { if (it > 0) it else 15.0 }
+                            )
+                        )
+                        realEx = ExerciseEntity(
+                            exerciseId = newExId,
+                            name = aiEx.name,
+                            muscleGroup = aiEx.muscleGroup ?: "Conditioning",
+                            majorMuscle = aiEx.muscleGroup ?: "Conditioning",
+                            minorMuscle = null,
+                            equipment = aiEx.equipment ?: "Bodyweight",
+                            tier = aiEx.tier,
+                            loadability = aiEx.loadability ?: "Bodyweight",
+                            fatigue = aiEx.fatigue ?: "High",
+                            movementPattern = "Circuit",
+                            localRecoveryHours = 24,
+                            resistanceProfile = "Conditioning",
+                            notes = aiEx.notes,
+                            description = aiEx.notes,
+                            estimatedTimePerSet = aiEx.estimatedTimeMinutes.toDouble()
+                                .let { if (it > 0) it else 15.0 }
+                        )
+                    }
+
                     realEx?.let { validExercise ->
-                        val finalSets = if (isDeload) (aiEx.sets * 0.6f).roundToInt().coerceAtLeast(2) else aiEx.sets
-                        val finalLbs = if (isDeload) (aiEx.suggestedLbs * 0.7f).toInt() else aiEx.suggestedLbs.toInt()
+                        // NEW LOGIC: Prevent AMRAPs from having their sets manipulated by Deload logic
+                        val finalSets =
+                            if (isDeload && !aiEx.isAMRAP && !aiEx.isEMOM) (aiEx.sets * 0.6f).roundToInt()
+                                .coerceAtLeast(2) else aiEx.sets
+                        val finalLbs =
+                            if (isDeload) (aiEx.suggestedLbs * 0.7f).toInt() else aiEx.suggestedLbs.toInt()
 
                         for (setNum in 1..finalSets) {
                             setsForThisWorkout.add(
@@ -160,6 +210,7 @@ class PlanRepository @Inject constructor(
                 fullPlanData[workoutEntity] = setsForThisWorkout
             }
         }
+
         return workoutDao.saveFullWorkoutPlan(planEntity, fullPlanData)
     }
 

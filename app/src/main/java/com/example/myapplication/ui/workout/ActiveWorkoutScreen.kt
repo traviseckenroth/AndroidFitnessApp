@@ -358,6 +358,12 @@ fun ExerciseCard(
     var showSwapDialog by remember { mutableStateOf(false) }
     var showDescriptionDialog by remember { mutableStateOf(false) }
 
+    // Evaluate if the entire exercise block should be styled for AMRAP/EMOM
+    val isAMRAP = state.sets.any { it.isAMRAP }
+    val isEMOM = state.sets.any { it.isEMOM }
+    val hideLbs = isBodyweight || ((isAMRAP || isEMOM) && state.sets.all { it.suggestedLbs == 0 })
+    val hideRpe = isAMRAP || isEMOM || isBodyweight
+
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -389,6 +395,19 @@ fun ExerciseCard(
                             style = MaterialTheme.typography.labelSmall,
                             color = SecondaryTextColor
                         )
+
+                        if (isAMRAP) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(color = Color(0xFFFF9800).copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {
+                                Text("AMRAP", color = Color(0xFFFF9800), fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal=4.dp, vertical=2.dp))
+                            }
+                        } else if (isEMOM) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(color = Color(0xFFE91E63).copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {
+                                Text("EMOM", color = Color(0xFFE91E63), fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal=4.dp, vertical=2.dp))
+                            }
+                        }
+
                         Spacer(modifier = Modifier.width(8.dp))
                         Surface(
                             shape = RoundedCornerShape(4.dp),
@@ -412,11 +431,25 @@ fun ExerciseCard(
                     modifier = Modifier.clickable { viewModel.toggleExerciseVisibility(exercise.exerciseId) }
                 )
             }
-
+            if ((isAMRAP || isEMOM) && exercise.description.isNotBlank()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    color = Color(0xFFF2F2F7),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = exercise.description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextColor,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
             if (state.areSetsVisible) {
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Table Header
+                // Table Header dynamically adjusted
                 Row(modifier = Modifier.fillMaxWidth()) {
                     val headerStyle = MaterialTheme.typography.labelSmall.copy(
                         color = Color(0xFFC7C7CC),
@@ -424,11 +457,18 @@ fun ExerciseCard(
                         fontSize = 10.sp
                     )
                     Text("SET", modifier = Modifier.weight(0.8f), style = headerStyle, textAlign = TextAlign.Center)
-                    if (!isBodyweight) {
+
+                    if (!hideLbs) {
                         Text("LBS", modifier = Modifier.weight(1.5f), style = headerStyle, textAlign = TextAlign.Center)
                     }
-                    Text("REPS", modifier = Modifier.weight(if (isBodyweight) 2.4f else 1.2f), style = headerStyle, textAlign = TextAlign.Center)
-                    Text("RPE", modifier = Modifier.weight(1f), style = headerStyle, textAlign = TextAlign.Center)
+
+                    val repsWeight = 1.2f + (if (hideLbs) 1.5f else 0f) + (if (hideRpe) 1f else 0f)
+                    Text("REPS", modifier = Modifier.weight(repsWeight), style = headerStyle, textAlign = TextAlign.Center)
+
+                    if (!hideRpe) {
+                        Text("RPE", modifier = Modifier.weight(1f), style = headerStyle, textAlign = TextAlign.Center)
+                    }
+
                     Text("DONE", modifier = Modifier.weight(1f), style = headerStyle, textAlign = TextAlign.Center)
                 }
 
@@ -514,10 +554,11 @@ fun StyledInputBox(
     modifier: Modifier = Modifier,
     textStyle: TextStyle = TextStyle.Default,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
-    keyboardActions: KeyboardActions = KeyboardActions.Default
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    placeholderText: String = value
 ) {
-    var textFieldValueState by remember { 
-        mutableStateOf(TextFieldValue(text = value)) 
+    var textFieldValueState by remember {
+        mutableStateOf(TextFieldValue(text = value))
     }
     var isFocused by remember { mutableStateOf(false) }
     var isStillOriginal by remember { mutableStateOf(true) }
@@ -559,13 +600,13 @@ fun StyledInputBox(
                     }
                 }
             },
-        placeholder = { 
+        placeholder = {
             Text(
-                text = value, 
+                text = placeholderText,
                 style = textStyle.copy(color = textStyle.color.copy(alpha = 0.3f)),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth()
-            ) 
+            )
         },
         textStyle = textStyle.copy(textAlign = TextAlign.Center),
         colors = TextFieldDefaults.colors(
@@ -591,11 +632,15 @@ fun SetRow(
 ) {
     val focusManager = LocalFocusManager.current
     var showPlateCalc by remember { mutableStateOf(false) }
+
     val isBodyweight = exercise.equipment?.contains("Bodyweight", ignoreCase = true) == true
     val isRunning = exercise.name.contains("run", ignoreCase = true) ||
             exercise.name.contains("sprint", ignoreCase = true) ||
             exercise.name.contains("treadmill", ignoreCase = true) ||
             exercise.movementPattern.contains("cardio", ignoreCase = true)
+
+    val hideLbs = isBodyweight || ((set.isAMRAP || set.isEMOM) && set.suggestedLbs == 0)
+    val hideRpe = set.isAMRAP || set.isEMOM || isBodyweight
 
     if (showPlateCalc) {
         PlateCalculatorDialog(
@@ -642,46 +687,9 @@ fun SetRow(
             // Empty space for RPE column to maintain alignment
             Spacer(modifier = Modifier.weight(1f))
 
-        } else if (set.isAMRAP || set.isEMOM) {
-            // --- AMRAP & EMOM UI ---
-            Column(
-                modifier = Modifier.weight(1.5f),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                val badgeColor = if (set.isAMRAP) Color(0xFFFF9800) else Color(0xFFE91E63)
-                val badgeText = if (set.isAMRAP) "AMRAP" else "EMOM"
-                Surface(color = badgeColor.copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {
-                    Text(badgeText, color = badgeColor, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal=6.dp, vertical=2.dp), fontWeight = FontWeight.Bold)
-                }
-                Text(
-                    text = if (isBodyweight) "Bodyweight" else "${set.suggestedLbs} lbs",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = SecondaryTextColor,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
-
-            StyledInputBox(
-                value = (set.actualReps ?: set.suggestedReps).toString(),
-                onValueChange = { viewModel.updateSetReps(set, it) },
-                modifier = Modifier.weight(if (isBodyweight) 2.4f else 1.2f),
-                textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, color = SecondaryTextColor),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
-            )
-
-            StyledInputBox(
-                value = (set.actualRpe?.toInt() ?: set.suggestedRpe).toString(),
-                onValueChange = { viewModel.updateSetRpe(set, it) },
-                modifier = Modifier.weight(1f),
-                textStyle = TextStyle(fontSize = 18.sp, color = Color(0xFFC7C7CC)),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
-            )
-
         } else {
-            // --- STANDARD UI (Untouched) ---
-            if (!isBodyweight) {
+            // --- STANDARD, AMRAP & EMOM UI ---
+            if (!hideLbs) {
                 Row(
                     modifier = Modifier.weight(1.5f),
                     horizontalArrangement = Arrangement.Center,
@@ -709,23 +717,28 @@ fun SetRow(
                 }
             }
 
+            // Reps block scaled to fill missing columns
+            val repsWeight = 1.2f + (if (hideLbs) 1.5f else 0f) + (if (hideRpe) 1f else 0f)
             StyledInputBox(
-                value = (set.actualReps ?: set.suggestedReps).toString(),
+                value = set.actualReps?.toString() ?: "",
                 onValueChange = { viewModel.updateSetReps(set, it) },
-                modifier = Modifier.weight(if (isBodyweight) 2.4f else 1.2f),
+                modifier = Modifier.weight(repsWeight),
                 textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, color = SecondaryTextColor),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                placeholderText = if (set.isAMRAP) "AMRAP" else if (set.isEMOM) "EMOM" else set.suggestedReps.toString()
             )
 
-            StyledInputBox(
-                value = (set.actualRpe?.toInt() ?: set.suggestedRpe).toString(),
-                onValueChange = { viewModel.updateSetRpe(set, it) },
-                modifier = Modifier.weight(1f),
-                textStyle = TextStyle(fontSize = 18.sp, color = Color(0xFFC7C7CC)),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
-            )
+            if (!hideRpe) {
+                StyledInputBox(
+                    value = (set.actualRpe?.toInt() ?: set.suggestedRpe).toString(),
+                    onValueChange = { viewModel.updateSetRpe(set, it) },
+                    modifier = Modifier.weight(1f),
+                    textStyle = TextStyle(fontSize = 18.sp, color = Color(0xFFC7C7CC)),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+                )
+            }
         }
 
         // DONE CHECKBOX (Always visible)
