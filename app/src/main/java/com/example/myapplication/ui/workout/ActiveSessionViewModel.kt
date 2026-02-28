@@ -433,8 +433,13 @@ class ActiveSessionViewModel @Inject constructor(
 
     fun startSetTimer(exerciseId: Long, isRest: Boolean = false) {
         val exerciseState = _exerciseStates.value.find { it.exercise.exerciseId == exerciseId } ?: return
-        val durationSeconds = (exerciseState.exercise.estimatedTimePerSet * 60).toInt()
 
+        val currentSet = exerciseState.sets.firstOrNull { !it.isCompleted }
+        val durationSeconds = if (currentSet?.isEMOM == true && !isRest) {
+            60
+        } else {
+            (exerciseState.exercise.estimatedTimePerSet * 60).toInt()
+        }
         val intent = Intent(application, WorkoutTimerService::class.java).apply {
             action = WorkoutTimerService.ACTION_START
             putExtra(WorkoutTimerService.EXTRA_SECONDS, durationSeconds)
@@ -626,7 +631,9 @@ class ActiveSessionViewModel @Inject constructor(
                                 setNumber = completedCountForThisExercise + setIdx + 1,
                                 suggestedReps = genEx.suggestedReps,
                                 suggestedLbs = genEx.suggestedLbs.toInt(),
-                                suggestedRpe = 8
+                                suggestedRpe = 8,
+                                isAMRAP = genEx.isAMRAP,
+                                isEMOM = genEx.isEMOM
                             )
                         }
                     } else null

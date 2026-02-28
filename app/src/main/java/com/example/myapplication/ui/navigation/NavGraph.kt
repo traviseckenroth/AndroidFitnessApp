@@ -246,7 +246,7 @@ fun NavGraph(
 
         composable("exercise_list") {
             ExerciseListScreen(
-                onBack = { navController.popBackStack() },
+                onNavigateBack = { navController.popBackStack() },
                 onNavigateToExerciseHistory = { exerciseId -> navController.navigate("exercise_history/$exerciseId") }
             )
         }
@@ -265,11 +265,11 @@ fun NavGraph(
 
             ActiveWorkoutScreen(
                 workoutId = workoutId,
-                onBack = {
+                onBack = { // CHANGED from onNavigateBack
                     navController.popBackStack()
                 },
-                onWorkoutComplete = { completedId ->
-                    navController.navigate(Screen.WorkoutSummary.createRoute(completedId)) {
+                onWorkoutComplete = { id -> // CHANGED from onNavigateToSummary
+                    navController.navigate(Screen.WorkoutSummary.createRoute(id)) {
                         popUpTo(Screen.Home.route) { inclusive = false }
                     }
                 },

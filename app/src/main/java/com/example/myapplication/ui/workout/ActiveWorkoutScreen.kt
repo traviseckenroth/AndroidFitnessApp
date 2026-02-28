@@ -340,6 +340,7 @@ fun getTierName(tier: Int): String {
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun ExerciseCard(
     state: ExerciseState,
     viewModel: ActiveSessionViewModel,
@@ -348,6 +349,12 @@ fun ExerciseCard(
 ) {
     val exercise = state.exercise
     val isBodyweight = exercise.equipment?.contains("Bodyweight", ignoreCase = true) == true
+    val isRunning = exercise.name.contains("run", ignoreCase = true) ||
+            exercise.name.contains("sprint", ignoreCase = true) ||
+            exercise.name.contains("treadmill", ignoreCase = true) ||
+            exercise.movementPattern.contains("cardio", ignoreCase = true)
+
+    val allSetsCompleted = state.sets.isNotEmpty() && state.sets.all { it.isCompleted }
     var showSwapDialog by remember { mutableStateOf(false) }
     var showDescriptionDialog by remember { mutableStateOf(false) }
 
@@ -585,6 +592,10 @@ fun SetRow(
     val focusManager = LocalFocusManager.current
     var showPlateCalc by remember { mutableStateOf(false) }
     val isBodyweight = exercise.equipment?.contains("Bodyweight", ignoreCase = true) == true
+    val isRunning = exercise.name.contains("run", ignoreCase = true) ||
+            exercise.name.contains("sprint", ignoreCase = true) ||
+            exercise.name.contains("treadmill", ignoreCase = true) ||
+            exercise.movementPattern.contains("cardio", ignoreCase = true)
 
     if (showPlateCalc) {
         PlateCalculatorDialog(
@@ -595,7 +606,7 @@ fun SetRow(
     }
 
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        // SET
+        // SET NUMBER (Always visible)
         Text(
             text = set.setNumber.toString(),
             modifier = Modifier.weight(0.8f),
@@ -605,56 +616,119 @@ fun SetRow(
             color = TextColor
         )
 
-        // LBS
-        if (!isBodyweight) {
-            Row(
+        // DYNAMIC UI BLOCK
+        if (isRunning) {
+            // --- RUNNING UI ---
+            StyledInputBox(
+                value = set.actualLbs?.let { if (it % 1 == 0f) it.toInt().toString() else it.toString() } ?: "",
+                onValueChange = { viewModel.updateSetWeight(set, it) },
                 modifier = Modifier.weight(1.5f),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val weightStr = set.actualLbs?.let { if (it % 1 == 0f) it.toInt().toString() else it.toString() } ?: set.suggestedLbs.toString()
-                
-                StyledInputBox(
-                    value = weightStr,
-                    onValueChange = { viewModel.updateSetWeight(set, it) },
-                    modifier = Modifier.width(80.dp), // Increased width for triple-digit/double-digit
-                    textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
-                )
+                textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+            )
+            Text(" mi", style = MaterialTheme.typography.labelSmall, color = SecondaryTextColor)
 
-                if (exercise.equipment?.contains("Barbell", ignoreCase = true) == true) {
-                    Icon(
-                        imageVector = Icons.Default.Calculate,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp).clickable { showPlateCalc = true },
-                        tint = Color(0xFFC7C7CC)
+            StyledInputBox(
+                value = (set.actualReps ?: "").toString(),
+                onValueChange = { viewModel.updateSetReps(set, it) },
+                modifier = Modifier.weight(if (isBodyweight) 2.4f else 1.2f),
+                textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, color = SecondaryTextColor),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+            )
+            Text(" min", style = MaterialTheme.typography.labelSmall, color = SecondaryTextColor)
+
+            // Empty space for RPE column to maintain alignment
+            Spacer(modifier = Modifier.weight(1f))
+
+        } else if (set.isAMRAP || set.isEMOM) {
+            // --- AMRAP & EMOM UI ---
+            Column(
+                modifier = Modifier.weight(1.5f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                val badgeColor = if (set.isAMRAP) Color(0xFFFF9800) else Color(0xFFE91E63)
+                val badgeText = if (set.isAMRAP) "AMRAP" else "EMOM"
+                Surface(color = badgeColor.copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {
+                    Text(badgeText, color = badgeColor, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal=6.dp, vertical=2.dp), fontWeight = FontWeight.Bold)
+                }
+                Text(
+                    text = if (isBodyweight) "Bodyweight" else "${set.suggestedLbs} lbs",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SecondaryTextColor,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+
+            StyledInputBox(
+                value = (set.actualReps ?: set.suggestedReps).toString(),
+                onValueChange = { viewModel.updateSetReps(set, it) },
+                modifier = Modifier.weight(if (isBodyweight) 2.4f else 1.2f),
+                textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, color = SecondaryTextColor),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+            )
+
+            StyledInputBox(
+                value = (set.actualRpe?.toInt() ?: set.suggestedRpe).toString(),
+                onValueChange = { viewModel.updateSetRpe(set, it) },
+                modifier = Modifier.weight(1f),
+                textStyle = TextStyle(fontSize = 18.sp, color = Color(0xFFC7C7CC)),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+            )
+
+        } else {
+            // --- STANDARD UI (Untouched) ---
+            if (!isBodyweight) {
+                Row(
+                    modifier = Modifier.weight(1.5f),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val weightStr = set.actualLbs?.let { if (it % 1 == 0f) it.toInt().toString() else it.toString() } ?: set.suggestedLbs.toString()
+
+                    StyledInputBox(
+                        value = weightStr,
+                        onValueChange = { viewModel.updateSetWeight(set, it) },
+                        modifier = Modifier.width(80.dp),
+                        textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
                     )
+
+                    if (exercise.equipment?.contains("Barbell", ignoreCase = true) == true) {
+                        Icon(
+                            imageVector = Icons.Default.Calculate,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp).clickable { showPlateCalc = true },
+                            tint = Color(0xFFC7C7CC)
+                        )
+                    }
                 }
             }
+
+            StyledInputBox(
+                value = (set.actualReps ?: set.suggestedReps).toString(),
+                onValueChange = { viewModel.updateSetReps(set, it) },
+                modifier = Modifier.weight(if (isBodyweight) 2.4f else 1.2f),
+                textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, color = SecondaryTextColor),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+            )
+
+            StyledInputBox(
+                value = (set.actualRpe?.toInt() ?: set.suggestedRpe).toString(),
+                onValueChange = { viewModel.updateSetRpe(set, it) },
+                modifier = Modifier.weight(1f),
+                textStyle = TextStyle(fontSize = 18.sp, color = Color(0xFFC7C7CC)),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+            )
         }
 
-        // REPS
-        StyledInputBox(
-            value = (set.actualReps ?: set.suggestedReps).toString(),
-            onValueChange = { viewModel.updateSetReps(set, it) },
-            modifier = Modifier.weight(if (isBodyweight) 2.4f else 1.2f),
-            textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, color = SecondaryTextColor),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
-        )
-
-        // RPE
-        StyledInputBox(
-            value = (set.actualRpe?.toInt() ?: set.suggestedRpe).toString(),
-            onValueChange = { viewModel.updateSetRpe(set, it) },
-            modifier = Modifier.weight(1f),
-            textStyle = TextStyle(fontSize = 18.sp, color = Color(0xFFC7C7CC)),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
-        )
-
-        // DONE
+        // DONE CHECKBOX (Always visible)
         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
             Box(
                 modifier = Modifier

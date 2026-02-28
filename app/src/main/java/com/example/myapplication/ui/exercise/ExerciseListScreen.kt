@@ -27,7 +27,7 @@ import com.example.myapplication.data.local.ExerciseEntity
 fun ExerciseListScreen(
     viewModel: ExerciseViewModel = hiltViewModel(),
     onNavigateToExerciseHistory: (Long) -> Unit,
-    onBack: () -> Unit
+    onNavigateBack: () -> Unit
 ) {
     val exercises by viewModel.exercises.collectAsState()
 
@@ -36,7 +36,7 @@ fun ExerciseListScreen(
             TopAppBar(
                 title = { Text("Exercises") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back"
