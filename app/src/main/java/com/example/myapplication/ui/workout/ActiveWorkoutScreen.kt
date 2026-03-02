@@ -623,45 +623,16 @@ fun StyledInputBox(
     textStyle: TextStyle = TextStyle.Default,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
-    placeholderText: String = value
+    placeholderText: String = ""
 ) {
-    var textFieldValueState by remember {
-        mutableStateOf(TextFieldValue(text = value))
-    }
-    var isFocused by remember { mutableStateOf(false) }
-
-    // Sync from external value changes (like coach updates) ONLY when not focused
-    LaunchedEffect(value) {
-        if (!isFocused && textFieldValueState.text != value) {
-            textFieldValueState = textFieldValueState.copy(text = value)
-        }
-    }
-
     TextField(
-        value = textFieldValueState,
-        onValueChange = { newValue ->
-            textFieldValueState = newValue
-            onValueChange(newValue.text)
-        },
-        modifier = modifier
-            .height(IntrinsicSize.Min)
-            .onFocusChanged { focusState ->
-                if (focusState.isFocused) {
-                    isFocused = true
-                    // Fade effect: clear the current text state internally so placeholder shows up immediately.
-                    textFieldValueState = TextFieldValue("")
-                } else {
-                    isFocused = false
-                    // Restore value if left empty
-                    if (textFieldValueState.text.isEmpty()) {
-                        textFieldValueState = textFieldValueState.copy(text = value)
-                    }
-                }
-            },
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier.height(IntrinsicSize.Min),
         placeholder = {
             Text(
                 text = placeholderText,
-                style = textStyle.copy(color = textStyle.color.copy(alpha = 0.3f)),
+                style = textStyle.copy(color = textStyle.color.copy(alpha = 0.3f)), // Fades it by 70%
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -724,9 +695,10 @@ fun SetRow(
 
         // DYNAMIC UI BLOCK
         if (isRunning) {
-            // --- RUNNING UI ---
+            val actualWeightStr = set.actualLbs?.let { if (it % 1 == 0f) it.toInt().toString() else it.toString() } ?: ""
             StyledInputBox(
-                value = set.actualLbs?.let { if (it % 1 == 0f) it.toInt().toString() else it.toString() } ?: "",
+                value = actualWeightStr,
+                placeholderText = set.suggestedLbs.toString(),
                 onValueChange = { viewModel.updateSetWeight(set, it) },
                 modifier = Modifier.weight(1.5f),
                 textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray),
@@ -735,8 +707,10 @@ fun SetRow(
             )
             Text(" mi", style = MaterialTheme.typography.labelSmall, color = SecondaryTextColor)
 
+            val actualRepsStr = set.actualReps?.toString() ?: ""
             StyledInputBox(
-                value = (set.actualReps ?: "").toString(),
+                value = actualRepsStr,
+                placeholderText = set.suggestedReps.toString(),
                 onValueChange = { viewModel.updateSetReps(set, it) },
                 modifier = Modifier.weight(if (isBodyweight) 2.4f else 1.2f),
                 textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, color = SecondaryTextColor),
@@ -756,7 +730,7 @@ fun SetRow(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val weightStr = set.actualLbs?.let { if (it % 1 == 0f) it.toInt().toString() else it.toString() } ?: set.suggestedLbs.toString()
+                    val actualWeightStr = set.actualLbs?.let { if (it % 1 == 0f) it.toInt().toString() else it.toString() } ?: ""
 
                     val weightColor = if (set.isAutoAdjusted && set.actualLbs == null) {
                         MaterialTheme.colorScheme.primary // Use your app's primary theme color
@@ -765,13 +739,13 @@ fun SetRow(
                     }
 
                     StyledInputBox(
-                        value = weightStr,
+                        value = actualWeightStr,
+                        placeholderText = set.suggestedLbs.toString(),
                         onValueChange = { viewModel.updateSetWeight(set, it) },
                         modifier = Modifier.width(80.dp),
-                        textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray),
+                        textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = weightColor),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                        placeholderText = weightStr
+                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
                     )
 
                     if (set.isAutoAdjusted && set.actualLbs == null) {
@@ -794,27 +768,31 @@ fun SetRow(
 
             // Reps block scaled to fill missing columns
             val repsWeight = 1.2f + (if (hideLbs) 1.5f else 0f) + (if (hideRpe) 1f else 0f)
+            val actualRepsStr = set.actualReps?.toString() ?: ""
             val repsPlaceholder = if (isCircuit) "Total Score" else set.suggestedReps.toString()
+
             StyledInputBox(
-                value = set.actualReps?.toString() ?: "",
+                value = actualRepsStr,
+                placeholderText = repsPlaceholder,
                 onValueChange = { viewModel.updateSetReps(set, it) },
                 modifier = Modifier.weight(repsWeight),
                 textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, color = SecondaryTextColor),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                placeholderText = repsPlaceholder
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
             )
 
+            // RPE
             if (!hideRpe) {
-                val rpePlaceholder = (set.actualRpe?.toInt() ?: set.suggestedRpe).toString()
+                val actualRpeStr = set.actualRpe?.let { if (it % 1 == 0f) it.toInt().toString() else it.toString() } ?: ""
+
                 StyledInputBox(
-                    value = (set.actualRpe?.toInt() ?: set.suggestedRpe).toString(),
+                    value = actualRpeStr,
+                    placeholderText = set.suggestedRpe.toString(),
                     onValueChange = { viewModel.updateSetRpe(set, it) },
                     modifier = Modifier.weight(1f),
                     textStyle = TextStyle(fontSize = 18.sp, color = Color(0xFFC7C7CC)),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                    placeholderText = rpePlaceholder
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
                 )
             }
         }

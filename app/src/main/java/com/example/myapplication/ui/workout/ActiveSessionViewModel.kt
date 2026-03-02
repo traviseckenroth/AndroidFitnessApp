@@ -178,14 +178,9 @@ class ActiveSessionViewModel @Inject constructor(
             _workoutId.collectLatest { id ->
                 if (id != -1L) {
                     repository.getSetsForSession(id).collect { loadedSets ->
-                        val filledSets = loadedSets.map { set ->
-                            set.copy(
-                                actualReps = if (set.actualReps == null || set.actualReps == 0) set.suggestedReps else set.actualReps,
-                                actualLbs = if (set.actualLbs == null || set.actualLbs == 0f) set.suggestedLbs.toFloat() else set.actualLbs,
-                                actualRpe = if (set.actualRpe == null || set.actualRpe == 0.0f) set.suggestedRpe.toFloat() else set.actualRpe
-                            )
-                        }
-                        _sets.value = filledSets
+                        // FIX: We no longer artificially inject 'actual' values here.
+                        // We let them remain null so the UI knows they haven't been completed yet.
+                        _sets.value = loadedSets
                     }
                 }
             }
@@ -344,22 +339,31 @@ class ActiveSessionViewModel @Inject constructor(
 
     // --- 4. EXERCISE & SET UPDATES ---
 
+    // NEW: Instantly update local flow so the engine never gets state-lagged
+    private fun optimisticUpdate(setId: Long, modifier: (WorkoutSetEntity) -> WorkoutSetEntity) {
+        _sets.value = _sets.value.map { if (it.setId == setId) modifier(it) else it }
+    }
+
     fun updateSetCompletion(set: WorkoutSetEntity, isCompleted: Boolean) {
+        // Grab the absolute latest state from memory so we don't lose newly typed reps!
+        val freshSet = _sets.value.find { it.setId == set.setId } ?: set
+        val completedSet = freshSet.copy(isCompleted = isCompleted)
+
+        optimisticUpdate(set.setId) { completedSet }
+
         viewModelScope.launch {
-            repository.updateSet(set.copy(isCompleted = isCompleted))
+            repository.updateSet(completedSet)
 
             if (isCompleted && isDynamicEnabled.value) {
-                val exercise = _exerciseStates.value.find { it.exercise.exerciseId == set.exerciseId }?.exercise
+                val exercise = _exerciseStates.value.find { it.exercise.exerciseId == completedSet.exerciseId }?.exercise
                 if (exercise != null) {
-                    applyDynamicAutoregulation(set, exercise)
+                    applyDynamicAutoregulation(completedSet, exercise)
                 }
             }
 
             if (isCompleted && autoCoachState.value != AutoCoachState.OFF) {
                 autoCoachEngine.notifySetCompletedManually()
             }
-
-            loadWorkout(set.workoutId)
         }
     }
 
@@ -377,11 +381,16 @@ class ActiveSessionViewModel @Inject constructor(
 
         var loadMultiplier = 1.0f
 
+        // RULE 1: Underperformance
         if (actualReps < completedSet.suggestedReps) {
             loadMultiplier = 0.90f
-        } else if (actualReps == completedSet.suggestedReps && actualRpe >= 10f && targetRpe <= 8f) {
+        } else if (actualReps == completedSet.suggestedReps && actualRpe > targetRpe) {
             loadMultiplier = 0.95f
-        } else if (actualReps > completedSet.suggestedReps || (actualReps == completedSet.suggestedReps && actualRpe <= targetRpe - 2f)) {
+        }
+        // RULE 2: Overperformance
+        else if (actualReps > completedSet.suggestedReps) {
+            loadMultiplier = 1.05f
+        } else if (actualReps == completedSet.suggestedReps && actualRpe <= targetRpe - 2f) {
             loadMultiplier = 1.05f
         }
 
@@ -406,23 +415,26 @@ class ActiveSessionViewModel @Inject constructor(
         }
     }
 
+    // FIX: Bypassing the buggy repository SQL entirely. We update the specific object.
     fun updateSetReps(set: WorkoutSetEntity, newReps: String) {
-        val repsInt = newReps.toIntOrNull() ?: return
-        viewModelScope.launch {
-            repository.updateSetsReps(set.workoutId, set.exerciseId, set.setNumber, repsInt)
-        }
+        val repsInt = newReps.toIntOrNull() // Null if empty string
+        val updatedSet = set.copy(actualReps = repsInt)
+        optimisticUpdate(set.setId) { updatedSet }
+        viewModelScope.launch { repository.updateSet(updatedSet) }
     }
 
     fun updateSetWeight(set: WorkoutSetEntity, newLbs: String) {
-        val lbsFloat = newLbs.toFloatOrNull() ?: return
-        viewModelScope.launch {
-            repository.updateSetsWeight(set.workoutId, set.exerciseId, set.setNumber, lbsFloat)
-        }
+        val lbsFloat = newLbs.toFloatOrNull()
+        val updatedSet = set.copy(actualLbs = lbsFloat)
+        optimisticUpdate(set.setId) { updatedSet }
+        viewModelScope.launch { repository.updateSet(updatedSet) }
     }
 
     fun updateSetRpe(set: WorkoutSetEntity, newRpe: String) {
-        val rpeFloat = newRpe.toFloatOrNull() ?: return
-        viewModelScope.launch { repository.updateSet(set.copy(actualRpe = rpeFloat)) }
+        val rpeFloat = newRpe.toFloatOrNull()
+        val updatedSet = set.copy(actualRpe = rpeFloat)
+        optimisticUpdate(set.setId) { updatedSet }
+        viewModelScope.launch { repository.updateSet(updatedSet) }
     }
 
     fun toggleExerciseVisibility(exerciseId: Long) {
@@ -436,15 +448,11 @@ class ActiveSessionViewModel @Inject constructor(
     }
 
     fun addSet(exerciseId: Long) {
-        viewModelScope.launch {
-            repository.addSet(_workoutId.value, exerciseId)
-        }
+        viewModelScope.launch { repository.addSet(_workoutId.value, exerciseId) }
     }
 
     fun addExercise(exerciseId: Long) {
-        viewModelScope.launch {
-            repository.addExercise(_workoutId.value, exerciseId)
-        }
+        viewModelScope.launch { repository.addExercise(_workoutId.value, exerciseId) }
     }
 
     fun getAllExercises(): Flow<List<ExerciseEntity>> = repository.getAllExercises()
