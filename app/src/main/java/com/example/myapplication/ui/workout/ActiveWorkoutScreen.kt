@@ -60,7 +60,7 @@ import java.util.Locale
 private val BackgroundColor = Color(0xFFF9F9F9)
 private val CardBackgroundColor = Color.White
 private val TextColor = Color.Black
-private val SecondaryTextColor = Color(0xFF8E8E93)
+private val SecondaryTextColor = Color(0xFF8E8E8E)
 private val AccentColor = Color.Black
 private val BorderColor = Color(0xFFE5E5EA)
 
@@ -236,26 +236,14 @@ fun ActiveWorkoutScreen(
                 }
             },
             floatingActionButton = {
-                Column(horizontalAlignment = Alignment.End) {
-                    FloatingActionButton(
-                        onClick = { showAddExerciseDialog = true },
-                        containerColor = Color(0xFF4D4D4D),
-                        contentColor = Color.White,
-                        shape = CircleShape,
-                        modifier = Modifier.size(56.dp)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = "Add Exercise")
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    FloatingActionButton(
-                        onClick = { viewModel.finishWorkout(workoutId) },
-                        containerColor = Color.Black,
-                        contentColor = Color.White,
-                        shape = CircleShape,
-                        modifier = Modifier.size(64.dp)
-                    ) {
-                        Icon(Icons.Default.Check, contentDescription = "Finish Workout")
-                    }
+                FloatingActionButton(
+                    onClick = { showAddExerciseDialog = true },
+                    containerColor = Color(0xFF4D4D4D),
+                    contentColor = Color.White,
+                    shape = CircleShape,
+                    modifier = Modifier.size(56.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add Exercise")
                 }
             }
         ) { innerPadding ->
@@ -282,7 +270,26 @@ fun ActiveWorkoutScreen(
                     )
                 }
 
-                item { Spacer(modifier = Modifier.height(100.dp)) }
+                item {
+                    Button(
+                        onClick = { viewModel.finishWorkout(workoutId) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Black),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Complete Workout",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                item { Spacer(modifier = Modifier.height(32.dp)) }
             }
         }
 
@@ -437,35 +444,65 @@ fun ExerciseCard(
             }
 
             // NEW: Distinct, color-coded Circuit Instructions Box
-            if (isCircuit && exercise.description.isNotBlank()) {
+            // DYNAMIC NOTES & INSTRUCTIONS BOX
+            // Prioritize AI 'notes', fallback to 'description' if notes are empty
+            val displayNotes = exercise.notes?.takeIf { it.isNotBlank() } ?: exercise.description.takeIf { it.isNotBlank() }
+
+            if (!displayNotes.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(12.dp))
-                Surface(
-                    color = if (isAMRAP) Color(0xFFFFF3E0) else Color(0xFFFCE4EC),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Timer,
-                                contentDescription = null,
-                                tint = if (isAMRAP) Color(0xFFFF9800) else Color(0xFFE91E63),
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
+                if (isCircuit) {
+                    // Colored box for AMRAP / EMOM Circuits
+                    Surface(
+                        color = if (isAMRAP) Color(0xFFFFF3E0) else Color(0xFFFCE4EC),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Timer,
+                                    contentDescription = null,
+                                    tint = if (isAMRAP) Color(0xFFFF9800) else Color(0xFFE91E63),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.6.dp))
+                                Text(
+                                    text = if (isAMRAP) "CIRCUIT INSTRUCTIONS" else "EMOM INSTRUCTIONS",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isAMRAP) Color(0xFFFF9800) else Color(0xFFE91E63)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = if (isAMRAP) "CIRCUIT INSTRUCTIONS" else "EMOM INSTRUCTIONS",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isAMRAP) Color(0xFFFF9800) else Color(0xFFE91E63)
+                                text = displayNotes,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextColor
                             )
                         }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = exercise.description,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextColor
-                        )
+                    }
+                } else {
+                    // Clean gray box for standard exercise notes (like "15 minutes steady state...")
+                    Surface(
+                        color = Color(0xFFF2F2F7),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "Notes",
+                                tint = SecondaryTextColor,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = displayNotes,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextColor,
+                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                            )
+                        }
                     }
                 }
             }
@@ -590,43 +627,31 @@ fun StyledInputBox(
         mutableStateOf(TextFieldValue(text = value))
     }
     var isFocused by remember { mutableStateOf(false) }
-    var isStillOriginal by remember { mutableStateOf(true) }
 
     // Sync from external value changes (like coach updates) ONLY when not focused
     LaunchedEffect(value) {
         if (!isFocused && textFieldValueState.text != value) {
             textFieldValueState = textFieldValueState.copy(text = value)
-            isStillOriginal = true
         }
     }
 
-    // Clear value on focus for easy overwrite
-    val displayValue = if (isFocused && isStillOriginal) {
-        TextFieldValue("", selection = TextRange.Zero)
-    } else {
-        textFieldValueState
-    }
-
     TextField(
-        value = displayValue,
+        value = textFieldValueState,
         onValueChange = { newValue ->
             textFieldValueState = newValue
-            isStillOriginal = false
             onValueChange(newValue.text)
         },
         modifier = modifier
             .height(IntrinsicSize.Min)
             .onFocusChanged { focusState ->
+                isFocused = focusState.isFocused
                 if (focusState.isFocused) {
-                    isFocused = true
-                    isStillOriginal = true
-                } else {
-                    isFocused = false
-                    // Restore value if left empty
-                    if (textFieldValueState.text.isEmpty()) {
-                        textFieldValueState = textFieldValueState.copy(text = value)
-                        isStillOriginal = true
-                    }
+                    // Fade effect: we could use a custom text color or placeholder logic
+                    // But standard behavior is usually to clear or select all.
+                    // To "fade", we'll clear the text state internally but keep the placeholder visible.
+                    textFieldValueState = TextFieldValue("")
+                } else if (textFieldValueState.text.isEmpty()) {
+                    textFieldValueState = textFieldValueState.copy(text = value)
                 }
             },
         placeholder = {
@@ -735,7 +760,8 @@ fun SetRow(
                         modifier = Modifier.width(80.dp),
                         textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                        placeholderText = weightStr
                     )
 
                     if (exercise.equipment?.contains("Barbell", ignoreCase = true) == true) {
@@ -751,6 +777,7 @@ fun SetRow(
 
             // Reps block scaled to fill missing columns
             val repsWeight = 1.2f + (if (hideLbs) 1.5f else 0f) + (if (hideRpe) 1f else 0f)
+            val repsPlaceholder = if (isCircuit) "Total Score" else set.suggestedReps.toString()
             StyledInputBox(
                 value = set.actualReps?.toString() ?: "",
                 onValueChange = { viewModel.updateSetReps(set, it) },
@@ -758,18 +785,19 @@ fun SetRow(
                 textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, color = SecondaryTextColor),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                // FIX: Update Placeholder text for Circuits
-                placeholderText = if (isCircuit) "Total Score" else set.suggestedReps.toString()
+                placeholderText = repsPlaceholder
             )
 
             if (!hideRpe) {
+                val rpePlaceholder = (set.actualRpe?.toInt() ?: set.suggestedRpe).toString()
                 StyledInputBox(
                     value = (set.actualRpe?.toInt() ?: set.suggestedRpe).toString(),
                     onValueChange = { viewModel.updateSetRpe(set, it) },
                     modifier = Modifier.weight(1f),
                     textStyle = TextStyle(fontSize = 18.sp, color = Color(0xFFC7C7CC)),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                    placeholderText = rpePlaceholder
                 )
             }
         }

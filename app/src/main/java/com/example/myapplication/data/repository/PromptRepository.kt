@@ -56,12 +56,50 @@ CIRCUIT RULE (MANDATORY FOR BURNOUTS): You MUST output a SINGLE composite exerci
             AVAILABLE EXERCISES: {exerciseListString}
             TRAINING HISTORY: {historySummary}
 
-            *** 6. SCRATCHPAD (MANDATORY) ***
+*** 6. USER CONTEXT ***
+            Age: {userAge} | Ht: {userHeight} in | Wt: {userWeight} lbs | Schedule: {days}
+
+            *** 7. DATA SOURCES ***
+            AVAILABLE EXERCISES: {exerciseListString}
+            TRAINING HISTORY: {historySummary}
+
+            *** 8. MANDATORY REASONING SCRATCHPAD ***
             Output <scratchpad> (max 150 words) verifying volume, time ({totalMinutes}m), and stating which days have burnout circuits.
 
-            *** 7. OUTPUT FORMAT ***
-            Strict JSON only.
-            { "explanation": "...", "mesocycleLengthWeeks": 5, "schedule": [ { "day": "Monday", "workoutName": "...", "exercises": [ { "name": "...", "sets": 4, "suggestedReps": 8, "suggestedLbs": 135.0, "suggestedRpe": 8, "tier": 1, "targetMuscle": "Chest", "isAMRAP": false, "isEMOM": false, "notes": "" } ] } ] }
+            *** 9. STRICT OUTPUT FORMAT & TEMPLATE ***
+            CRITICAL JSON DATA TYPE RULES:
+            - `suggestedReps`, `sets`, and `suggestedRpe` MUST be single, absolute integers.
+            - `suggestedLbs` MUST be a single float.
+            - `tier` MUST be an integer (1, 2, or 3).
+            - `isAMRAP` and `isEMOM` MUST be booleans. Default is false.
+            - CIRCUIT FORMATTING: You MUST follow the CIRCUIT RULE and output the circuit as ONE single exercise object with the 'notes' field containing the workout details. NEVER break a circuit into multiple JSON objects.
+            - ANTI-HALLUCINATION RULE: You MUST ONLY output ONE WEEK of workouts in the `schedule` array. Do NOT output week 2, week 3, etc. My backend handles the block duplication.
+
+            Only after closing the </scratchpad> block, output the final JSON exactly matching this schema:
+            {
+              "explanation": "State the current block goal AND a brief 'Look-Ahead' for the next block. (STRICTLY < 200 chars)",
+              "mesocycleLengthWeeks": 5,
+              "schedule": [
+                {
+                  "day": "Monday",
+                  "workoutName": "Upper Body Power",
+                  "exercises": [
+                    {
+                      "name": "Barbell Bench Press",
+                      "sets": 4,
+                      "suggestedReps": 8,
+                      "suggestedLbs": 135.0,
+                      "suggestedRpe": 8,
+                      "tier": 1,
+                      "targetMuscle": "Chest",
+                      "isAMRAP": false,
+                      "isEMOM": false,
+                      "notes": ""
+                    }
+                  ]
+                }
+              ]
+            }
         """.trimIndent(),
 
         // --- 2. BODY SCULPTING PROMPT ---
@@ -100,16 +138,50 @@ CIRCUIT RULE (MANDATORY FOR HIIT): You MUST output a SINGLE composite exercise o
             *** 5. LOAD ASSIGNMENT ***
             Estimate based on BW ({userWeight} lbs). BW/Cardio = 0.0 lbs.
 
-            USER CONTEXT: Age: {userAge} | Ht: {userHeight} in | Wt: {userWeight} lbs | Schedule: {days}
+ *** 6. USER CONTEXT ***
+            Age: {userAge} | Ht: {userHeight} in | Wt: {userWeight} lbs | Schedule: {days}
+
+            *** 7. DATA SOURCES ***
             AVAILABLE EXERCISES: {exerciseListString}
             TRAINING HISTORY: {historySummary}
 
-            *** 6. SCRATCHPAD (MANDATORY) ***
+            *** 8. MANDATORY REASONING SCRATCHPAD ***
             Output <scratchpad> (max 150 words) verifying volume, time ({totalMinutes}m), and separating your resistance vs. HIIT days.
 
-            *** 7. OUTPUT FORMAT ***
-            Strict JSON only.
-            { "explanation": "...", "mesocycleLengthWeeks": 5, "schedule": [ { "day": "Monday", "workoutName": "...", "exercises": [ { "name": "...", "sets": 4, "suggestedReps": 8, "suggestedLbs": 135.0, "suggestedRpe": 8, "tier": 1, "targetMuscle": "Chest", "isAMRAP": false, "isEMOM": false, "notes": "" } ] } ] }
+            *** 9. STRICT OUTPUT FORMAT & TEMPLATE ***
+            CRITICAL JSON DATA TYPE RULES:
+            - `suggestedReps`, `sets`, and `suggestedRpe` MUST be single, absolute integers.
+            - `suggestedLbs` MUST be a single float.
+            - `tier` MUST be an integer (1, 2, or 3).
+            - `isAMRAP` and `isEMOM` MUST be booleans. Default is false.
+            - CIRCUIT FORMATTING: You MUST follow the CIRCUIT RULE and output the circuit as ONE single exercise object with the 'notes' field containing the workout details. NEVER break a circuit into multiple JSON objects.
+            - ANTI-HALLUCINATION RULE: You MUST ONLY output ONE WEEK of workouts in the `schedule` array. Do NOT output week 2, week 3, etc. My backend handles the block duplication.
+
+            Only after closing the </scratchpad> block, output the final JSON exactly matching this schema:
+            {
+              "explanation": "State the current block goal AND a brief 'Look-Ahead' for the next block. (STRICTLY < 200 chars)",
+              "mesocycleLengthWeeks": 5,
+              "schedule": [
+                {
+                  "day": "Monday",
+                  "workoutName": "Upper Body Power",
+                  "exercises": [
+                    {
+                      "name": "Barbell Bench Press",
+                      "sets": 4,
+                      "suggestedReps": 8,
+                      "suggestedLbs": 135.0,
+                      "suggestedRpe": 8,
+                      "tier": 1,
+                      "targetMuscle": "Chest",
+                      "isAMRAP": false,
+                      "isEMOM": false,
+                      "notes": ""
+                    }
+                  ]
+                }
+              ]
+            }
         """.trimIndent(),
 
         // --- 3. ENDURANCE PROMPT ---
@@ -146,16 +218,50 @@ CIRCUIT RULE (MANDATORY FOR AMRAP/EMOM): You MUST output a SINGLE composite exer
             *** 5. LOAD ASSIGNMENT ***
             Estimate based on BW ({userWeight} lbs). Keep loads lighter for high reps. Cardio = 0.0 lbs.
 
-            USER CONTEXT: Age: {userAge} | Ht: {userHeight} in | Wt: {userWeight} lbs | Schedule: {days}
+*** 6. USER CONTEXT ***
+            Age: {userAge} | Ht: {userHeight} in | Wt: {userWeight} lbs | Schedule: {days}
+
+            *** 7. DATA SOURCES ***
             AVAILABLE EXERCISES: {exerciseListString}
             TRAINING HISTORY: {historySummary}
 
-            *** 6. SCRATCHPAD (MANDATORY) ***
+            *** 8. MANDATORY REASONING SCRATCHPAD ***
             Output <scratchpad> (max 150 words) verifying time ({totalMinutes}m) and circuit structures.
 
-            *** 7. OUTPUT FORMAT ***
-            Strict JSON only.
-            { "explanation": "...", "mesocycleLengthWeeks": 4, "schedule": [ { "day": "Monday", "workoutName": "...", "exercises": [ { "name": "...", "sets": 4, "suggestedReps": 15, "suggestedLbs": 95.0, "suggestedRpe": 7, "tier": 1, "targetMuscle": "Legs", "isAMRAP": false, "isEMOM": false, "notes": "" } ] } ] }
+            *** 9. STRICT OUTPUT FORMAT & TEMPLATE ***
+            CRITICAL JSON DATA TYPE RULES:
+            - `suggestedReps`, `sets`, and `suggestedRpe` MUST be single, absolute integers.
+            - `suggestedLbs` MUST be a single float.
+            - `tier` MUST be an integer (1, 2, or 3).
+            - `isAMRAP` and `isEMOM` MUST be booleans. Default is false.
+            - CIRCUIT FORMATTING: You MUST follow the CIRCUIT RULE and output the circuit as ONE single exercise object with the 'notes' field containing the workout details. NEVER break a circuit into multiple JSON objects.
+            - ANTI-HALLUCINATION RULE: You MUST ONLY output ONE WEEK of workouts in the `schedule` array. Do NOT output week 2, week 3, etc. My backend handles the block duplication.
+
+            Only after closing the </scratchpad> block, output the final JSON exactly matching this schema:
+            {
+              "explanation": "State the current block goal AND a brief 'Look-Ahead' for the next block. (STRICTLY < 200 chars)",
+              "mesocycleLengthWeeks": 4,
+              "schedule": [
+                {
+                  "day": "Monday",
+                  "workoutName": "Endurance Circuit",
+                  "exercises": [
+                    {
+                      "name": "15-Min AMRAP: Triplet",
+                      "sets": 1,
+                      "suggestedReps": 0,
+                      "suggestedLbs": 0.0,
+                      "suggestedRpe": 8,
+                      "tier": 3,
+                      "targetMuscle": "Conditioning",
+                      "isAMRAP": true,
+                      "isEMOM": false,
+                      "notes": "10 Push-ups, 15 Goblet Squats, 20 Twists"
+                    }
+                  ]
+                }
+              ]
+            }
         """.trimIndent(),
 
         // --- 4. STRENGTH PROMPT ---
@@ -185,16 +291,49 @@ CIRCUIT RULE (MANDATORY FOR AMRAP/EMOM): You MUST output a SINGLE composite exer
             *** 5. LOAD ASSIGNMENT ***
             Estimate based on BW ({userWeight} lbs). Tier 1 should be heavy (RPE 8-9).
 
-            USER CONTEXT: Age: {userAge} | Ht: {userHeight} in | Wt: {userWeight} lbs | Schedule: {days}
+            *** 6. USER CONTEXT ***
+            Age: {userAge} | Ht: {userHeight} in | Wt: {userWeight} lbs | Schedule: {days}
+
+            *** 7. DATA SOURCES ***
             AVAILABLE EXERCISES: {exerciseListString}
             TRAINING HISTORY: {historySummary}
 
-            *** 6. SCRATCHPAD (MANDATORY) ***
+            *** 8. MANDATORY REASONING SCRATCHPAD ***
             Output <scratchpad> (max 150 words) verifying time ({totalMinutes}m) and strict strength volume.
 
-            *** 7. OUTPUT FORMAT ***
-            Strict JSON only.
-            { "explanation": "...", "mesocycleLengthWeeks": 5, "schedule": [ { "day": "Monday", "workoutName": "...", "exercises": [ { "name": "...", "sets": 5, "suggestedReps": 3, "suggestedLbs": 225.0, "suggestedRpe": 8, "tier": 1, "targetMuscle": "Legs", "isAMRAP": false, "isEMOM": false, "notes": "" } ] } ] }
+            *** 9. STRICT OUTPUT FORMAT & TEMPLATE ***
+            CRITICAL JSON DATA TYPE RULES:
+            - `suggestedReps`, `sets`, and `suggestedRpe` MUST be single, absolute integers.
+            - `suggestedLbs` MUST be a single float.
+            - `tier` MUST be an integer (1, 2, or 3).
+            - `isAMRAP` and `isEMOM` MUST be booleans. Default is false.
+            - ANTI-HALLUCINATION RULE: You MUST ONLY output ONE WEEK of workouts in the `schedule` array. Do NOT output week 2, week 3, etc. My backend handles the block duplication.
+
+            Only after closing the </scratchpad> block, output the final JSON exactly matching this schema:
+            {
+              "explanation": "State the current block goal AND a brief 'Look-Ahead' for the next block. (STRICTLY < 200 chars)",
+              "mesocycleLengthWeeks": 5,
+              "schedule": [
+                {
+                  "day": "Monday",
+                  "workoutName": "Max Effort Lower",
+                  "exercises": [
+                    {
+                      "name": "Squat (Low Bar)",
+                      "sets": 5,
+                      "suggestedReps": 3,
+                      "suggestedLbs": 225.0,
+                      "suggestedRpe": 8,
+                      "tier": 1,
+                      "targetMuscle": "Legs",
+                      "isAMRAP": false,
+                      "isEMOM": false,
+                      "notes": "Rest 3-5 minutes."
+                    }
+                  ]
+                }
+              ]
+            }
         """.trimIndent(),
 
         // --- 5. GENERAL FITNESS PROMPT ---
@@ -223,16 +362,50 @@ CIRCUIT RULE (MANDATORY FOR AMRAP/EMOM): You MUST output a SINGLE composite exer
             *** 5. LOAD ASSIGNMENT ***
             Estimate based on BW ({userWeight} lbs). Moderate intensity (RPE 7-8). BW/Cardio = 0.0 lbs.
 
-            USER CONTEXT: Age: {userAge} | Ht: {userHeight} in | Wt: {userWeight} lbs | Schedule: {days}
+            *** 6. USER CONTEXT ***
+            Age: {userAge} | Ht: {userHeight} in | Wt: {userWeight} lbs | Schedule: {days}
+
+            *** 7. DATA SOURCES ***
             AVAILABLE EXERCISES: {exerciseListString}
             TRAINING HISTORY: {historySummary}
 
-            *** 6. SCRATCHPAD (MANDATORY) ***
+            *** 8. MANDATORY REASONING SCRATCHPAD ***
             Output <scratchpad> (max 150 words) verifying balanced programming and time ({totalMinutes}m).
 
-            *** 7. OUTPUT FORMAT ***
-            Strict JSON only.
-            { "explanation": "...", "mesocycleLengthWeeks": 4, "schedule": [ { "day": "Monday", "workoutName": "...", "exercises": [ { "name": "...", "sets": 3, "suggestedReps": 10, "suggestedLbs": 135.0, "suggestedRpe": 7, "tier": 1, "targetMuscle": "Chest", "isAMRAP": false, "isEMOM": false, "notes": "" } ] } ] }
+            *** 9. STRICT OUTPUT FORMAT & TEMPLATE ***
+            CRITICAL JSON DATA TYPE RULES:
+            - `suggestedReps`, `sets`, and `suggestedRpe` MUST be single, absolute integers.
+            - `suggestedLbs` MUST be a single float.
+            - `tier` MUST be an integer (1, 2, or 3).
+            - `isAMRAP` and `isEMOM` MUST be booleans. Default is false.
+            - CIRCUIT FORMATTING: You MUST follow the CIRCUIT RULE and output the circuit as ONE single exercise object with the 'notes' field containing the workout details. NEVER break a circuit into multiple JSON objects.
+            - ANTI-HALLUCINATION RULE: You MUST ONLY output ONE WEEK of workouts in the `schedule` array. Do NOT output week 2, week 3, etc. My backend handles the block duplication.
+
+            Only after closing the </scratchpad> block, output the final JSON exactly matching this schema:
+            {
+              "explanation": "State the current block goal AND a brief 'Look-Ahead' for the next block. (STRICTLY < 200 chars)",
+              "mesocycleLengthWeeks": 4,
+              "schedule": [
+                {
+                  "day": "Monday",
+                  "workoutName": "Full Body & Core",
+                  "exercises": [
+                    {
+                      "name": "Goblet Squat",
+                      "sets": 3,
+                      "suggestedReps": 12,
+                      "suggestedLbs": 35.0,
+                      "suggestedRpe": 7,
+                      "tier": 1,
+                      "targetMuscle": "Legs",
+                      "isAMRAP": false,
+                      "isEMOM": false,
+                      "notes": ""
+                    }
+                  ]
+                }
+              ]
+            }
         """.trimIndent(),
 
         // --- OTHER PROMPTS (Unchanged) ---

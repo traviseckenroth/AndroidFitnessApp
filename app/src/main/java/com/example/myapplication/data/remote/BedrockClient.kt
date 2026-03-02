@@ -109,16 +109,7 @@ data class ClaudeRequest(
     val anthropic_version: String = "bedrock-2023-05-31",
     val max_tokens: Int,
     val system: String,
-    val messages: List<Message>,
-    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
-    @EncodeDefault(EncodeDefault.Mode.NEVER)
-    val thinking: ThinkingConfig? = null
-)
-
-@Serializable
-data class ThinkingConfig(
-    val type: String = "enabled",
-    val budget_tokens: Int
+    val messages: List<Message>
 )
 
 @Serializable
@@ -133,8 +124,7 @@ data class ClaudeResponse(
 @Serializable
 data class ContentBlock(
     val type: String = "text",
-    val text: String? = null,
-    val thinking: String? = null
+    val text: String? = null
 )
 
 @Serializable
@@ -156,8 +146,7 @@ data class StreamMessage(
 @Serializable
 data class StreamDelta(
     val type: String? = null,
-    val text: String? = null,
-    val thinking: String? = null
+    val text: String? = null
 )
 
 @Serializable
@@ -181,7 +170,7 @@ private const val tierDefinitions = """
     - Isolation: Isolation/Correctives (Low fatigue, e.g., Curls, Lateral Raises, Face Pulls).
 """
 
-// Model IDs - Using Inference Profiles for Claude 3.x models to support on-demand throughput
+// Model IDs - Using Inference Profiles
 private const val CLAUDE_SONNET = "arn:aws:bedrock:us-east-1:609113669048:inference-profile/us.anthropic.claude-3-7-sonnet-20250219-v1:0"
 private const val CLAUDE_HAIKU = "arn:aws:bedrock:us-east-1:609113669048:inference-profile/us.anthropic.claude-3-haiku-20240307-v1:0"
 
@@ -193,14 +182,15 @@ class BedrockClient @Inject constructor(
     private val userPrefs: UserPreferencesRepository
 ) {
 
-    private val client by lazy {
+    // We use a getter instead of lazy to ensure we always have fresh credentials if needed
+    private fun getClient(): BedrockRuntimeClient {
         val cognitoProvider = CognitoCredentialsProvider(
             authRepository = authRepository,
             identityPoolId = BuildConfig.COGNITO_IDENTITY_POOL_ID,
             region = BuildConfig.AWS_REGION
         )
 
-        BedrockRuntimeClient {
+        return BedrockRuntimeClient {
             region = BuildConfig.AWS_REGION
             credentialsProvider = cognitoProvider
             httpClient = OkHttpEngine {
@@ -276,9 +266,10 @@ class BedrockClient @Inject constructor(
                 historySummary = historySummary
             )
 
+            // NO thinkingBudget. Just a pure prompt request to Claude 3.7.
             val cleanJson = invokeClaude(
                 systemPrompt = systemPrompt,
-                userPrompt = "Generate Block $block plan",
+                userPrompt = "Generate Block $block plan.",
                 modelId = CLAUDE_SONNET
             )
 
@@ -578,7 +569,7 @@ class BedrockClient @Inject constructor(
         val fullText = StringBuilder()
 
         try {
-            client.invokeModelWithResponseStream(request) { response ->
+            getClient().invokeModelWithResponseStream(request) { response ->
                 response.body?.collect { event ->
                     if (event is ResponseStream.Chunk) {
                         val chunkText = event.value.bytes?.decodeToString() ?: ""
@@ -704,29 +695,25 @@ class BedrockClient @Inject constructor(
     private suspend fun invokeClaude(
         systemPrompt: String,
         userPrompt: String,
-        modelId: String,
-        thinkingBudget: Int = 0
+        modelId: String
     ): String {
         if (userPrompt.isBlank()) return "{}"
 
         var lastError: Exception? = null
         repeat(3) { attempt ->
             try {
-                return doInvokeClaude(systemPrompt, userPrompt, modelId, thinkingBudget)
+                return doInvokeClaude(systemPrompt, userPrompt, modelId)
             } catch (e: Exception) {
                 lastError = e
                 if (e is CancellationException) throw e
 
-                // Identify fatal AWS errors that should NOT be retried (e.g. Validation, Auth errors)
                 val errName = e.javaClass.simpleName
-                val isFatalAwsError = errName.contains("Validation") || errName.contains("AccessDenied") || errName.contains("Unrecognized")
+                Log.w("BedrockClient", "InvokeClaude attempt ${attempt + 1} failed: $errName - ${e.message}")
 
-                if (!isFatalAwsError && attempt < 2) {
-                    val delayMs = (attempt + 1) * 2000L
-                    Log.w("BedrockClient", "InvokeClaude attempt ${attempt + 1} failed (${errName}: ${e.message}). Retrying in ${delayMs}ms...", e)
-                    kotlinx.coroutines.delay(delayMs)
+                if (attempt < 2) {
+                    kotlinx.coroutines.delay((attempt + 1) * 2000L)
                 } else {
-                    Log.e("BedrockClient", "InvokeClaude failed completely after ${attempt + 1} attempts. Cause: ${errName} - ${e.message}", e)
+                    Log.e("BedrockClient", "InvokeClaude failed completely after 3 attempts.", e)
                     throw e
                 }
             }
@@ -737,20 +724,19 @@ class BedrockClient @Inject constructor(
     private suspend fun doInvokeClaude(
         systemPrompt: String,
         userPrompt: String,
-        modelId: String,
-        thinkingBudget: Int = 0
+        modelId: String
     ): String {
         Log.d("BedrockClient", "InvokeClaude System Instruction: $systemPrompt")
         enforceLimit()
 
-        // Use 8192 for Sonnet to ensure the massive JSON schedules don't get truncated
+        // FIX: Bump Sonnet back to 8192 to accommodate the massive JSON output.
+        // The previous AWS crash was caused by the 'thinking' block, not this token limit!
         val maxTokensToUse = if (modelId.contains("sonnet", ignoreCase = true)) 8192 else 4096
 
         val requestBody = ClaudeRequest(
             max_tokens = maxTokensToUse,
             system = systemPrompt,
-            messages = listOf(Message(role = "user", content = userPrompt)),
-            thinking = if (thinkingBudget > 0) ThinkingConfig(budget_tokens = thinkingBudget) else null
+            messages = listOf(Message(role = "user", content = userPrompt))
         )
 
         val jsonString = jsonConfig.encodeToString(ClaudeRequest.serializer(), requestBody)
@@ -762,16 +748,11 @@ class BedrockClient @Inject constructor(
             body = jsonString.toByteArray()
         }
 
-        val response = client.invokeModel(request)
+        // Use the getter method so we generate fresh credentials every time
+        val response = getClient().invokeModel(request)
+
         val responseBody = response.body?.decodeToString() ?: ""
         val outerResponse = jsonConfig.decodeFromString<ClaudeResponse>(responseBody)
-
-        // Log thinking/scratchpad if available in non-streaming response
-        outerResponse.content.forEach { block ->
-            if (block.thinking != null) {
-                Log.d("BedrockClient", "Claude Thinking: ${block.thinking}")
-            }
-        }
 
         val rawText = outerResponse.content.firstOrNull { it.type == "text" }?.text ?: ""
 
@@ -780,39 +761,6 @@ class BedrockClient @Inject constructor(
         }
 
         return extractJsonFromText(rawText)
-    }
-
-    private suspend fun invokeClaudeStreaming(
-        systemPrompt: String,
-        userPrompt: String,
-        modelId: String,
-        thinkingBudget: Int = 0,
-        onThoughtReceived: (String) -> Unit = {}
-    ): String {
-        if (userPrompt.isBlank()) return "{}"
-
-        var lastError: Exception? = null
-        repeat(3) { attempt ->
-            try {
-                return doInvokeClaudeStreaming(systemPrompt, userPrompt, modelId, thinkingBudget, onThoughtReceived)
-            } catch (e: Exception) {
-                lastError = e
-                if (e is CancellationException) throw e
-
-                val errName = e.javaClass.simpleName
-                val isFatalAwsError = errName.contains("Validation") || errName.contains("AccessDenied") || errName.contains("Unrecognized")
-
-                if (!isFatalAwsError && attempt < 2) {
-                    val delayMs = (attempt + 1) * 2000L
-                    Log.w("BedrockClient", "Streaming attempt ${attempt + 1} failed (${errName}: ${e.message}). Retrying in ${delayMs}ms...", e)
-                    kotlinx.coroutines.delay(delayMs)
-                } else {
-                    Log.e("BedrockClient", "Streaming request failed completely after ${attempt + 1} attempts. Cause: ${errName} - ${e.message}", e)
-                    throw e
-                }
-            }
-        }
-        throw lastError ?: Exception("Unknown streaming error")
     }
 
     private suspend fun doInvokeClaudeStreaming(
@@ -825,14 +773,10 @@ class BedrockClient @Inject constructor(
         Log.d("BedrockClient", "InvokeClaudeStreaming System Instruction: $systemPrompt")
         enforceLimit()
 
-        // Safely assign token limits for streaming as well
-        val maxTokensToUse = if (modelId.contains("sonnet", ignoreCase = true)) 8192 else 4096
-
         val requestBody = ClaudeRequest(
-            max_tokens = maxTokensToUse,
+            max_tokens = 4096,
             system = systemPrompt,
-            messages = listOf(Message(role = "user", content = userPrompt)),
-            thinking = if (thinkingBudget > 0) ThinkingConfig(budget_tokens = thinkingBudget) else null
+            messages = listOf(Message(role = "user", content = userPrompt))
         )
 
         val jsonString = jsonConfig.encodeToString(ClaudeRequest.serializer(), requestBody)
@@ -845,9 +789,8 @@ class BedrockClient @Inject constructor(
         }
 
         val fullText = StringBuilder()
-        var currentThought = StringBuilder()
 
-        client.invokeModelWithResponseStream(request) { response ->
+        getClient().invokeModelWithResponseStream(request) { response ->
             response.body?.collect { event ->
                 when (event) {
                     is ResponseStream.Chunk -> {
@@ -857,11 +800,6 @@ class BedrockClient @Inject constructor(
                             when (streamEvent.type) {
                                 "content_block_delta" -> {
                                     streamEvent.delta?.text?.let { fullText.append(it) }
-                                    streamEvent.delta?.thinking?.let {
-                                        currentThought.append(it)
-                                        // Send summarized thought updates
-                                        onThoughtReceived(summarizeThinking(currentThought.toString()))
-                                    }
                                 }
                             }
                         } catch (e: Exception) {}
@@ -871,7 +809,6 @@ class BedrockClient @Inject constructor(
             }
         }
 
-        Log.d("BedrockClient", "Claude Scratchpad/Thinking Output: ${currentThought.toString()}")
         val finalJson = extractJsonFromText(fullText.toString())
         return finalJson
     }

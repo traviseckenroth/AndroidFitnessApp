@@ -53,7 +53,9 @@ class WorkoutTimerService : Service() {
     override fun onCreate() {
         super.onCreate()
         try {
-            toneGenerator = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
+            // Using STREAM_MUSIC ensures the beeps are heard even if notifications are silenced,
+            // which is common during workouts with music/headphones.
+            toneGenerator = ToneGenerator(AudioManager.STREAM_MUSIC, 100)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -103,13 +105,14 @@ class WorkoutTimerService : Service() {
                 _timerState.update { it.copy(remainingTime = newTime) }
                 updateNotification(newTime, isRest)
 
-                // Beeps at 3, 2, 1
+                // Beeps at 3, 2, 1 to prepare the user.
+                // We always play these beats regardless of isRest to ensure the user is alerted.
                 if (newTime in 1..3) {
                     toneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
                 }
             }
 
-            // Long beep at 0
+            // Final distinct long beep at 0.
             toneGenerator?.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 500)
 
             _timerState.update {
