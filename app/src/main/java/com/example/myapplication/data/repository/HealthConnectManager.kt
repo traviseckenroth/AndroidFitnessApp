@@ -99,22 +99,20 @@ class HealthConnectManager @Inject constructor(
 
     suspend fun getLatestHeight(): Double? {
         val client = healthConnectClient ?: return null
-        val granted = client.permissionController.getGrantedPermissions()
-        if (!granted.contains(HealthPermission.getReadPermission(HeightRecord::class))) {
-            Log.w("HealthConnect", "getLatestHeight: Permission missing")
-            return null
-        }
         return try {
+            // Using a broader time range and logging all records found
             val request = ReadRecordsRequest(
                 recordType = HeightRecord::class,
-                timeRangeFilter = TimeRangeFilter.between(Instant.EPOCH, Instant.now().plus(Duration.ofDays(1))),
-                ascendingOrder = false
+                timeRangeFilter = TimeRangeFilter.after(Instant.EPOCH),
+                ascendingOrder = false,
+                pageSize = 5
             )
             val response = client.readRecords(request)
-            val record = response.records.firstOrNull()
-            val height = record?.height?.inInches
-            Log.d("HealthConnect", "getLatestHeight: Found ${response.records.size} total records. Latest: $height inches at ${record?.time}")
-            height
+            Log.d("HealthConnect", "getLatestHeight: Found ${response.records.size} records")
+            response.records.forEach { Log.d("HealthConnect", "Height record: ${it.height.inInches} inches at ${it.time}") }
+
+            val weight = response.records.firstOrNull()?.height?.inInches
+            weight
         } catch (e: Exception) {
             Log.e("HealthConnect", "Error reading height", e)
             null
@@ -122,25 +120,41 @@ class HealthConnectManager @Inject constructor(
     }
 
     suspend fun getLatestWeight(): Double? {
-        val client = healthConnectClient ?: return null
-        val granted = client.permissionController.getGrantedPermissions()
-        if (!granted.contains(HealthPermission.getReadPermission(WeightRecord::class))) {
-            Log.w("HealthConnect", "getLatestWeight: Permission missing")
+        val client = healthConnectClient ?: run {
+            Log.e("HealthConnect", "getLatestWeight: healthConnectClient is NULL")
             return null
         }
+
         return try {
+            // 1. Explicitly check permission for Weight
+            val granted = client.permissionController.getGrantedPermissions()
+            val weightReadPermission = HealthPermission.getReadPermission(WeightRecord::class)
+            Log.d("HealthConnect", "getLatestWeight: Checking permission $weightReadPermission. Granted: ${granted.contains(weightReadPermission)}")
+
+            if (!granted.contains(weightReadPermission)) {
+                Log.e("HealthConnect", "getLatestWeight: Weight read permission NOT granted according to SDK")
+                return null
+            }
+
+            // 2. Query with after(EPOCH) which is standard for "all data"
             val request = ReadRecordsRequest(
                 recordType = WeightRecord::class,
-                timeRangeFilter = TimeRangeFilter.between(Instant.EPOCH, Instant.now().plus(Duration.ofDays(1))),
-                ascendingOrder = false
+                timeRangeFilter = TimeRangeFilter.after(Instant.EPOCH),
+                ascendingOrder = false,
+                pageSize = 10
             )
             val response = client.readRecords(request)
-            val record = response.records.firstOrNull()
-            val weight = record?.weight?.inPounds
-            Log.d("HealthConnect", "getLatestWeight: Found ${response.records.size} total records. Latest: $weight lbs at ${record?.time}")
+            Log.d("HealthConnect", "getLatestWeight: Found ${response.records.size} records")
+
+            response.records.forEach { record ->
+                Log.d("HealthConnect", "getLatestWeight: Found record: ${record.weight.inPounds} lbs at ${record.time} from ${record.metadata.dataOrigin.packageName}")
+            }
+
+            val weight = response.records.firstOrNull()?.weight?.inPounds
+            Log.d("HealthConnect", "getLatestWeight: Returning $weight lbs")
             weight
         } catch (e: Exception) {
-            Log.e("HealthConnect", "Error reading weight", e)
+            Log.e("HealthConnect", "getLatestWeight: SDK Error", e)
             null
         }
     }
