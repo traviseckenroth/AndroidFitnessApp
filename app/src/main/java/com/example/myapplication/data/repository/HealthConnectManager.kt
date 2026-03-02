@@ -20,6 +20,9 @@ import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
@@ -44,6 +47,9 @@ class HealthConnectManager @Inject constructor(
         }
     }
 
+    private val _isAuthorized = MutableStateFlow(false)
+    val isAuthorized: StateFlow<Boolean> = _isAuthorized.asStateFlow()
+
     // Updated permissions for Bio-Syncing
     val permissions = setOf(
         HealthPermission.getWritePermission(ExerciseSessionRecord::class),
@@ -57,7 +63,9 @@ class HealthConnectManager @Inject constructor(
     )
 
     suspend fun hasPermissions(): Boolean {
-        return healthConnectClient?.permissionController?.getGrantedPermissions()?.containsAll(permissions) == true
+        val authorized = healthConnectClient?.permissionController?.getGrantedPermissions()?.containsAll(permissions) == true
+        _isAuthorized.value = authorized
+        return authorized
     }
 
     fun promptInstall() {
@@ -90,21 +98,22 @@ class HealthConnectManager @Inject constructor(
     }
 
     suspend fun getLatestHeight(): Double? {
-        if (healthConnectClient == null || !hasPermissions()) {
-            Log.w("HealthConnect", "getLatestHeight: Client null or permissions missing")
+        val client = healthConnectClient ?: return null
+        val granted = client.permissionController.getGrantedPermissions()
+        if (!granted.contains(HealthPermission.getReadPermission(HeightRecord::class))) {
+            Log.w("HealthConnect", "getLatestHeight: Permission missing")
             return null
         }
         return try {
             val request = ReadRecordsRequest(
                 recordType = HeightRecord::class,
-                timeRangeFilter = TimeRangeFilter.before(Instant.now()),
-                ascendingOrder = false,
-                pageSize = 1
+                timeRangeFilter = TimeRangeFilter.between(Instant.EPOCH, Instant.now().plus(Duration.ofDays(1))),
+                ascendingOrder = false
             )
-            val response = healthConnectClient?.readRecords(request)
-            val record = response?.records?.firstOrNull()
+            val response = client.readRecords(request)
+            val record = response.records.firstOrNull()
             val height = record?.height?.inInches
-            Log.d("HealthConnect", "getLatestHeight: Found ${response?.records?.size} records. Latest: $height inches (Time: ${record?.time})")
+            Log.d("HealthConnect", "getLatestHeight: Found ${response.records.size} total records. Latest: $height inches at ${record?.time}")
             height
         } catch (e: Exception) {
             Log.e("HealthConnect", "Error reading height", e)
@@ -113,21 +122,22 @@ class HealthConnectManager @Inject constructor(
     }
 
     suspend fun getLatestWeight(): Double? {
-        if (healthConnectClient == null || !hasPermissions()) {
-            Log.w("HealthConnect", "getLatestWeight: Client null or permissions missing")
+        val client = healthConnectClient ?: return null
+        val granted = client.permissionController.getGrantedPermissions()
+        if (!granted.contains(HealthPermission.getReadPermission(WeightRecord::class))) {
+            Log.w("HealthConnect", "getLatestWeight: Permission missing")
             return null
         }
         return try {
             val request = ReadRecordsRequest(
                 recordType = WeightRecord::class,
-                timeRangeFilter = TimeRangeFilter.before(Instant.now()),
-                ascendingOrder = false,
-                pageSize = 1
+                timeRangeFilter = TimeRangeFilter.between(Instant.EPOCH, Instant.now().plus(Duration.ofDays(1))),
+                ascendingOrder = false
             )
-            val response = healthConnectClient?.readRecords(request)
-            val record = response?.records?.firstOrNull()
+            val response = client.readRecords(request)
+            val record = response.records.firstOrNull()
             val weight = record?.weight?.inPounds
-            Log.d("HealthConnect", "getLatestWeight: Found ${response?.records?.size} records. Latest: $weight lbs (Time: ${record?.time})")
+            Log.d("HealthConnect", "getLatestWeight: Found ${response.records.size} total records. Latest: $weight lbs at ${record?.time}")
             weight
         } catch (e: Exception) {
             Log.e("HealthConnect", "Error reading weight", e)

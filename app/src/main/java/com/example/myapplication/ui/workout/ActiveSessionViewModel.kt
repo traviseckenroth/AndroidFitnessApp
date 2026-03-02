@@ -77,6 +77,9 @@ class ActiveSessionViewModel @Inject constructor(
 
     // --- 1. STATE PROPERTIES ---
 
+    private val isDynamicEnabled = userPrefs.isDynamicAutoregEnabled
+        .stateIn(viewModelScope, SharingStarted.Lazily, true)
+
     private val _workoutId = MutableStateFlow<Long>(-1)
     private val _sets = MutableStateFlow<List<WorkoutSetEntity>>(emptyList())
     private val _exercises = MutableStateFlow<List<ExerciseEntity>>(emptyList())
@@ -102,13 +105,11 @@ class ActiveSessionViewModel @Inject constructor(
     )
     val chatHistory: StateFlow<List<ChatMessage>> = _chatHistory
 
-    // FIXED: Properly wired hardware states without naming conflicts
     val isListening: StateFlow<Boolean> = sttManager.isListening
     val partialTranscript: StateFlow<String> = sttManager.partialTranscript
 
     val autoCoachState: StateFlow<AutoCoachState> = autoCoachEngine.state
 
-    // BLE Heart Rate
     val heartRate: StateFlow<Int> = bleHeartRateManager.heartRate
     val isBleConnected: StateFlow<Boolean> = bleHeartRateManager.isConnected
     val foundBleDevices: StateFlow<List<BluetoothDevice>> = bleHeartRateManager.foundDevices
@@ -120,7 +121,6 @@ class ActiveSessionViewModel @Inject constructor(
     private var transcribeJob: Job? = null
     private var briefingJob: Job? = null
 
-    // Optimistic Estimated Time calculation
     val totalEstimatedTime: StateFlow<Int> = _exerciseStates.map { states ->
         states.sumOf { (it.exercise.estimatedTimePerSet * it.sets.size).toInt() }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
@@ -130,7 +130,6 @@ class ActiveSessionViewModel @Inject constructor(
     init {
         workoutStartTime = Instant.now()
 
-        // Sync with Health Connect on start for Bio-Syncing
         viewModelScope.launch {
             if (healthConnectManager.hasPermissions()) {
                 val sleepDuration = healthConnectManager.getLastNightSleepDuration()
@@ -138,25 +137,21 @@ class ActiveSessionViewModel @Inject constructor(
                 if (sleepHours > 0) {
                     val recoveryScore = ((sleepHours / 8.0) * 100).toInt().coerceIn(0, 100)
                     userPrefs.updateRecoveryScore(recoveryScore)
-                    Log.d("ActiveSessionVM", "Bio-Sync: Sleep=$sleepHours hrs, Updated Recovery=$recoveryScore%")
                 }
             }
         }
 
-        // Sync Readiness Engine to Preferences
         viewModelScope.launch {
             val formaScore = readinessEngine.calculateReadiness()
             userPrefs.updateRecoveryScore(formaScore.score)
         }
 
-        // Sync Voice Preference
         viewModelScope.launch {
             userPrefs.userVoiceSid.collect { sid ->
                 setCoachVoice(sid)
             }
         }
 
-        // Sync with Timer Service
         viewModelScope.launch {
             WorkoutTimerService.timerState.collect { serviceState ->
                 updateLocalTimerState(
@@ -179,7 +174,6 @@ class ActiveSessionViewModel @Inject constructor(
             }
         }
 
-        // Fetch Sets when ID changes
         viewModelScope.launch {
             _workoutId.collectLatest { id ->
                 if (id != -1L) {
@@ -197,7 +191,6 @@ class ActiveSessionViewModel @Inject constructor(
             }
         }
 
-        // Fetch Exercises when Sets change
         viewModelScope.launch {
             _sets.collectLatest { sets ->
                 if (sets.isNotEmpty()) {
@@ -211,7 +204,6 @@ class ActiveSessionViewModel @Inject constructor(
             }
         }
 
-        // Construct UI State (Unified Logic)
         viewModelScope.launch {
             combine(
                 _exercises,
@@ -228,13 +220,10 @@ class ActiveSessionViewModel @Inject constructor(
                 val sessionExercises = allExercises
                     .filter { it.exerciseId in sessionExerciseIds }
                     .sortedWith(
-                        // FIXED: Barbell Compound exercises always first.
-                        // Order: Tier 1 Barbell -> Tier 1 Other -> Tier 2 -> Tier 3
                         compareBy<ExerciseEntity> { it.tier }
                             .thenByDescending { it.equipment?.contains("Barbell", ignoreCase = true) == true }
                     )
 
-                // Dynamic Pre-Workout Briefing Loop
                 if (sessionExercises.isNotEmpty() && _coachBriefing.value == "Loading briefing...") {
                     triggerCloudBriefing(recovery, sessionExercises)
                 }
@@ -274,18 +263,12 @@ class ActiveSessionViewModel @Inject constructor(
             }
         }
 
-        // Full Duplex Interruption Logic
         viewModelScope.launch {
             audioStreamer.interruptionFlow.collect {
                 if (isListening.value) {
-                    Log.d("FullDuplex", "Interruption detected.")
-
-                    // 1. SHUT THE AI UP IMMEDIATELY
                     voiceManager.stop()
                     nativeAutoCoachVoice.shutdown()
                     autoCoachEngine.interrupt()
-
-                    // 2. LISTEN TO THE USER
                     startLiveTranscription()
                 }
             }
@@ -313,7 +296,6 @@ class ActiveSessionViewModel @Inject constructor(
                 )
                 _coachBriefing.value = script
             } catch (e: Exception) {
-                Log.e("Briefing", "Failed to generate dynamic script", e)
                 _coachBriefing.value = "Let's have a great workout today!"
             }
         }
@@ -353,7 +335,6 @@ class ActiveSessionViewModel @Inject constructor(
                 .build()
 
             WorkManager.getInstance(application).enqueue(syncRequest)
-            Log.d("Workout", "Enqueued background sync for workout $workoutId")
         }
     }
 
@@ -367,8 +348,60 @@ class ActiveSessionViewModel @Inject constructor(
         viewModelScope.launch {
             repository.updateSet(set.copy(isCompleted = isCompleted))
 
+            if (isCompleted && isDynamicEnabled.value) {
+                val exercise = _exerciseStates.value.find { it.exercise.exerciseId == set.exerciseId }?.exercise
+                if (exercise != null) {
+                    applyDynamicAutoregulation(set, exercise)
+                }
+            }
+
             if (isCompleted && autoCoachState.value != AutoCoachState.OFF) {
                 autoCoachEngine.notifySetCompletedManually()
+            }
+
+            loadWorkout(set.workoutId)
+        }
+    }
+
+    private suspend fun applyDynamicAutoregulation(completedSet: WorkoutSetEntity, exercise: ExerciseEntity) {
+        val isBodyweight = exercise.equipment?.contains("Bodyweight", true) == true
+        val isCircuit = completedSet.isAMRAP || completedSet.isEMOM || exercise.name.contains("AMRAP", true)
+
+        val suggestedLbsFloat = completedSet.suggestedLbs.toFloat()
+        if (isBodyweight || isCircuit || suggestedLbsFloat <= 0f) return
+
+        val actualReps = completedSet.actualReps ?: completedSet.suggestedReps
+        val actualLbs = completedSet.actualLbs?.toFloat() ?: suggestedLbsFloat
+        val actualRpe = completedSet.actualRpe?.toFloat() ?: completedSet.suggestedRpe.toFloat()
+        val targetRpe = completedSet.suggestedRpe.toFloat()
+
+        var loadMultiplier = 1.0f
+
+        if (actualReps < completedSet.suggestedReps) {
+            loadMultiplier = 0.90f
+        } else if (actualReps == completedSet.suggestedReps && actualRpe >= 10f && targetRpe <= 8f) {
+            loadMultiplier = 0.95f
+        } else if (actualReps > completedSet.suggestedReps || (actualReps == completedSet.suggestedReps && actualRpe <= targetRpe - 2f)) {
+            loadMultiplier = 1.05f
+        }
+
+        if (loadMultiplier == 1.0f) return
+
+        val newSuggestedLbs = (Math.round((actualLbs * loadMultiplier) / 5.0) * 5).toInt().coerceAtLeast(0)
+
+        val currentState = _exerciseStates.value.find { it.exercise.exerciseId == exercise.exerciseId }
+        currentState?.let { state ->
+            val uncompletedSets = state.sets.filter { !it.isCompleted && it.setNumber > completedSet.setNumber }
+
+            uncompletedSets.forEach { futureSet ->
+                if (futureSet.suggestedLbs != newSuggestedLbs) {
+                    repository.updateSet(
+                        futureSet.copy(
+                            suggestedLbs = newSuggestedLbs,
+                            isAutoAdjusted = true
+                        )
+                    )
+                }
             }
         }
     }
@@ -476,8 +509,6 @@ class ActiveSessionViewModel @Inject constructor(
                 ))
             } else {
                 val defaultDuration = (state.exercise.estimatedTimePerSet * 60).toLong()
-                // Optimization: Only update if the timer state actually needs resetting
-                // This prevents recreating ExerciseState for inactive exercises on every tick
                 val newTimerState = ExerciseTimerState(
                     remainingTime = defaultDuration,
                     isRunning = false,
@@ -555,7 +586,6 @@ class ActiveSessionViewModel @Inject constructor(
         currentHistory.add(ChatMessage("User", userText))
         _chatHistory.value = currentHistory
 
-        // --- RAG Memory extraction ---
         viewModelScope.launch {
             try {
                 val memory = bedrockClient.extractUserMemory(userText)
@@ -574,10 +604,8 @@ class ActiveSessionViewModel @Inject constructor(
                 transcribeJob?.cancel()
             }
 
-            // --- LOCAL INTENT INTERCEPTION ---
             if (handleLocalIntent(userText)) return@launch
 
-            // --- CLOUD AI FALLBACK ---
             val currentExercisesList = _exerciseStates.value.filter {
                 it.sets.any { set -> !set.isCompleted }
             }.map { it.exercise.name }
@@ -649,14 +677,12 @@ class ActiveSessionViewModel @Inject constructor(
     private suspend fun handleLocalIntent(userText: String): Boolean {
         val lowerText = userText.lowercase()
 
-        // 0. Clear Memory Intent
         if (lowerText.contains("clear coach memory") || lowerText.contains("reset coach memory") || lowerText.contains("forget everything")) {
             clearCoachMemories()
             addCoachResponse("Done. I've cleared my memory of any previous injuries or preferences. We're starting fresh.")
             return true
         }
 
-        // 1. Swap Intent
         if (lowerText.contains("swap") || lowerText.contains("alternative") || lowerText.contains("different")) {
             val exerciseToSwap = _exerciseStates.value.find { state ->
                 lowerText.contains(state.exercise.name.lowercase())
@@ -676,7 +702,6 @@ class ActiveSessionViewModel @Inject constructor(
             }
         }
 
-        // 2. Plate Math Intent
         if (lowerText.contains("plate") || lowerText.contains("math") || lowerText.contains("weight")) {
             val weightMatch = Regex("(\\d+(\\.\\d+)?)").find(userText)
             if (weightMatch != null) {
@@ -728,7 +753,7 @@ class ActiveSessionViewModel @Inject constructor(
 
     private fun startLiveTranscription() {
         transcribeJob?.cancel()
-        audioStreamer.startStreaming() // Start continuous mic for VAD interruption
+        audioStreamer.startStreaming()
 
         transcribeJob = viewModelScope.launch {
             try {
@@ -779,25 +804,5 @@ class ActiveSessionViewModel @Inject constructor(
         stopTimerService()
         autoCoachEngine.stop()
         bleHeartRateManager.cleanup()
-    }
-
-    private fun generateCoachBriefing(
-        exercises: List<ExerciseEntity>,
-        sets: List<WorkoutSetEntity>,
-        recoveryScore: Int
-    ): String {
-        if (exercises.isEmpty() || sets.isEmpty()) return "Ready to start your workout?"
-
-        val dominantMuscle = exercises.groupingBy { it.muscleGroup }
-            .eachCount()
-            .maxByOrNull { it.value }?.key ?: "Full Body"
-
-        val tier1Count = exercises.count { it.tier == 1 }
-        val avgReps = if (sets.isNotEmpty()) sets.map { it.suggestedReps }.average() else 0.0
-
-        return when {
-            tier1Count >= 2 && avgReps < 8 -> "Mission: Heavy $dominantMuscle Day.\nIntensity is key today."
-            else -> "Mission: $dominantMuscle Hypertrophy.\nFocus on the mind-muscle connection."
-        }
     }
 }

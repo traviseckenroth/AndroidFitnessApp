@@ -102,7 +102,8 @@ data class WorkoutSetEntity(
     val actualLbs: Float? = null,
     val isCompleted: Boolean = false,
     val isAMRAP: Boolean = false,
-    val isEMOM: Boolean = false
+    val isEMOM: Boolean = false,
+    val isAutoAdjusted: Boolean = false
 )
 
 @Entity(

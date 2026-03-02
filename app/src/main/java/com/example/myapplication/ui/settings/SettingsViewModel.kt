@@ -1,6 +1,5 @@
 package com.example.myapplication.ui.settings
 
-import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.UserPreferencesRepository
@@ -9,6 +8,9 @@ import com.example.myapplication.data.repository.HealthConnectManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
@@ -21,19 +23,34 @@ class SettingsViewModel @Inject constructor(
     val excludedEquipment = userPrefs.excludedEquipment
     val userVoiceSid = userPrefs.userVoiceSid
 
-    val isHealthConnected = mutableStateOf(false)
-    val permissions = healthConnectManager.permissions // FIXED: Exposed permissions
+    val isHealthConnected: StateFlow<Boolean> = healthConnectManager.isAuthorized
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val permissions = healthConnectManager.permissions
+
+    init {
+        checkPermissions()
+    }
 
     fun logout(onLogoutSuccess: () -> Unit) {
         viewModelScope.launch {
-            authRepository.logout() // FIXED: Use correct method name
+            authRepository.logout()
             onLogoutSuccess()
+        }
+    }
+
+    val isDynamicAutoregEnabled: StateFlow<Boolean> = userPrefs.isDynamicAutoregEnabled
+        .stateIn(viewModelScope, SharingStarted.Lazily, true)
+
+    fun toggleDynamicAutoreg(enabled: Boolean) {
+        viewModelScope.launch {
+            userPrefs.setDynamicAutoregEnabled(enabled)
         }
     }
 
     fun checkPermissions() {
         viewModelScope.launch {
-            isHealthConnected.value = healthConnectManager.hasPermissions()
+            healthConnectManager.hasPermissions()
         }
     }
 
@@ -42,7 +59,6 @@ class SettingsViewModel @Inject constructor(
             userPrefs.saveGymType(type)
             when(type) {
                 "Commercial" -> {
-                    // Reset: Uncheck everything (User has everything)
                     val allEquipment = listOf(
                         "Barbell", "Dumbbell", "Kettlebell", "Cable", "Machine",
                         "Smith Machine", "Pull Up Bar", "Dip Station", "Bench",
@@ -51,24 +67,18 @@ class SettingsViewModel @Inject constructor(
                     allEquipment.forEach { userPrefs.toggleEquipmentExclusion(it, false) }
                 }
                 "Home Gym" -> {
-                    // Home usually lacks Machines and specialized cables
                     listOf("Machine", "Smith Machine", "Leg Press", "Cable").forEach {
                         userPrefs.toggleEquipmentExclusion(it, true)
                     }
-                    // Usually has these:
                     listOf("Barbell", "Dumbbell", "Bench", "Squat Rack", "Pull Up Bar").forEach {
                         userPrefs.toggleEquipmentExclusion(it, false)
                     }
                 }
                 "Limited" -> {
-                    // Hotel/Limited: No large equipment.
-                    // FIX: Expanded list to exclude ALL large equipment
                     listOf(
                         "Barbell", "Cable", "Machine", "Smith Machine",
                         "Leg Press", "Squat Rack", "EZ Bar", "Dip Station"
                     ).forEach { userPrefs.toggleEquipmentExclusion(it, true) }
-
-                    // Ensure Dumbbells are available
                     userPrefs.toggleEquipmentExclusion("Dumbbell", false)
                 }
             }

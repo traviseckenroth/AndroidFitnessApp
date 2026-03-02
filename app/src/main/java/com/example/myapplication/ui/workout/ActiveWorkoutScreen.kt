@@ -12,6 +12,8 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -644,14 +646,16 @@ fun StyledInputBox(
         modifier = modifier
             .height(IntrinsicSize.Min)
             .onFocusChanged { focusState ->
-                isFocused = focusState.isFocused
                 if (focusState.isFocused) {
-                    // Fade effect: we could use a custom text color or placeholder logic
-                    // But standard behavior is usually to clear or select all.
-                    // To "fade", we'll clear the text state internally but keep the placeholder visible.
+                    isFocused = true
+                    // Fade effect: clear the current text state internally so placeholder shows up immediately.
                     textFieldValueState = TextFieldValue("")
-                } else if (textFieldValueState.text.isEmpty()) {
-                    textFieldValueState = textFieldValueState.copy(text = value)
+                } else {
+                    isFocused = false
+                    // Restore value if left empty
+                    if (textFieldValueState.text.isEmpty()) {
+                        textFieldValueState = textFieldValueState.copy(text = value)
+                    }
                 }
             },
         placeholder = {
@@ -754,6 +758,12 @@ fun SetRow(
                 ) {
                     val weightStr = set.actualLbs?.let { if (it % 1 == 0f) it.toInt().toString() else it.toString() } ?: set.suggestedLbs.toString()
 
+                    val weightColor = if (set.isAutoAdjusted && set.actualLbs == null) {
+                        MaterialTheme.colorScheme.primary // Use your app's primary theme color
+                    } else {
+                        Color.DarkGray
+                    }
+
                     StyledInputBox(
                         value = weightStr,
                         onValueChange = { viewModel.updateSetWeight(set, it) },
@@ -764,7 +774,14 @@ fun SetRow(
                         placeholderText = weightStr
                     )
 
-                    if (exercise.equipment?.contains("Barbell", ignoreCase = true) == true) {
+                    if (set.isAutoAdjusted && set.actualLbs == null) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = "Auto-adjusted",
+                            modifier = Modifier.size(12.dp).padding(start = 2.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    } else if (exercise.equipment?.contains("Barbell", ignoreCase = true) == true) {
                         Icon(
                             imageVector = Icons.Default.Calculate,
                             contentDescription = null,

@@ -13,8 +13,11 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,6 +41,7 @@ fun SettingsScreen(
     }
 
     val userVoiceSid by viewModel.userVoiceSid.collectAsState(initial = 0)
+    val isHealthConnected by viewModel.isHealthConnected.collectAsState()
 
     val kokoroVoices = mapOf(
         "Bella (Warm Female)" to 2,
@@ -108,7 +112,7 @@ fun SettingsScreen(
 
             Card(
                 colors = CardDefaults.cardColors(
-                    containerColor = if (viewModel.isHealthConnected.value) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.surfaceVariant
+                    containerColor = if (isHealthConnected) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.surfaceVariant
                 )
             ) {
                 Row(
@@ -122,13 +126,13 @@ fun SettingsScreen(
                         Column {
                             Text("Health Connect", style = MaterialTheme.typography.titleSmall)
                             Text(
-                                if (viewModel.isHealthConnected.value) "Connected" else "Sync workouts to Google Fit",
+                                if (isHealthConnected) "Connected" else "Sync workouts to Google Fit",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
                     }
 
-                    if (viewModel.isHealthConnected.value) {
+                    if (isHealthConnected) {
                         Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50))
                     } else {
                         Button(onClick = {
@@ -141,6 +145,23 @@ fun SettingsScreen(
             }
 
             HorizontalDivider()
+            val isDynamicAutoregEnabled by viewModel.isDynamicAutoregEnabled.collectAsState()
+
+            ListItem(
+                headlineContent = { Text("Dynamic Autoregulation") },
+                supportingContent = { Text("Automatically adjust the weight of remaining sets if you miss reps or max out your RPE on earlier sets.") },
+                leadingContent = {
+                    Icon(Icons.Default.Tune, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                },
+                trailingContent = {
+                    Switch(
+                        checked = isDynamicAutoregEnabled,
+                        onCheckedChange = { viewModel.toggleDynamicAutoreg(it) },
+                        colors = SwitchDefaults.colors(checkedTrackColor = MaterialTheme.colorScheme.primary)
+                    )
+                }
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
 
             // --- SECTION: APP INFO ---
             Text(

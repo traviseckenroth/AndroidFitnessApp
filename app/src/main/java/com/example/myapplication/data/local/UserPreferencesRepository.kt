@@ -59,7 +59,7 @@ class UserPreferencesRepository @Inject constructor(
     val userBodyFat: Flow<Double?> = dataStore.data.map { it.getSafeDoubleNullable(PreferencesKeys.USER_BODY_FAT) }
     val userDiet: Flow<String> = dataStore.data.map { it[PreferencesKeys.USER_DIET] ?: "Standard" }
     val userGoalPace: Flow<String> = dataStore.data.map { it[PreferencesKeys.USER_GOAL_PACE] ?: "Maintain" }
-
+    private val DYNAMIC_AUTOREG_KEY = booleanPreferencesKey("dynamic_autoregulation_enabled")
     val gymType: Flow<String> = dataStore.data.map { it[PreferencesKeys.GYM_TYPE] ?: "Commercial" }
     val excludedEquipment: Flow<Set<String>> = dataStore.data.map { it[PreferencesKeys.EXCLUDED_EQUIPMENT] ?: emptySet() }
 
@@ -78,7 +78,15 @@ class UserPreferencesRepository @Inject constructor(
             0
         }
     }
+    val isDynamicAutoregEnabled: Flow<Boolean> = dataStore.data
+        .map { preferences -> preferences[DYNAMIC_AUTOREG_KEY] ?: true }
 
+    // 3. Add the function to toggle it
+    suspend fun setDynamicAutoregEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[DYNAMIC_AUTOREG_KEY] = enabled
+        }
+    }
     suspend fun saveUserName(name: String) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.USER_NAME] = name
