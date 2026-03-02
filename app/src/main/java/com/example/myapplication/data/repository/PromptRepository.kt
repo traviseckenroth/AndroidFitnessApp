@@ -32,8 +32,14 @@ class PromptRepository @Inject constructor() {
             Focus on metabolic saturation and muscle volume. Prescribe 6-15 reps for most exercises.
             You MUST include a Tier 3 Isolation muscle-failure burnout circuit on 1 to 2 days MAX. Avoid heavy cardiovascular work.
 
-            CIRCUIT RULE (MANDATORY FOR BURNOUTS): You MUST output a SINGLE composite exercise object to represent the entire circuit. Set 'name' to the circuit title (e.g., "Burnout AMRAP: Curls & Extensions"). Set 'isAMRAP' or 'isEMOM' to true. Set 'sets' to 1. Use the 'notes' field to list the exact exercises and rep counts. NEVER output the individual circuit components as separate exercise objects.
-
+CIRCUIT RULE (MANDATORY FOR BURNOUTS): You MUST output a SINGLE composite exercise object to represent the entire circuit. 
+            CONSTRUCTION ALGORITHM: You must build the circuit using complementary, non-competing movements. NEVER combine two heavy spinal-loading exercises. Choose ONE of these skeletons based on the day's primary muscle focus:
+            - Skeleton A (Full Body Triplet): 1 Upper Body + 1 Lower Body + 1 Core.
+            - Skeleton C (Upper Body Burn): 1 Push + 1 Pull + 1 Core.
+            - Skeleton D (Lower Body Burn): 1 Heavy Lower + 1 Plyo Lower + 1 Core.
+            - Skeleton E (Antagonistic Couplet): 2 opposing movements for continuous non-stop work.
+            Set 'name' to the circuit title. Set 'isAMRAP' or 'isEMOM' to true. Set 'sets' to 1. Use the 'notes' field to list the exact exercises and rep counts. NEVER output the individual circuit components as separate exercise objects.
+            
             *** 3. EXERCISE SELECTION ALGORITHM ***
             PRIMARY (Tier 1 - Compound): 1-2 heavy compound movements. 4-5 Sets. ALWAYS FIRST.
             SECONDARY (Tier 2 - Secondary): 2-4 assistance/hypertrophy movements. 3-4 Sets. ALWAYS MIDDLE.
@@ -69,11 +75,19 @@ class PromptRepository @Inject constructor() {
 
             *** 2. PHYSIOLOGICAL PROTOCOL: BODY SCULPTING ***
             Hybrid programming. Prioritize resistance training (6-12 reps) for mechanical tension. 
-            Supplement with EXACTLY 1 to 2 sessions of HIIT (using the CIRCUIT RULE) and 1 to 2 sessions of Low-Intensity Steady State (LISS) cardio.
+            Supplement with EXACTLY 1 to 2 sessions of HIIT (using the CIRCUIT RULE) and 1 to 2 sessions of Low-Intensity Steady State (LISS) cardio. HIIT and LISS exercises must be the last exercises. 
             Mix AMRAPs and EMOMs for HIIT. DO NOT put HIIT on every single day.
 
-            CIRCUIT RULE (MANDATORY FOR HIIT): You MUST output a SINGLE composite exercise object to represent the entire circuit. Set 'name' to the circuit title (e.g., "15-Min AMRAP: Kettlebell Swings, Burpees"). Set 'isAMRAP' or 'isEMOM' to true. Set 'sets' to 1. Use the 'notes' field to list the exact exercises and rep counts. NEVER output the individual circuit components as separate exercise objects.
-
+CIRCUIT RULE (MANDATORY FOR HIIT): You MUST output a SINGLE composite exercise object to represent the entire circuit. 
+            CONSTRUCTION ALGORITHM: You must build the circuit using complementary, non-competing movements. NEVER combine two heavy spinal-loading exercises. Choose ONE of these skeletons based on the day's primary muscle focus:
+            - Skeleton A (Full Body Triplet): 1 Upper Body + 1 Lower Body + 1 Core.
+            - Skeleton B (The Sprint Couplet): 1 Cardio/Plyo + 1 Kettlebell/Dumbbell move.
+            - Skeleton C (Upper Body Burn): 1 Push + 1 Pull + 1 Core.
+            - Skeleton D (Lower Body Burn): 1 Heavy Lower + 1 Plyo Lower + 1 Core.
+            - Skeleton E (Antagonistic Couplet): 2 opposing movements for continuous non-stop work.
+            - Skeleton F (The Sweaty Chipper): 4 movements - 1 Cardio + 1 Lower + 1 Upper + 1 Core.
+            Set 'name' to the circuit title. Set 'isAMRAP' or 'isEMOM' to true. Set 'sets' to 1. Use the 'notes' field to list the exact exercises and rep counts. NEVER output the individual circuit components as separate exercise objects.
+            
             *** 3. EXERCISE SELECTION ALGORITHM ***
             PRIMARY (Tier 1 - Compound): 1-2 compound movements. 4-5 Sets. ALWAYS FIRST.
             SECONDARY (Tier 2 - Secondary): 2-4 assistance movements. 3-4 Sets. ALWAYS MIDDLE.
@@ -111,8 +125,16 @@ class PromptRepository @Inject constructor() {
             Focus on metabolic flexibility and sustained work capacity. High reps (15+).
             Heavily utilize AMRAPs and EMOMs across the training week using the CIRCUIT RULE.
 
-            CIRCUIT RULE (MANDATORY FOR AMRAP/EMOM): You MUST output a SINGLE composite exercise object to represent the entire circuit. Set 'name' to the circuit title (e.g., "20-Min EMOM: Row, Pushups"). Set 'isAMRAP' or 'isEMOM' to true. Set 'sets' to 1. Use the 'notes' field to list the exact exercises and rep counts. NEVER break a circuit into multiple JSON objects.
-
+CIRCUIT RULE (MANDATORY FOR AMRAP/EMOM): You MUST output a SINGLE composite exercise object to represent the entire circuit. 
+            CONSTRUCTION ALGORITHM: You must build the circuit using complementary, non-competing movements. NEVER combine two heavy spinal-loading exercises. Choose ONE of these skeletons based on the day's primary muscle focus:
+            - Skeleton A (Full Body Triplet): 1 Upper Body + 1 Lower Body + 1 Core.
+            - Skeleton B (The Sprint Couplet): 1 Cardio/Plyo + 1 Kettlebell/Dumbbell move.
+            - Skeleton C (Upper Body Burn): 1 Push + 1 Pull + 1 Core.
+            - Skeleton D (Lower Body Burn): 1 Heavy Lower + 1 Plyo Lower + 1 Core.
+            - Skeleton E (Antagonistic Couplet): 2 opposing movements for continuous non-stop work.
+            - Skeleton F (The Sweaty Chipper): 4 movements - 1 Cardio + 1 Lower + 1 Upper + 1 Core.
+            Set 'name' to the circuit title. Set 'isAMRAP' or 'isEMOM' to true. Set 'sets' to 1. Use the 'notes' field to list the exact exercises and rep counts. NEVER break a circuit into multiple JSON objects.
+            
             *** 3. EXERCISE SELECTION ALGORITHM ***
             PRIMARY (Tier 1 - Compound): 1-2 movements. 3-4 Sets. ALWAYS FIRST.
             SECONDARY (Tier 2 - Secondary): 2-4 movements. 3-4 Sets. ALWAYS MIDDLE.
@@ -354,6 +376,7 @@ OUTPUT FORMAT (RAW JSON ONLY):
     }
 
     // --- DYNAMIC ROUTING MAPPER ---
+// --- DYNAMIC ROUTING MAPPER ---
     fun getWorkoutSystemPrompt(
         goal: String,
         programType: String,

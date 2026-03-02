@@ -1,3 +1,4 @@
+// app/src/main/java/com/example/myapplication/ui/workout/ActiveWorkoutScreen.kt
 package com.example.myapplication.ui.workout
 
 import android.Manifest
@@ -359,10 +360,13 @@ fun ExerciseCard(
     var showDescriptionDialog by remember { mutableStateOf(false) }
 
     // Evaluate if the entire exercise block should be styled for AMRAP/EMOM
-    val isAMRAP = state.sets.any { it.isAMRAP }
-    val isEMOM = state.sets.any { it.isEMOM }
-    val hideLbs = isBodyweight || ((isAMRAP || isEMOM) && state.sets.all { it.suggestedLbs == 0 })
-    val hideRpe = isAMRAP || isEMOM || isBodyweight
+    val isAMRAP = state.sets.any { it.isAMRAP } || exercise.name.contains("AMRAP", true)
+    val isEMOM = state.sets.any { it.isEMOM } || exercise.name.contains("EMOM", true)
+    val isCircuit = isAMRAP || isEMOM
+
+    // FIX: Force hide LBS and RPE completely if it's a circuit
+    val hideLbs = isBodyweight || isCircuit
+    val hideRpe = isCircuit || isBodyweight
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -431,39 +435,59 @@ fun ExerciseCard(
                     modifier = Modifier.clickable { viewModel.toggleExerciseVisibility(exercise.exerciseId) }
                 )
             }
-            if ((isAMRAP || isEMOM) && exercise.description.isNotBlank()) {
+
+            // NEW: Distinct, color-coded Circuit Instructions Box
+            if (isCircuit && exercise.description.isNotBlank()) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Surface(
-                    color = Color(0xFFF2F2F7),
+                    color = if (isAMRAP) Color(0xFFFFF3E0) else Color(0xFFFCE4EC),
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = exercise.description,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextColor,
-                        modifier = Modifier.padding(12.dp)
-                    )
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Timer,
+                                contentDescription = null,
+                                tint = if (isAMRAP) Color(0xFFFF9800) else Color(0xFFE91E63),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isAMRAP) "CIRCUIT INSTRUCTIONS" else "EMOM INSTRUCTIONS",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isAMRAP) Color(0xFFFF9800) else Color(0xFFE91E63)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = exercise.description,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextColor
+                        )
+                    }
                 }
             }
+
             if (state.areSetsVisible) {
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Table Header dynamically adjusted
+                // Table Header dynamically adjusted for Circuits
                 Row(modifier = Modifier.fillMaxWidth()) {
                     val headerStyle = MaterialTheme.typography.labelSmall.copy(
                         color = Color(0xFFC7C7CC),
                         fontWeight = FontWeight.Bold,
                         fontSize = 10.sp
                     )
-                    Text("SET", modifier = Modifier.weight(0.8f), style = headerStyle, textAlign = TextAlign.Center)
+                    Text(if (isCircuit && state.sets.size == 1) "SCORE" else "SET", modifier = Modifier.weight(0.8f), style = headerStyle, textAlign = TextAlign.Center)
 
                     if (!hideLbs) {
                         Text("LBS", modifier = Modifier.weight(1.5f), style = headerStyle, textAlign = TextAlign.Center)
                     }
 
                     val repsWeight = 1.2f + (if (hideLbs) 1.5f else 0f) + (if (hideRpe) 1f else 0f)
-                    Text("REPS", modifier = Modifier.weight(repsWeight), style = headerStyle, textAlign = TextAlign.Center)
+                    Text(if (isCircuit) "ROUNDS / REPS" else "REPS", modifier = Modifier.weight(repsWeight), style = headerStyle, textAlign = TextAlign.Center)
 
                     if (!hideRpe) {
                         Text("RPE", modifier = Modifier.weight(1f), style = headerStyle, textAlign = TextAlign.Center)
@@ -485,26 +509,31 @@ fun ExerciseCard(
 
                 // Footer
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickable { viewModel.addSet(exercise.exerciseId) }
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = TextColor)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Add Set", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                    }
-
-                    if (!isBodyweight) {
-                        Spacer(modifier = Modifier.width(24.dp))
-
+                    if (!isCircuit) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.clickable { viewModel.addWarmUpSets(exercise.exerciseId, state.sets.firstOrNull()?.suggestedLbs ?: 135, exercise.equipment) }
+                            modifier = Modifier.clickable { viewModel.addSet(exercise.exerciseId) }
                         ) {
-                            Icon(Icons.Default.Whatshot, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFFC7C7CC))
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = TextColor)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Warm Up", style = MaterialTheme.typography.labelMedium, color = SecondaryTextColor)
+                            Text("Add Set", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                         }
+
+                        if (!isBodyweight) {
+                            Spacer(modifier = Modifier.width(24.dp))
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.clickable { viewModel.addWarmUpSets(exercise.exerciseId, state.sets.firstOrNull()?.suggestedLbs ?: 135, exercise.equipment) }
+                            ) {
+                                Icon(Icons.Default.Whatshot, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFFC7C7CC))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Warm Up", style = MaterialTheme.typography.labelMedium, color = SecondaryTextColor)
+                            }
+                        }
+                    } else {
+                        // Keep spacing clean for circuits
+                        Text("Log your final circuit score.", style = MaterialTheme.typography.labelSmall, color = SecondaryTextColor)
                     }
 
                     Spacer(modifier = Modifier.weight(1f))
@@ -639,8 +668,11 @@ fun SetRow(
             exercise.name.contains("treadmill", ignoreCase = true) ||
             exercise.movementPattern.contains("cardio", ignoreCase = true)
 
-    val hideLbs = isBodyweight || ((set.isAMRAP || set.isEMOM) && set.suggestedLbs == 0)
-    val hideRpe = set.isAMRAP || set.isEMOM || isBodyweight
+    val isCircuit = set.isAMRAP || set.isEMOM || exercise.name.contains("AMRAP", true) || exercise.name.contains("EMOM", true)
+
+    // FIX: Completely hide LBS & RPE columns for circuits
+    val hideLbs = isBodyweight || isCircuit
+    val hideRpe = isCircuit || isBodyweight
 
     if (showPlateCalc) {
         PlateCalculatorDialog(
@@ -726,7 +758,8 @@ fun SetRow(
                 textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, color = SecondaryTextColor),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                placeholderText = if (set.isAMRAP) "AMRAP" else if (set.isEMOM) "EMOM" else set.suggestedReps.toString()
+                // FIX: Update Placeholder text for Circuits
+                placeholderText = if (isCircuit) "Total Score" else set.suggestedReps.toString()
             )
 
             if (!hideRpe) {
@@ -926,6 +959,7 @@ fun BleDeviceDialog(foundDevices: List<BluetoothDevice>, onDismiss: () -> Unit, 
         shape = RoundedCornerShape(16.dp)
     )
 }
+
 @Composable
 fun AMRAPPill(isAMRAP: Boolean, timeRemaining: Int?) {
     if (isAMRAP) {

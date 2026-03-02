@@ -264,7 +264,6 @@ class BedrockClient @Inject constructor(
 
             val totalMinutes = (duration * 60).toInt()
 
-            // FIX: Ask the PromptRepository to build the complete string safely
             val systemPrompt = promptRepository.getWorkoutSystemPrompt(
                 goal = goal,
                 programType = programType,
@@ -277,12 +276,10 @@ class BedrockClient @Inject constructor(
                 historySummary = historySummary
             )
 
-            // Switched to non-streaming invokeClaude as per user request to avoid instability and redundant prompts.
             val cleanJson = invokeClaude(
                 systemPrompt = systemPrompt,
                 userPrompt = "Generate Block $block plan",
-                modelId = CLAUDE_SONNET,
-                thinkingBudget = 4000
+                modelId = CLAUDE_SONNET
             )
 
             Log.d("BedrockClient", "Workout Plan Response: $cleanJson")
@@ -290,8 +287,8 @@ class BedrockClient @Inject constructor(
             jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
 
         } catch (e: Exception) {
-            Log.e("BedrockError", "Error invoking model", e)
-            GeneratedPlanResponse(explanation = "Error: ${e.localizedMessage}")
+            Log.e("BedrockError", "Error generating workout plan: ${e.javaClass.simpleName} - ${e.message}", e)
+            GeneratedPlanResponse(explanation = "Network or Generation Error: ${e.localizedMessage}. Please ensure your device is connected to the internet.")
         }
     }
 
@@ -564,7 +561,7 @@ class BedrockClient @Inject constructor(
         if (sanitizedMessages.isEmpty()) return@withContext "Let's get back to work!"
 
         val requestBody = ClaudeRequest(
-            max_tokens = 300, // Short burst generation
+            max_tokens = 300,
             system = systemPrompt,
             messages = sanitizedMessages
         )
@@ -572,7 +569,7 @@ class BedrockClient @Inject constructor(
         val jsonString = jsonConfig.encodeToString(ClaudeRequest.serializer(), requestBody)
 
         val request = InvokeModelWithResponseStreamRequest {
-            this.modelId = CLAUDE_HAIKU // Use Haiku for ultra-low latency conversational speed
+            this.modelId = CLAUDE_HAIKU
             contentType = "application/json"
             accept = "application/json"
             body = jsonString.toByteArray()
@@ -590,7 +587,7 @@ class BedrockClient @Inject constructor(
                             if (streamEvent.type == "content_block_delta") {
                                 streamEvent.delta?.text?.let { token ->
                                     fullText.append(token)
-                                    onTextChunkReceived(token) // Yield the word instantly
+                                    onTextChunkReceived(token)
                                 }
                             }
                         } catch (e: Exception) {}
@@ -720,17 +717,16 @@ class BedrockClient @Inject constructor(
                 lastError = e
                 if (e is CancellationException) throw e
 
-                val isRetryable = e is SSLException ||
-                        e is IOException ||
-                        e.message?.contains("Software caused connection abort") == true ||
-                        e is StreamResetException
+                // Identify fatal AWS errors that should NOT be retried (e.g. Validation, Auth errors)
+                val errName = e.javaClass.simpleName
+                val isFatalAwsError = errName.contains("Validation") || errName.contains("AccessDenied") || errName.contains("Unrecognized")
 
-                if (isRetryable && attempt < 2) {
+                if (!isFatalAwsError && attempt < 2) {
                     val delayMs = (attempt + 1) * 2000L
-                    Log.w("BedrockClient", "InvokeClaude attempt ${attempt + 1} failed, retrying in ${delayMs}ms...", e)
+                    Log.w("BedrockClient", "InvokeClaude attempt ${attempt + 1} failed (${errName}: ${e.message}). Retrying in ${delayMs}ms...", e)
                     kotlinx.coroutines.delay(delayMs)
                 } else {
-                    Log.e("BedrockClient", "InvokeClaude failed after ${attempt + 1} attempts", e)
+                    Log.e("BedrockClient", "InvokeClaude failed completely after ${attempt + 1} attempts. Cause: ${errName} - ${e.message}", e)
                     throw e
                 }
             }
@@ -746,7 +742,10 @@ class BedrockClient @Inject constructor(
     ): String {
         Log.d("BedrockClient", "InvokeClaude System Instruction: $systemPrompt")
         enforceLimit()
+
+        // Use 8192 for Sonnet to ensure the massive JSON schedules don't get truncated
         val maxTokensToUse = if (modelId.contains("sonnet", ignoreCase = true)) 8192 else 4096
+
         val requestBody = ClaudeRequest(
             max_tokens = maxTokensToUse,
             system = systemPrompt,
@@ -800,17 +799,15 @@ class BedrockClient @Inject constructor(
                 lastError = e
                 if (e is CancellationException) throw e
 
-                val isRetryable = e is SSLException ||
-                        e is IOException ||
-                        e.message?.contains("Software caused connection abort") == true ||
-                        e is StreamResetException
+                val errName = e.javaClass.simpleName
+                val isFatalAwsError = errName.contains("Validation") || errName.contains("AccessDenied") || errName.contains("Unrecognized")
 
-                if (isRetryable && attempt < 2) {
+                if (!isFatalAwsError && attempt < 2) {
                     val delayMs = (attempt + 1) * 2000L
-                    Log.w("BedrockClient", "Streaming attempt ${attempt + 1} failed, retrying in ${delayMs}ms...", e)
+                    Log.w("BedrockClient", "Streaming attempt ${attempt + 1} failed (${errName}: ${e.message}). Retrying in ${delayMs}ms...", e)
                     kotlinx.coroutines.delay(delayMs)
                 } else {
-                    Log.e("BedrockClient", "Streaming request failed after ${attempt + 1} attempts", e)
+                    Log.e("BedrockClient", "Streaming request failed completely after ${attempt + 1} attempts. Cause: ${errName} - ${e.message}", e)
                     throw e
                 }
             }
@@ -827,7 +824,10 @@ class BedrockClient @Inject constructor(
     ): String {
         Log.d("BedrockClient", "InvokeClaudeStreaming System Instruction: $systemPrompt")
         enforceLimit()
+
+        // Safely assign token limits for streaming as well
         val maxTokensToUse = if (modelId.contains("sonnet", ignoreCase = true)) 8192 else 4096
+
         val requestBody = ClaudeRequest(
             max_tokens = maxTokensToUse,
             system = systemPrompt,
