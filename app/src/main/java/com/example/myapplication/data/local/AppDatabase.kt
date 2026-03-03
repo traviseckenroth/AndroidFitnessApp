@@ -2,6 +2,7 @@ package com.example.myapplication.data.local
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
@@ -19,8 +20,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         UserMemoryEntity::class
     ],
     version = 39,
-    exportSchema = false
-)
+    exportSchema = false)
+
+
+@TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun workoutDao(): WorkoutDao
     abstract fun memoryDao(): MemoryDao

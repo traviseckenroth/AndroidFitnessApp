@@ -1,11 +1,13 @@
 package com.example.myapplication.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.Relation
+import com.example.myapplication.data.NutritionPlan
 
 @Entity(tableName = "food_logs")
 data class FoodLogEntity(
@@ -46,7 +48,8 @@ data class WorkoutPlanEntity(
     val startDate: Long,
     val goal: String,
     val programType: String,
-    val nutritionJson: String? = null,
+    @ColumnInfo(name = "nutritionJson")
+    val nutrition: NutritionPlan? = null,
     val isActive: Boolean = false,
     val aiExplanation: String? = null,
     val block: Int = 1 // Renamed from phase

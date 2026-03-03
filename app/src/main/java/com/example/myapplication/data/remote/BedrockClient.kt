@@ -11,6 +11,7 @@ import aws.sdk.kotlin.services.bedrockruntime.model.ResponseStream
 import aws.smithy.kotlin.runtime.http.engine.okhttp.OkHttpEngine
 import com.example.myapplication.BuildConfig
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
+import kotlinx.serialization.json.decodeFromJsonElement
 import org.json.JSONObject
 import okhttp3.internal.http2.StreamResetException
 import kotlinx.coroutines.CancellationException
@@ -116,11 +117,42 @@ data class GeneratedExercise(
 
 // --- CLAUDE API REQUEST MODELS ---
 @Serializable
+data class PropertySchema(
+    val type: String,
+    val description: String? = null,
+    val items: PropertySchema? = null,                   // Used if type is "array"
+    val properties: Map<String, PropertySchema>? = null, // Used if type is "object"
+    val required: List<String>? = null                   // Used if type is "object"
+)
+
+@Serializable
+data class ToolInputSchema(
+    val type: String = "object",
+    val properties: Map<String, PropertySchema>,
+    val required: List<String>
+)
+
+@Serializable
+data class Tool(
+    val name: String,
+    val description: String,
+    val input_schema: ToolInputSchema
+)
+
+@Serializable
+data class ToolChoice(
+    val type: String,
+    val name: String? = null
+)
+
+@Serializable
 data class ClaudeRequest(
     val anthropic_version: String = "bedrock-2023-05-31",
     val max_tokens: Int,
     val system: List<SystemBlock>,
-    val messages: List<Message>
+    val messages: List<Message>,
+    val tools: List<Tool>? = null,           // <-- NEW
+    val tool_choice: ToolChoice? = null
 )
 
 @Serializable
@@ -136,8 +168,12 @@ data class ClaudeResponse(
 @Serializable
 data class ContentBlock(
     val type: String = "text",
-    val text: String? = null
+    val text: String? = null,
+    val id: String? = null,                                     // <-- NEW (For tools)
+    val name: String? = null,                                   // <-- NEW (For tools)
+    val input: kotlinx.serialization.json.JsonObject? = null    // <-- NEW (The parsed tool data!)
 )
+
 @Serializable
 data class UsageMetrics(
     val input_tokens: Int = 0,
@@ -232,14 +268,64 @@ class BedrockClient @Inject constructor(
     suspend fun parseFoodLog(userQuery: String): FoodLogResponse = withContext(Dispatchers.Default) {
         try {
             val systemPrompt = promptRepository.getFoodLogSystemPrompt()
-            val cleanJson = invokeClaude(systemPrompt, userQuery, CLAUDE_HAIKU)
-            jsonConfig.decodeFromString<FoodLogResponse>(cleanJson)
+
+            // 1. DEFINE NESTED SCHEMAS
+            val foodItemSchema = PropertySchema(
+                type = "object",
+                properties = mapOf(
+                    "name" to PropertySchema(type = "string", description = "Name of the food item"),
+                    "quantity" to PropertySchema(type = "string", description = "Estimated or explicit quantity"),
+                    "calories" to PropertySchema(type = "integer", description = "Calories (whole number)"),
+                    "protein" to PropertySchema(type = "integer", description = "Protein in grams (whole number)"),
+                    "carbs" to PropertySchema(type = "integer", description = "Carbs in grams (whole number)"),
+                    "fats" to PropertySchema(type = "integer", description = "Fats in grams (whole number)")
+                ),
+                required = listOf("name", "quantity", "calories", "protein", "carbs", "fats")
+            )
+
+            val macroSummarySchema = PropertySchema(
+                type = "object",
+                properties = mapOf(
+                    "calories" to PropertySchema(type = "integer"),
+                    "protein" to PropertySchema(type = "integer"),
+                    "carbs" to PropertySchema(type = "integer"),
+                    "fats" to PropertySchema(type = "integer")
+                ),
+                required = listOf("calories", "protein", "carbs", "fats")
+            )
+
+            // 2. DEFINE THE MASTER TOOL
+            val parseFoodTool = Tool(
+                name = "parse_food_log",
+                description = "Extracts nutritional information and macros from a user's natural language food log.",
+                input_schema = ToolInputSchema(
+                    properties = mapOf(
+                        "foodItems" to PropertySchema(type = "array", items = foodItemSchema, description = "List of identified food items"),
+                        "totalMacros" to macroSummarySchema,
+                        "analysis" to PropertySchema(type = "string", description = "A short, encouraging 1-sentence analysis of the meal"),
+                        "mealType" to PropertySchema(type = "string", description = "One of: Breakfast, Lunch, Dinner, Snack")
+                    ),
+                    required = listOf("foodItems", "totalMacros", "analysis", "mealType")
+                )
+            )
+
+            // 3. INVOKE CLAUDE USING THE TOOL
+            val systemBlocks = listOf(SystemBlock(text = systemPrompt))
+            val jsonObjectOutput = doInvokeClaudeWithTool(
+                systemBlocks = systemBlocks,
+                userPrompt = userQuery,
+                modelId = CLAUDE_HAIKU,
+                tool = parseFoodTool
+            )
+
+            // 4. MAP DIRECTLY TO DATA CLASS
+            jsonConfig.decodeFromJsonElement<FoodLogResponse>(jsonObjectOutput)
+
         } catch (e: Exception) {
             Log.e("BedrockError", "Error parsing food log", e)
             FoodLogResponse(emptyList(), MacroSummary(0, 0, 0, 0), "Error: ${e.message}")
         }
     }
-
     suspend fun generateWorkoutPlan(
         goal: String,
         programType: String,
@@ -281,50 +367,82 @@ class BedrockClient @Inject constructor(
             """.trimIndent()
 
             // 2. STATIC DATA (Identical for EVERY user - CACHED!)
-            // We use the FULL exercise database so the token hash is identical for everyone.
             val exerciseMasterList = allExercises.joinToString("\n") {
                 "- ${it.name} (Muscle: ${it.muscleGroup ?: "General"}, Tier: ${it.tier}, Equip: ${it.equipment})"
             }
 
             val totalMinutes = (duration * 60).toInt()
 
-            // Pass dummy values to the repository. This ensures the resulting string is
-            // 100% identical for every user requesting this programType, triggering the AWS Cache!
             val staticRulesPrompt = promptRepository.getWorkoutSystemPrompt(
                 goal = goal,
                 programType = programType,
-                days = emptyList(), // Dummy
+                days = emptyList(),
                 totalMinutes = totalMinutes,
-                userAge = 0, // Dummy
-                userHeight = 0.0, // Dummy
-                userWeight = 0.0, // Dummy
+                userAge = 0,
+                userHeight = 0.0,
+                userWeight = 0.0,
                 exerciseListString = exerciseMasterList,
-                historySummary = "" // Dummy
+                historySummary = ""
             )
 
-            // 3. ASSEMBLE THE CACHED REQUEST
-            val systemBlocks = listOf(
-                // Block 1: The Massive Ruleset & Exercise Database (CACHED!)
-                SystemBlock(
-                    text = staticRulesPrompt,
-                    cache_control = CacheControl(type = "ephemeral")
+            // 3. DEFINE THE NESTED WORKOUT TOOL SCHEMA
+            val exerciseSchema = PropertySchema(
+                type = "object",
+                properties = mapOf(
+                    "name" to PropertySchema(type = "string", description = "Name of the exercise (or Circuit title)"),
+                    "sets" to PropertySchema(type = "integer", description = "Number of sets (Use 1 for AMRAP/EMOM circuits)"),
+                    "suggestedReps" to PropertySchema(type = "integer", description = "Target reps per set"),
+                    "suggestedLbs" to PropertySchema(type = "number", description = "Estimated weight in lbs (float)"),
+                    "suggestedRpe" to PropertySchema(type = "integer", description = "Target RPE (1-10)"),
+                    "tier" to PropertySchema(type = "integer", description = "1=Compound, 2=Secondary, 3=Isolation/Conditioning"),
+                    "targetMuscle" to PropertySchema(type = "string"),
+                    "isAMRAP" to PropertySchema(type = "boolean"),
+                    "isEMOM" to PropertySchema(type = "boolean"),
+                    "notes" to PropertySchema(type = "string", description = "Form cues, rest times, or EXACT circuit contents.")
                 ),
-                // Block 2: The User's Specific Data (NOT CACHED)
-                SystemBlock(
-                    text = dynamicUserContext
+                required = listOf("name", "sets", "suggestedReps", "suggestedLbs", "suggestedRpe", "tier", "isAMRAP", "isEMOM", "notes")
+            )
+
+            val daySchema = PropertySchema(
+                type = "object",
+                properties = mapOf(
+                    "day" to PropertySchema(type = "string", description = "e.g., Monday"),
+                    "workoutName" to PropertySchema(type = "string", description = "Title of the workout"),
+                    "exercises" to PropertySchema(type = "array", items = exerciseSchema)
+                ),
+                required = listOf("day", "workoutName", "exercises")
+            )
+
+            val planTool = Tool(
+                name = "save_workout_plan",
+                description = "Saves the structured workout plan to the database.",
+                input_schema = ToolInputSchema(
+                    properties = mapOf(
+                        "explanation" to PropertySchema(type = "string", description = "State the block goal and a brief look-ahead (< 200 chars)"),
+                        "mesocycleLengthWeeks" to PropertySchema(type = "integer", description = "Length of the block in weeks (usually 4-6)"),
+                        "schedule" to PropertySchema(type = "array", items = daySchema, description = "Exactly ONE WEEK of scheduled workouts")
+                    ),
+                    required = listOf("explanation", "mesocycleLengthWeeks", "schedule")
                 )
             )
 
-            // 4. INVOKE API USING BLOCKS
-            val cleanJson = doInvokeClaudeWithBlocks(
-                systemBlocks = systemBlocks,
-                userPrompt = "Generate Block $block plan. Do not use my Excluded Equipment.",
-                modelId = CLAUDE_SONNET
+            // 4. ASSEMBLE BLOCKS AND INVOKE CLAUDE
+            val systemBlocks = listOf(
+                SystemBlock(text = staticRulesPrompt, cache_control = CacheControl(type = "ephemeral")),
+                SystemBlock(text = dynamicUserContext)
             )
 
-            Log.d("BedrockClient", "Workout Plan Response: $cleanJson")
+            val jsonObjectOutput = doInvokeClaudeWithTool(
+                systemBlocks = systemBlocks,
+                userPrompt = "Generate Block $block plan. Do not use my Excluded Equipment. Use the tool to save it.",
+                modelId = CLAUDE_SONNET,
+                tool = planTool
+            )
 
-            jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
+            Log.d("BedrockClient", "Workout Plan Tool Response Received!")
+
+            // 5. MAP DIRECTLY TO DATA CLASS (No string parsing!)
+            jsonConfig.decodeFromJsonElement<GeneratedPlanResponse>(jsonObjectOutput)
 
         } catch (e: Exception) {
             Log.e("BedrockError", "Error generating workout plan: ${e.javaClass.simpleName} - ${e.message}", e)
@@ -347,14 +465,54 @@ class BedrockClient @Inject constructor(
         val exerciseList = availableExercises.joinToString("\n") { "- ${it.name}" }
 
         val rawPrompt = promptRepository.getCoachInteractionPrompt()
-
         val systemPrompt = rawPrompt
             .replace("{currentWorkout}", currentWorkout)
             .replace("{exerciseList}", exerciseList)
 
+        // 1. DEFINE THE TOOL SCHEMA
+        val exerciseSchema = PropertySchema(
+            type = "object",
+            properties = mapOf(
+                "name" to PropertySchema(type = "string"),
+                "sets" to PropertySchema(type = "integer"),
+                "suggestedReps" to PropertySchema(type = "integer"),
+                "suggestedLbs" to PropertySchema(type = "number"),
+                "suggestedRpe" to PropertySchema(type = "integer"),
+                "tier" to PropertySchema(type = "integer"),
+                "targetMuscle" to PropertySchema(type = "string"),
+                "isAMRAP" to PropertySchema(type = "boolean"),
+                "isEMOM" to PropertySchema(type = "boolean"),
+                "notes" to PropertySchema(type = "string")
+            ),
+            required = listOf("name", "sets", "suggestedReps", "suggestedLbs", "suggestedRpe", "tier", "isAMRAP", "isEMOM", "notes")
+        )
+
+        val negotiationTool = Tool(
+            name = "respond_to_user",
+            description = "Provides conversational feedback and optionally modifies the live workout plan.",
+            input_schema = ToolInputSchema(
+                properties = mapOf(
+                    "explanation" to PropertySchema(type = "string", description = "Your conversational response to the user (max 3 sentences)."),
+                    "exercises" to PropertySchema(type = "array", items = exerciseSchema, description = "List of new or updated exercises. Empty if no changes are needed."),
+                    "replacingExerciseName" to PropertySchema(type = "string", description = "The exact name of the current exercise to replace/update, or null if no change.")
+                ),
+                required = listOf("explanation", "exercises") // replacingExerciseName is intentionally optional
+            )
+        )
+
+        // 2. INVOKE CLAUDE USING THE TOOL
         try {
-            val cleanJson = invokeClaude(systemPrompt, userMessage, CLAUDE_HAIKU)
-            jsonConfig.decodeFromString<NegotiationResponse>(cleanJson)
+            val systemBlocks = listOf(SystemBlock(text = systemPrompt))
+            val jsonObjectOutput = doInvokeClaudeWithTool(
+                systemBlocks = systemBlocks,
+                userPrompt = userMessage,
+                modelId = CLAUDE_HAIKU,
+                tool = negotiationTool
+            )
+
+            // 3. MAP DIRECTLY TO DATA CLASS
+            jsonConfig.decodeFromJsonElement<NegotiationResponse>(jsonObjectOutput)
+
         } catch (e: Exception) {
             Log.e("BedrockError", "Coach interaction failed", e)
             NegotiationResponse("I'm here, but I'm having trouble processing that. Keep going!", emptyList())
@@ -396,11 +554,38 @@ class BedrockClient @Inject constructor(
                 .replace("{avgWorkoutDurationMins}", avgWorkoutDurationMins.toString())
                 .replace("{goalPace}", goalPace)
 
-            val cleanJson = invokeClaude(systemPrompt, "Generate Nutrition", CLAUDE_HAIKU)
-            jsonConfig.decodeFromString<RemoteNutritionPlan>(cleanJson)
+            // 1. DEFINE THE TOOL SCHEMA
+            val nutritionTool = Tool(
+                name = "save_nutrition_plan",
+                description = "Saves the calculated macro plan to the user's database.",
+                input_schema = ToolInputSchema(
+                    properties = mapOf(
+                        "calories" to PropertySchema(type = "string", description = "Total daily calories as a whole number string (e.g., '2500')"),
+                        "protein" to PropertySchema(type = "string", description = "Grams of protein as a whole number string"),
+                        "carbs" to PropertySchema(type = "string", description = "Grams of carbs as a whole number string"),
+                        "fats" to PropertySchema(type = "string", description = "Grams of fats as a whole number string"),
+                        "timing" to PropertySchema(type = "string", description = "Short, actionable timing advice"),
+                        "explanation" to PropertySchema(type = "string", description = "Brief explanation of how this supports the strategy")
+                    ),
+                    required = listOf("calories", "protein", "carbs", "fats", "timing", "explanation")
+                )
+            )
+
+            // 2. INVOKE CLAUDE USING THE TOOL
+            val systemBlocks = listOf(SystemBlock(text = systemPrompt))
+            val jsonObjectOutput = doInvokeClaudeWithTool(
+                systemBlocks = systemBlocks,
+                userPrompt = "Calculate my nutrition and save it using the tool.",
+                modelId = CLAUDE_HAIKU,
+                tool = nutritionTool
+            )
+
+            // 3. MAP THE JSON OBJECT DIRECTLY TO OUR DATA CLASS
+            jsonConfig.decodeFromJsonElement<RemoteNutritionPlan>(jsonObjectOutput)
+
         } catch (e: Exception) {
             Log.e("BedrockError", "Nutrition Gen Failed", e)
-            RemoteNutritionPlan(explanation = "Error generating plan.")
+            RemoteNutritionPlan(explanation = "Error generating plan: ${e.message}")
         }
     }
 
@@ -411,13 +596,64 @@ class BedrockClient @Inject constructor(
     ): GeneratedPlanResponse = withContext(Dispatchers.Default) {
         val exerciseList = availableExercises.joinToString("\n") { "- ${it.name}" }
         val rawPrompt = promptRepository.getStretchingSystemPrompt()
-        val prompt = rawPrompt
+        val systemPrompt = rawPrompt
             .replace("{currentGoal}", currentGoal)
             .replace("{exerciseList}", exerciseList)
 
+        // 1. DEFINE THE TOOL SCHEMA
+        val exerciseSchema = PropertySchema(
+            type = "object",
+            properties = mapOf(
+                "name" to PropertySchema(type = "string"),
+                "sets" to PropertySchema(type = "integer"),
+                "suggestedReps" to PropertySchema(type = "integer", description = "Hold time in SECONDS (30 or 60)"),
+                "suggestedLbs" to PropertySchema(type = "number"),
+                "suggestedRpe" to PropertySchema(type = "integer"),
+                "tier" to PropertySchema(type = "integer"),
+                "targetMuscle" to PropertySchema(type = "string"),
+                "isAMRAP" to PropertySchema(type = "boolean"),
+                "isEMOM" to PropertySchema(type = "boolean"),
+                "notes" to PropertySchema(type = "string")
+            ),
+            required = listOf("name", "sets", "suggestedReps", "suggestedLbs", "suggestedRpe", "tier", "isAMRAP", "isEMOM", "notes")
+        )
+
+        val daySchema = PropertySchema(
+            type = "object",
+            properties = mapOf(
+                "day" to PropertySchema(type = "string"),
+                "workoutName" to PropertySchema(type = "string"),
+                "exercises" to PropertySchema(type = "array", items = exerciseSchema)
+            ),
+            required = listOf("day", "workoutName", "exercises")
+        )
+
+        val planTool = Tool(
+            name = "save_workout_plan",
+            description = "Saves the structured mobility flow to the database.",
+            input_schema = ToolInputSchema(
+                properties = mapOf(
+                    "explanation" to PropertySchema(type = "string", description = "Coach's reasoning for the mobility flow."),
+                    "mesocycleLengthWeeks" to PropertySchema(type = "integer", description = "Default to 1"),
+                    "schedule" to PropertySchema(type = "array", items = daySchema)
+                ),
+                required = listOf("explanation", "mesocycleLengthWeeks", "schedule")
+            )
+        )
+
+        // 2. INVOKE CLAUDE USING THE TOOL
         try {
-            val cleanJson = invokeClaude(prompt, "Generate Stretching", CLAUDE_HAIKU)
-            jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
+            val systemBlocks = listOf(SystemBlock(text = systemPrompt))
+            val jsonObjectOutput = doInvokeClaudeWithTool(
+                systemBlocks = systemBlocks,
+                userPrompt = "Generate Stretching Flow",
+                modelId = CLAUDE_HAIKU,
+                tool = planTool
+            )
+
+            // 3. MAP DIRECTLY TO DATA CLASS
+            jsonConfig.decodeFromJsonElement<GeneratedPlanResponse>(jsonObjectOutput)
+
         } catch (e: Exception) {
             Log.e("Bedrock", "Stretching parse failed", e)
             GeneratedPlanResponse(explanation = "Failed to generate mobility flow.")
@@ -477,15 +713,66 @@ class BedrockClient @Inject constructor(
         history: List<CompletedWorkoutWithExercise>,
         availableExercises: List<ExerciseEntity>
     ): GeneratedPlanResponse = withContext(Dispatchers.Default) {
-        val exerciseList = availableExercises.joinToString("\n") { "- ${it.name}" }
+        val exerciseList = availableExercises.joinToString("\n") { "- ${it.name} (Muscle: ${it.muscleGroup})" }
         val rawPrompt = promptRepository.getAccessorySystemPrompt()
-        val prompt = rawPrompt
+        val systemPrompt = rawPrompt
             .replace("{currentGoal}", currentGoal)
             .replace("{exerciseList}", exerciseList)
 
+        // 1. DEFINE THE TOOL SCHEMA
+        val exerciseSchema = PropertySchema(
+            type = "object",
+            properties = mapOf(
+                "name" to PropertySchema(type = "string"),
+                "sets" to PropertySchema(type = "integer"),
+                "suggestedReps" to PropertySchema(type = "integer"),
+                "suggestedLbs" to PropertySchema(type = "number"),
+                "suggestedRpe" to PropertySchema(type = "integer"),
+                "tier" to PropertySchema(type = "integer"),
+                "targetMuscle" to PropertySchema(type = "string"),
+                "isAMRAP" to PropertySchema(type = "boolean"),
+                "isEMOM" to PropertySchema(type = "boolean"),
+                "notes" to PropertySchema(type = "string")
+            ),
+            required = listOf("name", "sets", "suggestedReps", "suggestedLbs", "suggestedRpe", "tier", "isAMRAP", "isEMOM", "notes")
+        )
+
+        val daySchema = PropertySchema(
+            type = "object",
+            properties = mapOf(
+                "day" to PropertySchema(type = "string"),
+                "workoutName" to PropertySchema(type = "string"),
+                "exercises" to PropertySchema(type = "array", items = exerciseSchema)
+            ),
+            required = listOf("day", "workoutName", "exercises")
+        )
+
+        val planTool = Tool(
+            name = "save_workout_plan",
+            description = "Saves the structured accessory plan to the database.",
+            input_schema = ToolInputSchema(
+                properties = mapOf(
+                    "explanation" to PropertySchema(type = "string", description = "Coach's reasoning for the selection."),
+                    "mesocycleLengthWeeks" to PropertySchema(type = "integer", description = "Default to 1"),
+                    "schedule" to PropertySchema(type = "array", items = daySchema)
+                ),
+                required = listOf("explanation", "mesocycleLengthWeeks", "schedule")
+            )
+        )
+
+        // 2. INVOKE CLAUDE USING THE TOOL
         try {
-            val cleanJson = invokeClaude(prompt, "Generate Accessory", CLAUDE_HAIKU)
-            jsonConfig.decodeFromString<GeneratedPlanResponse>(cleanJson)
+            val systemBlocks = listOf(SystemBlock(text = systemPrompt))
+            val jsonObjectOutput = doInvokeClaudeWithTool(
+                systemBlocks = systemBlocks,
+                userPrompt = "Generate Accessory Work",
+                modelId = CLAUDE_HAIKU,
+                tool = planTool
+            )
+
+            // 3. MAP DIRECTLY TO DATA CLASS
+            jsonConfig.decodeFromJsonElement<GeneratedPlanResponse>(jsonObjectOutput)
+
         } catch (e: Exception) {
             Log.e("Bedrock", "Accessory parse failed", e)
             GeneratedPlanResponse(explanation = "Failed to generate accessory work.")
@@ -830,6 +1117,52 @@ class BedrockClient @Inject constructor(
         }
 
         return extractJsonFromText(rawText)
+    }
+
+    private suspend fun doInvokeClaudeWithTool(
+        systemBlocks: List<SystemBlock>,
+        userPrompt: String,
+        modelId: String,
+        tool: Tool
+    ): kotlinx.serialization.json.JsonObject {
+        enforceLimit()
+
+        val maxTokensToUse = if (modelId.contains("sonnet", ignoreCase = true)) 8192 else 4096
+
+        val requestBody = ClaudeRequest(
+            max_tokens = maxTokensToUse,
+            system = systemBlocks,
+            messages = listOf(Message(role = "user", content = userPrompt)),
+            tools = listOf(tool),
+            tool_choice = ToolChoice(type = "tool", name = tool.name)
+        )
+
+        val jsonString = jsonConfig.encodeToString(ClaudeRequest.serializer(), requestBody)
+
+        val request = InvokeModelRequest {
+            this.modelId = modelId
+            contentType = "application/json"
+            accept = "application/json"
+            body = jsonString.toByteArray()
+        }
+
+        val response = getClient().invokeModel(request)
+        val responseBody = response.body?.decodeToString() ?: ""
+
+        val outerResponse = jsonConfig.decodeFromString<ClaudeResponse>(responseBody)
+
+        // --- KEEP LOGGING CACHE METRICS! ---
+        outerResponse.usage?.let { u ->
+            Log.e("PROMPT_CACHE", """
+                🔥 CACHE METRICS (TOOL USE) 🔥
+                Standard Input: ${u.input_tokens}
+                Cache CREATED: ${u.cache_creation_input_tokens}
+                Cache READ: ${u.cache_read_input_tokens}
+            """.trimIndent())
+        }
+
+        val toolUseBlock = outerResponse.content.firstOrNull { it.type == "tool_use" }
+        return toolUseBlock?.input ?: throw Exception("Claude failed to invoke the requested tool.")
     }
 
     private suspend fun doInvokeClaudeStreaming(

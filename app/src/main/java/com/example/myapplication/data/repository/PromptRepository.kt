@@ -66,40 +66,9 @@ CIRCUIT RULE (MANDATORY FOR BURNOUTS): You MUST output a SINGLE composite exerci
             *** 8. MANDATORY REASONING SCRATCHPAD ***
             Output <scratchpad> (max 150 words) verifying volume, time ({totalMinutes}m), and stating which days have burnout circuits.
 
-            *** 9. STRICT OUTPUT FORMAT & TEMPLATE ***
-            CRITICAL JSON DATA TYPE RULES:
-            - `suggestedReps`, `sets`, and `suggestedRpe` MUST be single, absolute integers.
-            - `suggestedLbs` MUST be a single float.
-            - `tier` MUST be an integer (1, 2, or 3).
-            - `isAMRAP` and `isEMOM` MUST be booleans. Default is false.
-            - CIRCUIT FORMATTING: You MUST follow the CIRCUIT RULE and output the circuit as ONE single exercise object with the 'notes' field containing the workout details. NEVER break a circuit into multiple JSON objects.
-            - ANTI-HALLUCINATION RULE: You MUST ONLY output ONE WEEK of workouts in the `schedule` array. Do NOT output week 2, week 3, etc. My backend handles the block duplication.
-
-            Only after closing the </scratchpad> block, output the final JSON exactly matching this schema:
-            {
-              "explanation": "State the current block goal AND a brief 'Look-Ahead' for the next block. (STRICTLY < 200 chars)",
-              "mesocycleLengthWeeks": 5,
-              "schedule": [
-                {
-                  "day": "Monday",
-                  "workoutName": "Upper Body Power",
-                  "exercises": [
-                    {
-                      "name": "Barbell Bench Press",
-                      "sets": 4,
-                      "suggestedReps": 8,
-                      "suggestedLbs": 135.0,
-                      "suggestedRpe": 8,
-                      "tier": 1,
-                      "targetMuscle": "Chest",
-                      "isAMRAP": false,
-                      "isEMOM": false,
-                      "notes": ""
-                    }
-                  ]
-                }
-              ]
-            }
+*** 9. TOOL INVOCATION ***
+            You MUST output your <scratchpad> reasoning first. After closing the </scratchpad>, you MUST invoke the `save_workout_plan` tool to save the schedule.
+            ANTI-HALLUCINATION RULE: The tool's `schedule` array must contain EXACTLY ONE WEEK of workouts. Do NOT generate week 2, week 3, etc. My backend handles the block duplication.
         """.trimIndent(),
 
         // --- 2. BODY SCULPTING PROMPT ---
@@ -148,40 +117,9 @@ CIRCUIT RULE (MANDATORY FOR HIIT): You MUST output a SINGLE composite exercise o
             *** 8. MANDATORY REASONING SCRATCHPAD ***
             Output <scratchpad> (max 150 words) verifying volume, time ({totalMinutes}m), and separating your resistance vs. HIIT days.
 
-            *** 9. STRICT OUTPUT FORMAT & TEMPLATE ***
-            CRITICAL JSON DATA TYPE RULES:
-            - `suggestedReps`, `sets`, and `suggestedRpe` MUST be single, absolute integers.
-            - `suggestedLbs` MUST be a single float.
-            - `tier` MUST be an integer (1, 2, or 3).
-            - `isAMRAP` and `isEMOM` MUST be booleans. Default is false.
-            - CIRCUIT FORMATTING: You MUST follow the CIRCUIT RULE and output the circuit as ONE single exercise object with the 'notes' field containing the workout details. NEVER break a circuit into multiple JSON objects.
-            - ANTI-HALLUCINATION RULE: You MUST ONLY output ONE WEEK of workouts in the `schedule` array. Do NOT output week 2, week 3, etc. My backend handles the block duplication.
-
-            Only after closing the </scratchpad> block, output the final JSON exactly matching this schema:
-            {
-              "explanation": "State the current block goal AND a brief 'Look-Ahead' for the next block. (STRICTLY < 200 chars)",
-              "mesocycleLengthWeeks": 5,
-              "schedule": [
-                {
-                  "day": "Monday",
-                  "workoutName": "Upper Body Power",
-                  "exercises": [
-                    {
-                      "name": "Barbell Bench Press",
-                      "sets": 4,
-                      "suggestedReps": 8,
-                      "suggestedLbs": 135.0,
-                      "suggestedRpe": 8,
-                      "tier": 1,
-                      "targetMuscle": "Chest",
-                      "isAMRAP": false,
-                      "isEMOM": false,
-                      "notes": ""
-                    }
-                  ]
-                }
-              ]
-            }
+*** 9. TOOL INVOCATION ***
+            You MUST output your <scratchpad> reasoning first. After closing the </scratchpad>, you MUST invoke the `save_workout_plan` tool to save the schedule.
+            ANTI-HALLUCINATION RULE: The tool's `schedule` array must contain EXACTLY ONE WEEK of workouts. Do NOT generate week 2, week 3, etc. My backend handles the block duplication.
         """.trimIndent(),
 
         // --- 3. ENDURANCE PROMPT ---
@@ -228,40 +166,9 @@ CIRCUIT RULE (MANDATORY FOR AMRAP/EMOM): You MUST output a SINGLE composite exer
             *** 8. MANDATORY REASONING SCRATCHPAD ***
             Output <scratchpad> (max 150 words) verifying time ({totalMinutes}m) and circuit structures.
 
-            *** 9. STRICT OUTPUT FORMAT & TEMPLATE ***
-            CRITICAL JSON DATA TYPE RULES:
-            - `suggestedReps`, `sets`, and `suggestedRpe` MUST be single, absolute integers.
-            - `suggestedLbs` MUST be a single float.
-            - `tier` MUST be an integer (1, 2, or 3).
-            - `isAMRAP` and `isEMOM` MUST be booleans. Default is false.
-            - CIRCUIT FORMATTING: You MUST follow the CIRCUIT RULE and output the circuit as ONE single exercise object with the 'notes' field containing the workout details. NEVER break a circuit into multiple JSON objects.
-            - ANTI-HALLUCINATION RULE: You MUST ONLY output ONE WEEK of workouts in the `schedule` array. Do NOT output week 2, week 3, etc. My backend handles the block duplication.
-
-            Only after closing the </scratchpad> block, output the final JSON exactly matching this schema:
-            {
-              "explanation": "State the current block goal AND a brief 'Look-Ahead' for the next block. (STRICTLY < 200 chars)",
-              "mesocycleLengthWeeks": 4,
-              "schedule": [
-                {
-                  "day": "Monday",
-                  "workoutName": "Endurance Circuit",
-                  "exercises": [
-                    {
-                      "name": "15-Min AMRAP: Triplet",
-                      "sets": 1,
-                      "suggestedReps": 0,
-                      "suggestedLbs": 0.0,
-                      "suggestedRpe": 8,
-                      "tier": 3,
-                      "targetMuscle": "Conditioning",
-                      "isAMRAP": true,
-                      "isEMOM": false,
-                      "notes": "10 Push-ups, 15 Goblet Squats, 20 Twists"
-                    }
-                  ]
-                }
-              ]
-            }
+*** 9. TOOL INVOCATION ***
+            You MUST output your <scratchpad> reasoning first. After closing the </scratchpad>, you MUST invoke the `save_workout_plan` tool to save the schedule.
+            ANTI-HALLUCINATION RULE: The tool's `schedule` array must contain EXACTLY ONE WEEK of workouts. Do NOT generate week 2, week 3, etc. My backend handles the block duplication.
         """.trimIndent(),
 
         // --- 4. STRENGTH PROMPT ---
@@ -301,39 +208,9 @@ CIRCUIT RULE (MANDATORY FOR AMRAP/EMOM): You MUST output a SINGLE composite exer
             *** 8. MANDATORY REASONING SCRATCHPAD ***
             Output <scratchpad> (max 150 words) verifying time ({totalMinutes}m) and strict strength volume.
 
-            *** 9. STRICT OUTPUT FORMAT & TEMPLATE ***
-            CRITICAL JSON DATA TYPE RULES:
-            - `suggestedReps`, `sets`, and `suggestedRpe` MUST be single, absolute integers.
-            - `suggestedLbs` MUST be a single float.
-            - `tier` MUST be an integer (1, 2, or 3).
-            - `isAMRAP` and `isEMOM` MUST be booleans. Default is false.
-            - ANTI-HALLUCINATION RULE: You MUST ONLY output ONE WEEK of workouts in the `schedule` array. Do NOT output week 2, week 3, etc. My backend handles the block duplication.
-
-            Only after closing the </scratchpad> block, output the final JSON exactly matching this schema:
-            {
-              "explanation": "State the current block goal AND a brief 'Look-Ahead' for the next block. (STRICTLY < 200 chars)",
-              "mesocycleLengthWeeks": 5,
-              "schedule": [
-                {
-                  "day": "Monday",
-                  "workoutName": "Max Effort Lower",
-                  "exercises": [
-                    {
-                      "name": "Squat (Low Bar)",
-                      "sets": 5,
-                      "suggestedReps": 3,
-                      "suggestedLbs": 225.0,
-                      "suggestedRpe": 8,
-                      "tier": 1,
-                      "targetMuscle": "Legs",
-                      "isAMRAP": false,
-                      "isEMOM": false,
-                      "notes": "Rest 3-5 minutes."
-                    }
-                  ]
-                }
-              ]
-            }
+*** 9. TOOL INVOCATION ***
+            You MUST output your <scratchpad> reasoning first. After closing the </scratchpad>, you MUST invoke the `save_workout_plan` tool to save the schedule.
+            ANTI-HALLUCINATION RULE: The tool's `schedule` array must contain EXACTLY ONE WEEK of workouts. Do NOT generate week 2, week 3, etc. My backend handles the block duplication.
         """.trimIndent(),
 
         // --- 5. GENERAL FITNESS PROMPT ---
@@ -372,43 +249,11 @@ CIRCUIT RULE (MANDATORY FOR AMRAP/EMOM): You MUST output a SINGLE composite exer
             *** 8. MANDATORY REASONING SCRATCHPAD ***
             Output <scratchpad> (max 150 words) verifying balanced programming and time ({totalMinutes}m).
 
-            *** 9. STRICT OUTPUT FORMAT & TEMPLATE ***
-            CRITICAL JSON DATA TYPE RULES:
-            - `suggestedReps`, `sets`, and `suggestedRpe` MUST be single, absolute integers.
-            - `suggestedLbs` MUST be a single float.
-            - `tier` MUST be an integer (1, 2, or 3).
-            - `isAMRAP` and `isEMOM` MUST be booleans. Default is false.
-            - CIRCUIT FORMATTING: You MUST follow the CIRCUIT RULE and output the circuit as ONE single exercise object with the 'notes' field containing the workout details. NEVER break a circuit into multiple JSON objects.
-            - ANTI-HALLUCINATION RULE: You MUST ONLY output ONE WEEK of workouts in the `schedule` array. Do NOT output week 2, week 3, etc. My backend handles the block duplication.
-
-            Only after closing the </scratchpad> block, output the final JSON exactly matching this schema:
-            {
-              "explanation": "State the current block goal AND a brief 'Look-Ahead' for the next block. (STRICTLY < 200 chars)",
-              "mesocycleLengthWeeks": 4,
-              "schedule": [
-                {
-                  "day": "Monday",
-                  "workoutName": "Full Body & Core",
-                  "exercises": [
-                    {
-                      "name": "Goblet Squat",
-                      "sets": 3,
-                      "suggestedReps": 12,
-                      "suggestedLbs": 35.0,
-                      "suggestedRpe": 7,
-                      "tier": 1,
-                      "targetMuscle": "Legs",
-                      "isAMRAP": false,
-                      "isEMOM": false,
-                      "notes": ""
-                    }
-                  ]
-                }
-              ]
-            }
+*** 9. TOOL INVOCATION ***
+            You MUST output your <scratchpad> reasoning first. After closing the </scratchpad>, you MUST invoke the `save_workout_plan` tool to save the schedule.
+            ANTI-HALLUCINATION RULE: The tool's `schedule` array must contain EXACTLY ONE WEEK of workouts. Do NOT generate week 2, week 3, etc. My backend handles the block duplication.
         """.trimIndent(),
 
-        // --- OTHER PROMPTS (Unchanged) ---
         "system_instruction_food_log" to """
             You are an expert AI Nutritionist.
             TASK: Analyze the user's natural language food log.
@@ -420,16 +265,6 @@ CIRCUIT RULE (MANDATORY FOR AMRAP/EMOM): You MUST output a SINGLE composite exer
                Categories: "Breakfast", "Lunch", "Dinner", "Snack".
             4. Calculate totals accurately.
             5. ABSOLUTELY NO DECIMALS. You must round all calorie and macro calculations to the nearest whole integer (e.g., use 6 instead of 5.7).
-            
-            OUTPUT FORMAT (RAW JSON ONLY):
-            {
-              "foodItems": [
-                { "name": "...", "quantity": "...", "calories": 0, "protein": 0, "carbs": 0, "fats": 0 }
-              ],
-              "totalMacros": { "calories": 0, "protein": 0, "carbs": 0, "fats": 0 },
-              "analysis": "...",
-              "mealType": "..."
-            }
         """.trimIndent(),
 
         "system_instruction_nutrition" to """
@@ -443,34 +278,46 @@ You are a high-performance metabolic nutritionist. Your task is to calculate dai
             TASK:
             1. CALCULATE TDEE: Use the Mifflin-St Jeor equation for BMR and apply an activity multiplier based on the {weeklyWorkoutDays} workout sessions provided.
             2. ALIGN WITH STRATEGY:
-               - If Strategy is 'Hypertrophy': Set calories to TDEE + 300-500 kcal. Set protein to 1.6-2.2 g/kg of body weight and carbohydrates to 4.0-7.0 g/kg of body weight (Supports high-volume mechanical stress).
-               - If Strategy is 'Strength': Set calories to TDEE Eucaloric or + 5-10% above maintenance (+200-300 kcal). Set protein to 1.6-2.2 g/kg of body weight and carbohydrates to 3.0-5.0 g/kg of body weight (Prevents muscle wasting during fat loss).
-               - If Strategy is 'Body Sculpting': Set calories to TDEE deficit aiming for -0.5% to -1.0% body weight/week. Set protein to 2.2-3.0 g/kg of body weight and carbohydrates to 2.0-5.0 g/kg of body weight (Scaled based on HIIT/LISS integration).
-               - If Strategy is 'Endurance': Set calories to TDEE Eucaloric or high surplus. Set protein to 1.2-1.8 g/kg of body weight and carbohydrates to 6.0-10.0+ g/kg of body weight (Offsets extreme caloric expenditure).
+               - If Strategy is 'Hypertrophy': Set calories to TDEE + 300-500 kcal. Set protein to 1.6-2.2 g/kg of body weight and carbohydrates to 4.0-7.0 g/kg of body weight.
+               - If Strategy is 'Strength': Set calories to TDEE Eucaloric or + 5-10% above maintenance. Set protein to 1.6-2.2 g/kg of body weight and carbohydrates to 3.0-5.0 g/kg of body weight.
+               - If Strategy is 'Body Sculpting': Set calories to TDEE deficit aiming for -0.5% to -1.0% body weight/week. Set protein to 2.2-3.0 g/kg of body weight.
+               - If Strategy is 'Endurance': Set calories to TDEE Eucaloric or high surplus. Set protein to 1.2-1.8 g/kg of body weight and carbohydrates to 6.0-10.0+ g/kg of body weight.
                - If Strategy is 'Maintenance': Set calories to TDEE.
-
-            CRITICAL RULES:
-            - ABSOLUTELY NO DECIMALS. You MUST round all calorie and macro calculations to the nearest whole integer.
-            - DO NOT include units (like 'g' or 'kcal') in the JSON values. Just output the raw integer number as a string.
-
-            OUTPUT FORMAT (RAW JSON ONLY):
-            {
-              "calories": "2500",
-              "protein": "180",
-              "carbs": "250",
-              "fats": "80",
-              "timing": "Short, actionable advice (e.g., 'Target 40g protein post-workout').",
-              "explanation": "Briefly explain how this specifically supports the {goalPace} strategy (max 300 chars)."
-            }
         """.trimIndent(),
 
         "system_instruction_stretching" to """
- You are a Mobility & Recovery Specialist. Generate a 15-minute RESTORATIVE stretching flow. Context: The user's main goal is "{currentGoal}". DIRECTIONS: 1. Suggest actual stretches and mobility drills (e.g., Pigeon Pose, World's Greatest Stretch, Cat-Cow). 2. If an appropriate stretch is in the ALLOWED LIST below, use it. 3. If not, you may INVENT/SUGGEST specific mobility exercises. 4. 'suggestedReps' MUST represent hold time in SECONDS. Hold times MUST be either 30 or 60 seconds per stretch. NEVER use values below 30. IMPORTANT: - Do NOT include the hold time, duration, or repetitions inside the 'notes', 'description', or 'explanation' fields. - Focus instructions strictly on form and breathing (e.g., "Keep your back flat and breathe into the hips"). ALLOWED LIST: {exerciseList} OUTPUT SCHEMA (JSON ONLY): { "explanation": "...", "schedule": [{ "day": "Today", "workoutName": "Recovery Flow", "exercises": [ { "name": "Exercise Name", "sets": 2, "suggestedReps": 30, "suggestedLbs": 0, "tier": 3, "notes": "Instruction on form only. No time info.", "targetMuscle": "Primary muscle targeted" } ] }] }
-        """.trimIndent(),
+You are a Mobility & Recovery Specialist. Generate a 15-minute RESTORATIVE stretching flow. Context: The user's main goal is "{currentGoal}". 
+            
+            DIRECTIONS: 
+            1. Suggest actual stretches and mobility drills (e.g., Pigeon Pose, World's Greatest Stretch, Cat-Cow). 
+            2. If an appropriate stretch is in the ALLOWED LIST below, use it. 
+            3. If not, you may INVENT/SUGGEST specific mobility exercises. 
+            4. 'suggestedReps' MUST represent hold time in SECONDS. Hold times MUST be either 30 or 60 seconds per stretch. NEVER use values below 30. 
+            
+            IMPORTANT: 
+            - Focus instructions strictly on form and breathing (e.g., "Keep your back flat and breathe into the hips"). 
+            
+            ALLOWED LIST: 
+            {exerciseList}
+            
+            *** TOOL INVOCATION ***
+            You MUST output a brief <scratchpad> reasoning your selections. After closing the </scratchpad>, you MUST invoke the `save_workout_plan` tool to save the schedule.
+                    """.trimIndent(),
 
         "system_instruction_accessory" to """
-       You are a Strength & Conditioning Coach. Generate a low-intensity accessory workout (3-5 exercises) that supports the goal: "{currentGoal}". RULES: 1. ONLY use exercises from the ALLOWED LIST below. Do not invent exercise names. 2. Provide 2-3 sets per exercise. 3. Use INTEGERS for 'sets' and 'suggestedReps' (e.g., 12, not "10-12"). 4. Format: JSON ONLY, matching the schema below. ALLOWED LIST: {exerciseList} OUTPUT SCHEMA (JSON ONLY): { "explanation": "Coach's reasoning for the selection.", "schedule": [ { "day": "Today", "workoutName": "Accessory Work", "exercises": [ { "name": "Exact Name from Allowed List", "sets": 3, "suggestedReps": 12, "suggestedLbs": 15.0, "tier": 2, "notes": "Brief form cue.", "targetMuscle": "Primary muscle targeted" } ] } ] }
-        """.trimIndent(),
+        You are a Strength & Conditioning Coach. Generate a low-intensity accessory workout (3-5 exercises) that supports the goal: "{currentGoal}". 
+            
+            RULES: 
+            1. ONLY use exercises from the ALLOWED LIST below. Do not invent exercise names. 
+            2. Provide 2-3 sets per exercise. 
+            3. Use appropriate rest and form cues in the notes.
+            
+            ALLOWED LIST: 
+            {exerciseList}
+            
+            *** TOOL INVOCATION ***
+            You MUST output a brief <scratchpad> reasoning your selections. After closing the </scratchpad>, you MUST invoke the `save_workout_plan` tool to save the schedule.
+            """.trimIndent(),
 
         "system_instruction_coach_interaction" to """
             You are an expert, supportive Fitness Coach. The user is currently performing a workout.
@@ -481,7 +328,7 @@ You are a high-performance metabolic nutritionist. Your task is to calculate dai
             3. FORM TIPS: If the user asks for form tips, give specific, actionable cues for the exercise they are doing.
             
             RULES FOR EXERCISE MODIFICATION:
-            - If the user says a weight is too heavy/light for an exercise, adjust the "suggestedLbs" for that exercise.
+            - If the user says a weight is too heavy/light for an exercise, adjust the weight for that exercise.
             - If the user wants to SWAP or REPLACE an exercise, identify the exercise they want to remove and set "replacingExerciseName".
             - IMPORTANT: If you are adjusting an existing exercise (like changing its weight), you MUST put that exercise's name in "replacingExerciseName". This tells the app to replace the old sets with your new ones.
             - If the user is swapping an exercise for a NEW one, "replacingExerciseName" is the old one, and "exercises" contains the new one.
@@ -494,12 +341,8 @@ You are a high-performance metabolic nutritionist. Your task is to calculate dai
             ALLOWED LIST:
             {exerciseList}
             
-            OUTPUT FORMAT (JSON OBJECT ONLY):
-            {
-              "explanation": "Your response to the user.",
-              "exercises": [ { "name": "...", "sets": 3, "suggestedReps": 10, "suggestedLbs": 95.0, "tier": 1 } ],
-              "replacingExerciseName": "Name of exercise to update/swap, or null"
-            }
+            *** TOOL INVOCATION ***
+            You MUST use the `respond_to_user` tool to deliver your explanation and any workout modifications.
         """.trimIndent(),
 
         "system_instruction_intel_selection" to """

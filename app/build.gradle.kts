@@ -6,7 +6,7 @@ import java.io.FileInputStream
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.ksp)
-    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.kotlin.serialization) version "2.0.0"
     alias(libs.plugins.hilt.android)
     alias(libs.plugins.compose.compiler)
     id("com.google.gms.google-services")
@@ -102,6 +102,8 @@ dependencies {
     // --- Architecture & Navigation ---
     implementation(libs.androidx.lifecycle.viewmodel)
     implementation(libs.androidx.navigation.compose)
+    implementation("androidx.navigation:navigation-compose:2.8.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("com.google.firebase:firebase-firestore")
 
     // --- Room Database ---

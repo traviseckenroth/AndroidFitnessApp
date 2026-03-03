@@ -19,7 +19,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import org.json.JSONObject
 import javax.inject.Inject
 
 sealed interface NutritionUiState {
@@ -41,7 +40,6 @@ class NutritionViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<NutritionUiState>(NutritionUiState.Loading)
     val uiState = _uiState.asStateFlow()
 
-    // Expose current goal pace to UI for the dropdown default
     val currentGoalPace = userPrefs.userGoalPace.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Maintain")
 
     private val _foodLogs = MutableStateFlow<List<FoodLogEntity>>(emptyList())
@@ -76,16 +74,13 @@ class NutritionViewModel @Inject constructor(
 
     private fun loadFoodLogs() {
         viewModelScope.launch {
-            nutritionRepository.getTodayFoodLogs().collect {
-                _foodLogs.value = it
-            }
+            nutritionRepository.getTodayFoodLogs().collect { _foodLogs.value = it }
         }
     }
 
     private fun loadNutritionData() {
         viewModelScope.launch {
             _uiState.value = NutritionUiState.Loading
-
             val activePlan = planRepository.getActivePlan()
 
             if (activePlan == null) {
@@ -93,42 +88,25 @@ class NutritionViewModel @Inject constructor(
                 return@launch
             }
 
-            // CACHE CHECK
-            if (!activePlan.nutritionJson.isNullOrBlank()) {
-                try {
-                    val json = JSONObject(activePlan.nutritionJson)
-                    val cachedExplanation = json.optString("explanation", "")
+            // --- MASSIVE CLEANUP: Room handles the JSON now! ---
+            if (activePlan.nutrition != null) {
+                val cachedExplanation = activePlan.nutrition.explanation
 
-                    if (cachedExplanation.contains("error", ignoreCase = true) || cachedExplanation.isBlank()) {
-                        Log.w("NutritionVM", "Cache contained an error. Stopping auto-generation loop.")
-                        _uiState.value = NutritionUiState.Empty
-                        return@launch
-                    } else {
-                        val cachedPlan = NutritionPlan(
-                            calories = json.optString("calories", "2000"),
-                            protein = json.optString("protein", "150"),
-                            carbs = json.optString("carbs", "200"),
-                            fats = json.optString("fats", "70"),
-                            explanation = cachedExplanation
-                        )
-                        _uiState.value = NutritionUiState.Success(cachedPlan, activePlan.programType)
-                        return@launch
-                    }
-                } catch (e: Exception) {
-                    Log.e("NutritionVM", "Failed to parse cached nutrition", e)
+                if (cachedExplanation.contains("error", ignoreCase = true) || cachedExplanation.isBlank()) {
+                    Log.w("NutritionVM", "Cache contained an error. Stopping auto-generation loop.")
                     _uiState.value = NutritionUiState.Empty
-                    return@launch
+                } else {
+                    _uiState.value = NutritionUiState.Success(activePlan.nutrition, activePlan.programType)
                 }
+                return@launch
             }
 
-            // Only auto-generate if it's completely empty
             generateAndCacheNutrition(activePlan)
         }
     }
 
     private suspend fun generateAndCacheNutrition(activePlan: WorkoutPlanEntity, customGoalPace: String? = null) {
         try {
-            // 1. Program Strategy (Dictates Macro Split)
             val baseStrategy = when (activePlan.programType) {
                 "Hypertrophy" -> "Focus on evenly distributed protein boluses to stimulate mTOR."
                 "Body Sculpting" -> "Extremely high protein to preserve tissue while maximizing fat oxidation."
@@ -137,11 +115,8 @@ class NutritionViewModel @Inject constructor(
                 else -> "Balanced macros."
             }
 
-            // 2. Caloric Goal Pace (Dictates Total Calories)
             val storedPace = userPrefs.userGoalPace.first()
             val finalPace = customGoalPace ?: storedPace.ifBlank { "Maintain" }
-
-            // Combine both into a master instruction for the AI
             val nutritionStrategy = "Goal Pace: $finalPace. $baseStrategy"
 
             val weight = userPrefs.userWeight.first()
@@ -171,23 +146,18 @@ class NutritionViewModel @Inject constructor(
                 return numStr.toDoubleOrNull()?.toInt()?.toString() ?: default.toString()
             }
 
+            // Create the domain object
             val nutritionPlan = NutritionPlan(
                 calories = parseSafeInt(remotePlan.calories, 2000),
                 protein = parseSafeInt(remotePlan.protein, 150),
                 carbs = parseSafeInt(remotePlan.carbs, 200),
                 fats = parseSafeInt(remotePlan.fats, 70),
+                timing = remotePlan.timing,
                 explanation = remotePlan.explanation
             )
 
-            val jsonObj = JSONObject().apply {
-                put("calories", nutritionPlan.calories)
-                put("protein", nutritionPlan.protein)
-                put("carbs", nutritionPlan.carbs)
-                put("fats", nutritionPlan.fats)
-                put("explanation", nutritionPlan.explanation)
-            }
-
-            val updatedPlan = activePlan.copy(nutritionJson = jsonObj.toString())
+            // --- MASSIVE CLEANUP: No more JSON builders! ---
+            val updatedPlan = activePlan.copy(nutrition = nutritionPlan)
             planRepository.updatePlan(updatedPlan)
 
             _uiState.value = NutritionUiState.Success(nutritionPlan, activePlan.programType)
@@ -200,23 +170,16 @@ class NutritionViewModel @Inject constructor(
         if (query.isBlank()) return
         viewModelScope.launch {
             _isLogging.value = true
-            try {
-                nutritionRepository.logFood(query)
-            } catch (e: Exception) {} finally {
-                _isLogging.value = false
-            }
+            try { nutritionRepository.logFood(query) } catch (e: Exception) {} finally { _isLogging.value = false }
         }
     }
 
     fun logManual(name: String, cals: String, pro: String, carb: String, fat: String, meal: String) {
         viewModelScope.launch {
-            nutritionRepository.logManualFood(
-                name, cals.toIntOrNull() ?: 0, pro.toIntOrNull() ?: 0, carb.toIntOrNull() ?: 0, fat.toIntOrNull() ?: 0, meal
-            )
+            nutritionRepository.logManualFood(name, cals.toIntOrNull() ?: 0, pro.toIntOrNull() ?: 0, carb.toIntOrNull() ?: 0, fat.toIntOrNull() ?: 0, meal)
         }
     }
 
-    // Accepts the custom pace from the UI Dialog
     fun generateNutrition(customGoalPace: String? = null) {
         viewModelScope.launch {
             _uiState.value = NutritionUiState.Loading

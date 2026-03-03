@@ -125,6 +125,12 @@ class ActiveSessionViewModel @Inject constructor(
         states.sumOf { (it.exercise.estimatedTimePerSet * it.sets.size).toInt() }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    val workoutProgress: StateFlow<Float> = _exerciseStates.map { states ->
+        val total = states.sumOf { it.sets.size }
+        val completed = states.sumOf { state -> state.sets.count { set -> set.isCompleted } }
+        if (total > 0) completed.toFloat() / total.toFloat() else 0f
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0f)
+
     // --- 2. INITIALIZATION ---
 
     init {

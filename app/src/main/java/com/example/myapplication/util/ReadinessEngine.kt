@@ -81,12 +81,13 @@ class ReadinessEngine @Inject constructor(
         var bonus = 0
         
         // Nutrition Bonus
+        // Nutrition Bonus
         val foodLogs = nutritionRepository.getTodayFoodLogs().first()
         val activePlan = workoutDao.getActivePlan()
-        val targetCals = activePlan?.nutritionJson?.let {
-            try { Json.decodeFromString<RemoteNutritionPlan>(it).calories.toIntOrNull() } catch(e: Exception) { 2500 }
-        } ?: 2500
-        
+
+        // Since we are using TypeConverters, we can just grab the calories directly!
+        val targetCals = activePlan?.nutrition?.calories?.filter { it.isDigit() }?.toIntOrNull() ?: 2500
+
         val loggedCals = foodLogs.sumOf { it.totalCalories }
         if (loggedCals > 0) {
             val ratio = loggedCals.toDouble() / targetCals

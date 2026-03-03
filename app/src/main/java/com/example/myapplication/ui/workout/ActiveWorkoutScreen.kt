@@ -85,13 +85,12 @@ fun ActiveWorkoutScreen(
     val totalEstimatedTime by viewModel.totalEstimatedTime.collectAsState()
 
     var showAddExerciseDialog by remember { mutableStateOf(false) }
+
     var showBleDialog by remember { mutableStateOf(false) }
     var isPocketModeActive by remember { mutableStateOf(false) }
     val workoutListState = rememberLazyListState()
 
-    val totalSets = remember(exerciseStates) { exerciseStates.sumOf { it.sets.size } }
-    val completedSets = remember(exerciseStates) { exerciseStates.sumOf { it.sets.count { s -> s.isCompleted } } }
-    val progress = if (totalSets > 0) completedSets.toFloat() / totalSets else 0f
+    val progress by viewModel.workoutProgress.collectAsState()
 
     var permissionsGranted by remember {
         mutableStateOf(

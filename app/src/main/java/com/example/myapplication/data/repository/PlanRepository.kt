@@ -50,7 +50,7 @@ class PlanRepository @Inject constructor(
     ): Long {
         Log.d("PlanRepo", "Generating Plan for: $goal, Block: $block")
         val previousPlan = if (block > 1) workoutDao.getLatestPlan() else null
-        val existingNutritionJson = previousPlan?.nutritionJson
+        val existingNutrition = previousPlan?.nutrition
 
         if (block == 1) {
             val cal = Calendar.getInstance()
@@ -112,9 +112,9 @@ class PlanRepository @Inject constructor(
             goal = goal,
             programType = programType,
             aiExplanation = aiResponse.explanation,
-            nutritionJson = existingNutritionJson,
+            nutrition = existingNutrition, // CHANGED HERE
             block = block,
-            isActive = false // Changed to false: plan only becomes active once the user explicitly accepts it.
+            isActive = false
         )
 
         val adjustedSchedule = enforceTimeConstraints(aiResponse.schedule, duration.toFloat())
@@ -267,13 +267,7 @@ class PlanRepository @Inject constructor(
         val targetPlanId = if (planId == 0L) workoutDao.getLatestPlan()?.planId ?: 0L else planId
         val planEntity = workoutDao.getPlanById(targetPlanId)
 
-        val remoteNutrition = planEntity?.nutritionJson?.let {
-            try { Json.decodeFromString<RemoteNutritionPlan>(it) } catch(e: Exception) { null }
-        }
-
-        val domainNutrition = remoteNutrition?.let {
-            NutritionPlan(it.calories, it.protein, it.carbs, it.fats, it.timing, it.explanation)
-        }
+        val domainNutrition = planEntity?.nutrition
 
         val workouts = workoutDao.getWorkoutsForPlan(targetPlanId)
         val allExercises = workoutDao.getAllExercisesOneShot()

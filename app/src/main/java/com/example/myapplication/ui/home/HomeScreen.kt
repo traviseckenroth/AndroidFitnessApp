@@ -17,7 +17,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,7 +37,14 @@ import com.example.myapplication.data.local.DailyWorkoutEntity
 import com.example.myapplication.data.local.UserSubscriptionEntity
 import com.example.myapplication.data.remote.CommunityPick
 import com.example.myapplication.data.repository.PlanProgress
-import com.example.myapplication.ui.navigation.Screen
+// --- IMPORT THE NEW TYPE-SAFE ROUTES ---
+import com.example.myapplication.ui.navigation.ActiveWorkout
+import com.example.myapplication.ui.navigation.ContentDiscovery
+import com.example.myapplication.ui.navigation.GeneratePlan
+import com.example.myapplication.ui.navigation.ManualPlan
+import com.example.myapplication.ui.navigation.Nutrition
+import com.example.myapplication.ui.navigation.StretchingSession
+// ---------------------------------------
 import com.example.myapplication.ui.theme.FormaBlue
 import com.example.myapplication.ui.theme.FormaTeal
 import com.example.myapplication.ui.theme.SuccessGreen
@@ -48,18 +54,18 @@ import java.time.LocalDate
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    onNavigate: (String) -> Unit,
+    onNavigate: (Any) -> Unit, // CHANGED from String to Any to accept Objects
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val workout by viewModel.dailyWorkout.collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
     val workoutDates by viewModel.workoutDates.collectAsState()
     val isGenerating by viewModel.isGenerating.collectAsState()
-    
+
     val contentFeed by viewModel.filteredContent.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val subscriptions by viewModel.subscriptions.collectAsState()
-    
+
     val briefing by viewModel.knowledgeBriefing.collectAsState()
     val isBriefingLoading by viewModel.isBriefingLoading.collectAsState()
 
@@ -119,10 +125,10 @@ fun HomeScreen(
             item {
                 Spacer(modifier = Modifier.height(16.dp))
                 HeaderSection(userName = userName)
-                
+
                 Spacer(modifier = Modifier.height(16.dp))
                 FormaScoreSection(formaScore = formaScore)
-                
+
                 Spacer(modifier = Modifier.height(16.dp))
                 InfiniteScrollingCalendar(
                     initialDate = LocalDate.now(),
@@ -144,7 +150,7 @@ fun HomeScreen(
                     )
                 }
             }
-            
+
             // Discovery Feed & Daily Briefing
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -159,7 +165,7 @@ fun HomeScreen(
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold
                             )
-                            
+
                             KnowledgeCategorySelector(
                                 selectedCategory = selectedCategory,
                                 onCategorySelected = { viewModel.setCategory(it) }
@@ -200,7 +206,7 @@ fun HomeScreen(
                         items(contentFeed, key = { it.sourceId }) { item ->
                             KnowledgeFeedCard(
                                 item = item,
-                                onClick = { onNavigate(Screen.ContentDiscovery.createRoute(item.sourceId)) },
+                                onClick = { onNavigate(ContentDiscovery(contentId = item.sourceId)) }, // CHANGED TO OBJECT
                                 onUpvote = { viewModel.upvoteContent(item) }
                             )
                         }
@@ -231,7 +237,7 @@ fun HomeScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "Follow some interests to see your intelligence feed.", 
+                                    text = "Follow some interests to see your intelligence feed.",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = Color.Gray,
                                     textAlign = TextAlign.Center,
@@ -244,7 +250,7 @@ fun HomeScreen(
             }
 
             item { QuickActionsSection(onNavigate = onNavigate) }
-            
+
             item { Spacer(modifier = Modifier.height(24.dp)) }
         }
     }
@@ -279,18 +285,18 @@ fun HealthConnectOnboardingSheet(onDismiss: () -> Unit, onConnect: () -> Unit) {
                     )
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(24.dp))
-            
+
             Text(
                 text = "Sync with Health Connect",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
-            
+
             Spacer(modifier = Modifier.height(16.dp))
-            
+
             Text(
                 text = "Forma uses your sleep data to auto-regulate your workout intensity, preventing injury and optimizing your recovery path.",
                 style = MaterialTheme.typography.bodyLarge,
@@ -298,9 +304,9 @@ fun HealthConnectOnboardingSheet(onDismiss: () -> Unit, onConnect: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 lineHeight = 24.sp
             )
-            
+
             Spacer(modifier = Modifier.height(32.dp))
-            
+
             Button(
                 onClick = onConnect,
                 modifier = Modifier.fillMaxWidth(),
@@ -308,14 +314,14 @@ fun HealthConnectOnboardingSheet(onDismiss: () -> Unit, onConnect: () -> Unit) {
             ) {
                 Text("Sync Health Data", fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 4.dp))
             }
-            
+
             TextButton(
                 onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Maybe Later", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            
+
             Spacer(modifier = Modifier.navigationBarsPadding())
         }
     }
@@ -351,9 +357,9 @@ fun FormaScoreSection(formaScore: FormaScore?) {
                     color = formaScore.color
                 )
             }
-            
+
             Spacer(modifier = Modifier.width(20.dp))
-            
+
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
@@ -388,13 +394,12 @@ fun CommunityPickCard(pick: CommunityPick, onUpvote: () -> Unit) {
     Card(
         modifier = Modifier
             .width(240.dp)
-            .height(180.dp), // Height matched to KnowledgeFeedCard
+            .height(180.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Image Section matched to KnowledgeFeedCard
                 if (pick.imageUrl != null) {
                     AsyncImage(
                         model = pick.imageUrl,
@@ -440,9 +445,9 @@ fun CommunityPickCard(pick: CommunityPick, onUpvote: () -> Unit) {
                             )
                         }
                     }
-                    
+
                     Spacer(modifier = Modifier.height(6.dp))
-                    
+
                     Text(
                         text = pick.title,
                         style = MaterialTheme.typography.titleSmall,
@@ -450,9 +455,9 @@ fun CommunityPickCard(pick: CommunityPick, onUpvote: () -> Unit) {
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
-                    
+
                     Spacer(modifier = Modifier.height(2.dp))
-                    
+
                     Text(
                         text = pick.summary,
                         style = MaterialTheme.typography.bodySmall,
@@ -463,7 +468,6 @@ fun CommunityPickCard(pick: CommunityPick, onUpvote: () -> Unit) {
                 }
             }
 
-            // Upvote Button Section matched to KnowledgeFeedCard
             IconButton(
                 onClick = onUpvote,
                 modifier = Modifier
@@ -481,9 +485,9 @@ fun CommunityPickCard(pick: CommunityPick, onUpvote: () -> Unit) {
                     )
                     Spacer(Modifier.width(2.dp))
                     Icon(
-                        Icons.Default.ThumbUp, 
-                        contentDescription = "Upvote", 
-                        modifier = Modifier.size(12.dp), 
+                        Icons.Default.ThumbUp,
+                        contentDescription = "Upvote",
+                        modifier = Modifier.size(12.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -497,7 +501,7 @@ fun KnowledgeFeedCard(item: ContentSourceEntity, onClick: () -> Unit, onUpvote: 
     Card(
         modifier = Modifier
             .width(240.dp)
-            .height(180.dp), // Increased height for image
+            .height(180.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -507,7 +511,6 @@ fun KnowledgeFeedCard(item: ContentSourceEntity, onClick: () -> Unit, onUpvote: 
                     .fillMaxSize()
                     .clickable { onClick() }
             ) {
-                // AsyncImage with caching from Coil
                 if (item.imageUrl != null) {
                     AsyncImage(
                         model = item.imageUrl,
@@ -556,9 +559,9 @@ fun KnowledgeFeedCard(item: ContentSourceEntity, onClick: () -> Unit, onUpvote: 
                             )
                         }
                     }
-                    
+
                     Spacer(modifier = Modifier.height(6.dp))
-                    
+
                     Text(
                         text = item.title,
                         style = MaterialTheme.typography.titleSmall,
@@ -566,9 +569,9 @@ fun KnowledgeFeedCard(item: ContentSourceEntity, onClick: () -> Unit, onUpvote: 
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
-                    
+
                     Spacer(modifier = Modifier.height(2.dp))
-                    
+
                     Text(
                         text = item.summary,
                         style = MaterialTheme.typography.bodySmall,
@@ -634,7 +637,7 @@ fun KnowledgeBriefingCard(
                         color = MaterialTheme.colorScheme.secondary
                     )
                 }
-                
+
                 if (isLoading) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 } else {
@@ -648,9 +651,9 @@ fun KnowledgeBriefingCard(
                     )
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             AnimatedContent(targetState = briefing, label = "BriefingText") { text ->
                 val displayText = when {
                     text.isNotEmpty() -> text
@@ -661,7 +664,7 @@ fun KnowledgeBriefingCard(
                     }
                     else -> "Personalizing your briefing..."
                 }
-                
+
                 Text(
                     text = displayText,
                     style = MaterialTheme.typography.bodyMedium,
@@ -720,7 +723,7 @@ fun RestDayRecoveryCard(
             Spacer(modifier = Modifier.height(12.dp))
             Text("Your body grows while you rest. Use today to stay mobile.",
                 style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            
+
             Text(
                 text = "Note: An AI generated plan is required to generate stretching and accessory workouts.",
                 style = MaterialTheme.typography.bodySmall,
@@ -758,8 +761,9 @@ fun RestDayRecoveryCard(
     }
 }
 
+// CHANGED: Accept Any for onNavigate
 @Composable
-fun QuickActionsSection(onNavigate: (String) -> Unit) {
+fun QuickActionsSection(onNavigate: (Any) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -769,7 +773,7 @@ fun QuickActionsSection(onNavigate: (String) -> Unit) {
             icon = Icons.Default.AutoMode,
             color = FormaBlue,
             modifier = Modifier.weight(1f),
-            onClick = { onNavigate(Screen.GeneratePlan.route) }
+            onClick = { onNavigate(GeneratePlan) } // CHANGED TO OBJECT
         )
 
         QuickActionCard(
@@ -777,7 +781,7 @@ fun QuickActionsSection(onNavigate: (String) -> Unit) {
             icon = Icons.Default.FitnessCenter,
             color = FormaTeal,
             modifier = Modifier.weight(1f),
-            onClick = { onNavigate(Screen.ManualPlan.route) }
+            onClick = { onNavigate(ManualPlan) } // CHANGED TO OBJECT
         )
 
         QuickActionCard(
@@ -785,7 +789,7 @@ fun QuickActionsSection(onNavigate: (String) -> Unit) {
             icon = Icons.Default.Restaurant,
             color = SuccessGreen,
             modifier = Modifier.weight(1f),
-            onClick = { onNavigate(Screen.Nutrition.route) }
+            onClick = { onNavigate(Nutrition) } // CHANGED TO OBJECT
         )
     }
 }
@@ -859,16 +863,16 @@ fun HeaderSection(userName: String) {
     }
 }
 
+// CHANGED: Accept Any for onNavigate
 @Composable
 fun WorkoutCard(
     workout: DailyWorkoutEntity,
     progress: PlanProgress?,
-    onNavigate: (String) -> Unit
+    onNavigate: (Any) -> Unit
 ) {
     val isStretching = workout.title.contains("Recovery", ignoreCase = true) ||
             workout.title.contains("Stretching", ignoreCase = true)
 
-    // Use Teal for recovery days, Blue for standard lifting days
     val accentColor = if (isStretching) FormaTeal else FormaBlue
     val icon = if (isStretching) Icons.Default.SelfImprovement else Icons.Default.FitnessCenter
     val labelText = if (isStretching) "RECOVERY SESSION" else "SCHEDULED SESSION"
@@ -881,7 +885,6 @@ fun WorkoutCard(
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
 
-            // Top row with Icon, Label, and Progress Badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -893,7 +896,6 @@ fun WorkoutCard(
                     Text(labelText, style = MaterialTheme.typography.labelLarge, color = accentColor)
                 }
 
-                // Progress Counter Badge
                 progress?.let {
                     Surface(
                         color = accentColor.copy(alpha = 0.1f),
@@ -912,7 +914,6 @@ fun WorkoutCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Title & Subtitle
             Text(
                 text = workout.title,
                 style = MaterialTheme.typography.titleMedium,
@@ -926,7 +927,6 @@ fun WorkoutCard(
                 modifier = Modifier.padding(top = 4.dp)
             )
 
-            // Progress Bar
             progress?.let {
                 Spacer(modifier = Modifier.height(20.dp))
                 LinearProgressIndicator(
@@ -940,13 +940,13 @@ fun WorkoutCard(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Action Button
             Button(
                 onClick = {
                     if (isStretching) {
-                        onNavigate(Screen.StretchingSession.createRoute(workout.workoutId))
+                        onNavigate(StretchingSession(workoutId = workout.workoutId)) // CHANGED TO OBJECT
                     } else {
-                        onNavigate(Screen.ActiveWorkout.createRoute(workout.workoutId))
+                        // FIXED BUG: This was previously passing workout.planId instead of workout.workoutId!
+                        onNavigate(ActiveWorkout(workoutId = workout.workoutId)) // CHANGED TO OBJECT
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
