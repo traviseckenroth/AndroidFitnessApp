@@ -130,7 +130,7 @@ fun SignUpScreen(
         }
 
         if (viewModel.errorMsg != null) {
-            Text(viewModel.errorMsg!!, color = Color.Red, modifier = Modifier.padding(top = 16.dp))
+            Text(viewModel.errorMsg!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 16.dp))
         }
     }
 }

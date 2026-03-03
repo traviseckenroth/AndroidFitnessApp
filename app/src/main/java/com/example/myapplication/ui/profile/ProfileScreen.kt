@@ -26,6 +26,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.myapplication.ui.theme.SuccessGreen
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -139,7 +140,7 @@ fun ProfileScreen(
                         LinearProgressIndicator(
                             progress = progress.coerceIn(0f, 1f),
                             modifier = Modifier.fillMaxWidth().height(8.dp),
-                            color = if (progress > 0.8f) Color.Red else MaterialTheme.colorScheme.primary,
+                            color = if (progress > 0.8f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                             trackColor = MaterialTheme.colorScheme.surfaceVariant
                         )
 
@@ -158,7 +159,7 @@ fun ProfileScreen(
                                 Text(
                                     text = "Limit Reached",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = Color.Red,
+                                    color = MaterialTheme.colorScheme.error,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -193,7 +194,7 @@ fun ProfileScreen(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.Bed, "Sleep", Modifier.size(16.dp), MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text(" Sleep  ", style = MaterialTheme.typography.bodySmall)
-                                    Icon(Icons.Default.Favorite, "Heart Rate", Modifier.size(16.dp), Color.Red.copy(alpha = 0.7f))
+                                    Icon(Icons.Default.Favorite, "Heart Rate", Modifier.size(16.dp), MaterialTheme.colorScheme.error.copy(alpha = 0.7f))
                                     Text(" Heart  ", style = MaterialTheme.typography.bodySmall)
                                     Icon(Icons.Default.FitnessCenter, "Workouts", Modifier.size(16.dp), MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text(" Workouts", style = MaterialTheme.typography.bodySmall)
@@ -202,7 +203,7 @@ fun ProfileScreen(
                                 Spacer(modifier = Modifier.height(4.dp))
 
                                 if (uiState.isHealthConnectLinked) {
-                                    Text(text = "Status: Active & Connected", style = MaterialTheme.typography.labelSmall, color = Color(0xFF2E7D32))
+                                    Text(text = "Status: Active & Connected", style = MaterialTheme.typography.labelSmall, color = SuccessGreen)
                                     if (uiState.lastSyncTime != null) {
                                         Text(text = "Last synced: ${uiState.lastSyncTime}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
@@ -220,7 +221,7 @@ fun ProfileScreen(
                                     }
                                 }) {
                                     if (uiState.isHealthConnectLinked) {
-                                        Icon(imageVector = Icons.Default.CheckCircle, contentDescription = "Connected", tint = Color(0xFF4CAF50), modifier = Modifier.size(32.dp))
+                                        Icon(imageVector = Icons.Default.CheckCircle, contentDescription = "Connected", tint = SuccessGreen, modifier = Modifier.size(32.dp))
                                     } else {
                                         Icon(imageVector = Icons.Default.Sync, contentDescription = "Connect", tint = MaterialTheme.colorScheme.primary)
                                     }

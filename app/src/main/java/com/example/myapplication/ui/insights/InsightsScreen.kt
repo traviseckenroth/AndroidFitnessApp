@@ -95,7 +95,7 @@ fun InsightsScreen(
                                 }
                             }
                         } else {
-                            Text("No exercises available.", color = Color.Gray, modifier = Modifier.padding(vertical = 8.dp))
+                            Text("No exercises available.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
@@ -108,7 +108,7 @@ fun InsightsScreen(
                             )
                         } else {
                             Box(modifier = Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
-                                Text("Log sets to track your 1RM trend.", color = Color.Gray)
+                                Text("Log sets to track your 1RM trend.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -160,7 +160,7 @@ fun InsightsScreen(
                                 }
                             }
                         } else {
-                            Text("Complete a week of workouts to see your progression.", color = Color.Gray)
+                            Text("Complete a week of workouts to see your progression.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -185,7 +185,7 @@ fun InsightsScreen(
                                 MuscleVolumeRow(muscle, volume, maxVol, totalVol)
                             }
                         if (state.muscleVolumeDistribution.isEmpty()) {
-                            Text("No workout data in the last 30 days.", color = Color.Gray)
+                            Text("No workout data in the last 30 days.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -222,7 +222,7 @@ fun InsightsScreen(
             }
 
             if (state.recentWorkouts.isEmpty() && !state.isLoading) {
-                item { Text("No recent workouts logged.", color = Color.Gray) }
+                item { Text("No recent workouts logged.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             } else {
                 items(state.recentWorkouts) { summary ->
                     WorkoutSummaryCard(
@@ -337,7 +337,7 @@ fun MuscleRecoveryCard(fatigueMap: Map<String, Float>) {
 
                             val center = Offset(w * xPercent, h * yPercent)
                             val radius = w * radiusPercent
-                            val color = androidx.compose.ui.graphics.lerp(Color(0xFF34A853), Color(0xFFEA4335), fatigue)
+                            val color = lerp(Color(0xFF34A853), Color(0xFFEA4335), fatigue)
 
                             drawCircle(
                                 brush = Brush.radialGradient(
@@ -392,7 +392,7 @@ fun MuscleRecoveryCard(fatigueMap: Map<String, Float>) {
 @Composable
 fun FatigueLabel(name: String, fatigue: Float) {
     val isRecovered = fatigue < 0.3f
-    val color = androidx.compose.ui.graphics.lerp(Color(0xFF34A853), Color(0xFFEA4335), fatigue)
+    val color = lerp(Color(0xFF34A853), Color(0xFFEA4335), fatigue)
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(name, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
         Text(
@@ -459,9 +459,14 @@ fun MuscleVolumeRow(muscle: String, volume: Double, maxVolume: Double, totalVolu
 
 @Composable
 fun OneRepMaxGraph(dataPoints: List<Pair<Long, Float>>, lineColor: Color, surfaceColor: Color) {
-    val textPaint = remember {
+    // 1. Read the theme colors OUTSIDE the Canvas block
+    val gridLineColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
+    val axisTextColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
+
+    // 2. Pass the axisTextColor as a key to remember, so it updates if Dark Mode toggles
+    val textPaint = remember(axisTextColor) {
         android.graphics.Paint().apply {
-            color = android.graphics.Color.GRAY
+            color = axisTextColor
             textSize = 32f
             isAntiAlias = true
             textAlign = android.graphics.Paint.Align.RIGHT
@@ -477,13 +482,12 @@ fun OneRepMaxGraph(dataPoints: List<Pair<Long, Float>>, lineColor: Color, surfac
         val values = dataPoints.map { it.second }
         val maxVal = values.maxOrNull() ?: 100f
         val minVal = values.minOrNull() ?: 0f
-        // Add 20% padding to range so graph lines don't hit the absolute top/bottom boundaries
         val range = ((maxVal - minVal).coerceAtLeast(10f)) * 1.2f
         val graphMin = (minVal - range * 0.1f).coerceAtLeast(0f)
         val graphMax = maxVal + range * 0.1f
         val actualRange = graphMax - graphMin
 
-        val textWidth = 100f // Space reserved for the Y-Axis Labels
+        val textWidth = 100f
         val graphWidth = size.width - textWidth
         val graphHeight = size.height
 
@@ -498,12 +502,12 @@ fun OneRepMaxGraph(dataPoints: List<Pair<Long, Float>>, lineColor: Color, surfac
             drawContext.canvas.nativeCanvas.drawText(
                 "${labelValue.roundToInt()}",
                 textWidth - 20f,
-                yPos + 10f, // vertical alignment offset
+                yPos + 10f,
                 textPaint
             )
 
             drawLine(
-                color = Color.Gray.copy(alpha = 0.2f),
+                color = gridLineColor, // 3. Use the pre-calculated color variable here!
                 start = Offset(textWidth, yPos),
                 end = Offset(size.width, yPos),
                 strokeWidth = 1.dp.toPx()
@@ -526,13 +530,11 @@ fun OneRepMaxGraph(dataPoints: List<Pair<Long, Float>>, lineColor: Color, surfac
         if (points.isNotEmpty()) {
             drawPath(path = path, color = lineColor, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
 
-            // Draw points over the line
             points.forEach { point ->
                 drawCircle(color = surfaceColor, center = point, radius = 6.dp.toPx())
                 drawCircle(color = lineColor, center = point, radius = 4.dp.toPx())
             }
 
-            // Fill area gradient
             val fillPath = Path().apply {
                 addPath(path)
                 lineTo(points.last().x, graphHeight)

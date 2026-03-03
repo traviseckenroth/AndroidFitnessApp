@@ -54,6 +54,9 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
+import com.example.myapplication.ui.theme.AmrapOrange
+import com.example.myapplication.ui.theme.EmomPink
+import com.example.myapplication.ui.theme.SuccessGreen
 import com.example.myapplication.util.AutoCoachState
 import com.example.myapplication.util.PlateCalculator
 import java.util.Locale
@@ -230,7 +233,7 @@ fun ActiveWorkoutScreen(
                                 Icon(
                                     imageVector = Icons.Default.RecordVoiceOver,
                                     contentDescription = "Open Auto-Coach",
-                                    tint = if (autoCoachState != AutoCoachState.OFF) Color(0xFF22C55E) else MaterialTheme.colorScheme.onSurface
+                                    tint = if (autoCoachState != AutoCoachState.OFF) SuccessGreen else MaterialTheme.colorScheme.onSurface
                                 )
                             }
                         },
@@ -419,13 +422,13 @@ fun ExerciseCard(
 
                         if (isAMRAP) {
                             Spacer(modifier = Modifier.width(8.dp))
-                            Surface(color = Color(0xFFFF9800).copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {
-                                Text("AMRAP", color = Color(0xFFFF9800), fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal=4.dp, vertical=2.dp))
+                            Surface(color = AmrapOrange.copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {
+                                Text("AMRAP", color = AmrapOrange, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal=4.dp, vertical=2.dp))
                             }
                         } else if (isEMOM) {
                             Spacer(modifier = Modifier.width(8.dp))
-                            Surface(color = Color(0xFFE91E63).copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {
-                                Text("EMOM", color = Color(0xFFE91E63), fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal=4.dp, vertical=2.dp))
+                            Surface(color =  EmomPink.copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {
+                                Text("EMOM", color =  EmomPink, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal=4.dp, vertical=2.dp))
                             }
                         }
 
@@ -470,7 +473,7 @@ fun ExerciseCard(
                                 Icon(
                                     imageVector = Icons.Default.Timer,
                                     contentDescription = null,
-                                    tint = if (isAMRAP) Color(0xFFFF9800) else Color(0xFFE91E63),
+                                    tint = if (isAMRAP) AmrapOrange else  EmomPink,
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.6.dp))
@@ -478,7 +481,7 @@ fun ExerciseCard(
                                     text = if (isAMRAP) "CIRCUIT INSTRUCTIONS" else "EMOM INSTRUCTIONS",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isAMRAP) Color(0xFFFF9800) else Color(0xFFE91E63)
+                                    color = if (isAMRAP) AmrapOrange else  EmomPink
                                 )
                             }
                             Spacer(modifier = Modifier.height(4.dp))
@@ -991,7 +994,7 @@ fun BleDeviceDialog(foundDevices: List<BluetoothDevice>, onDismiss: () -> Unit, 
 fun AMRAPPill(isAMRAP: Boolean, timeRemaining: Int?) {
     if (isAMRAP) {
         Surface(
-            color = Color(0xFFFF9800), // High-visibility orange for AMRAP
+            color = AmrapOrange, // High-visibility orange for AMRAP
             shape = RoundedCornerShape(8.dp),
             modifier = Modifier.padding(vertical = 4.dp)
         ) {

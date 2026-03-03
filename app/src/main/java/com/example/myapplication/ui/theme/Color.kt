@@ -32,3 +32,11 @@ val ErrorRed = Color(0xFFEF4444)
 val ErrorRedLight = Color(0xFFF87171)
 val SuccessGreen = Color(0xFF22C55E)
 val Gold = Color(0xFFFBBF24)              // Amber/Gold for awards and trophies
+
+
+val ProteinColor = Color(0xFFE57373)
+val CarbColor = Color(0xFF64B5F6)
+val FatColor = Color(0xFFFFD54F)
+
+val AmrapOrange = Color(0xFFFF9800)
+val EmomPink = Color(0xFFE91E63)

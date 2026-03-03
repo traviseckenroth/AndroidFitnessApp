@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.myapplication.ui.theme.SuccessGreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -118,7 +119,7 @@ fun SettingsScreen(
 
             Card(
                 colors = CardDefaults.cardColors(
-                    containerColor = if (isHealthConnected) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.surfaceVariant
+                    containerColor = if (isHealthConnected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
                 ),
                 shape = RoundedCornerShape(16.dp)
             ) {
@@ -130,7 +131,7 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Favorite, contentDescription = null, tint = Color.Red)
+                        Icon(Icons.Default.Favorite, contentDescription = null, tint = MaterialTheme.colorScheme.error)
                         Spacer(Modifier.width(16.dp))
                         Column {
                             Text("Health Connect", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
@@ -142,7 +143,7 @@ fun SettingsScreen(
                     }
 
                     if (isHealthConnected) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50))
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = SuccessGreen)
                     } else {
                         Button(onClick = {
                             permissionLauncher.launch(viewModel.permissions)

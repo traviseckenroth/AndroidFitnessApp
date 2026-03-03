@@ -286,14 +286,14 @@ fun LoginScreen(
         if (viewModel.uiState is LoginResult.Error) {
             Text(
                 text = (viewModel.uiState as LoginResult.Error).message,
-                color = Color.Red,
+                color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(top = 16.dp)
             )
         }
         if (viewModel.forgotPasswordUiState is ForgotPasswordResult.Error) {
             Text(
                 text = (viewModel.forgotPasswordUiState as ForgotPasswordResult.Error).message,
-                color = Color.Red,
+                color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(top = 16.dp)
             )
         }

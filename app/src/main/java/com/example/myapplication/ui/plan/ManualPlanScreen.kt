@@ -89,7 +89,7 @@ fun ManualPlanScreen(
 
             if (selectedExercises.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Tap + to add exercises", color = Color.Gray)
+                    Text("Tap + to add exercises", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
                 LazyColumn(
@@ -183,13 +183,13 @@ fun LibraryExerciseItem(exercise: ExerciseEntity, isSelected: Boolean, onAdd: ()
             Text(
                 exercise.muscleGroup ?: "General",
                 style = MaterialTheme.typography.bodySmall,
-                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else Color.Gray
+                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         if (isSelected) {
             Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         } else {
-            Icon(Icons.Default.Add, contentDescription = null, tint = Color.Gray)
+            Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

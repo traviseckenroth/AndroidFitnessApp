@@ -134,7 +134,7 @@ fun ActiveStretchView(
                 },
                 modifier = Modifier.fillMaxSize(),
                 strokeWidth = 8.dp,
-                color = if (timerState.isRunning) MaterialTheme.colorScheme.primary else Color.Gray,
+                color = if (timerState.isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
             )
             Column(horizontalAlignment = Alignment.CenterHorizontally) {

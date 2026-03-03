@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import com.example.myapplication.ui.theme.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -195,7 +196,7 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
 
             // LOGS LIST (Grouped)
             if (foodLogs.isEmpty()) {
-                Text("No food logged yet today.", color = Color.Gray)
+                Text("No food logged yet today.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 val grouped = foodLogs.groupBy { it.mealType }
                 val order = listOf("Breakfast", "Lunch", "Dinner", "Snack")
@@ -436,16 +437,16 @@ fun NutritionDetailCard(
             val targetFat = plan.fats.filter { it.isDigit() }.toIntOrNull() ?: 60
 
             ProgressMacroRow("Calories", consumed.calories, targetCals, MaterialTheme.colorScheme.primary)
-            ProgressMacroRow("Protein", consumed.protein, targetPro, Color(0xFFE57373))
-            ProgressMacroRow("Carbs", consumed.carbs, targetCarb, Color(0xFF64B5F6))
-            ProgressMacroRow("Fats", consumed.fats, targetFat, Color(0xFFFFD54F))
+            ProgressMacroRow("Protein", consumed.protein, targetPro, ProteinColor)
+            ProgressMacroRow("Carbs", consumed.carbs, targetCarb, CarbColor)
+            ProgressMacroRow("Fats", consumed.fats, targetFat, FatColor)
 
             Spacer(modifier = Modifier.height(16.dp))
             val remaining = targetCals - consumed.calories
             Text(
                 text = if(remaining >= 0) "$remaining kcal remaining" else "${-remaining} kcal over",
                 style = MaterialTheme.typography.labelLarge,
-                color = if (remaining < 0) Color.Red else Color.Gray,
+                color = if (remaining < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.align(Alignment.End)
             )
 
@@ -489,7 +490,7 @@ fun ProgressMacroRow(label: String, current: Int, target: Int, color: Color) {
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-            Text("$current / $target", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+            Text("$current / $target", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(modifier = Modifier.height(6.dp))
         LinearProgressIndicator(
@@ -539,9 +540,9 @@ fun FoodLogCard(log: FoodLogEntity) {
             Spacer(modifier = Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text("${log.totalCalories} kcal", fontWeight = FontWeight.Bold)
-                Text("${log.totalProtein}g Pro", color = Color.Gray)
-                Text("${log.totalCarbs}g Carb", color = Color.Gray)
-                Text("${log.totalFats}g Fat", color = Color.Gray)
+                Text("${log.totalProtein}g Pro", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${log.totalCarbs}g Carb", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${log.totalFats}g Fat", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

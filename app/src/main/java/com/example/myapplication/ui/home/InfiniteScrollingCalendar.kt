@@ -136,7 +136,7 @@ private fun CalendarDay(
         Text(
             text = date.dayOfWeek.getDisplayName(TextStyle.NARROW, Locale.getDefault()),
             style = MaterialTheme.typography.bodySmall,
-            color = Color.Gray
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(modifier = Modifier.height(8.dp))
         Box(

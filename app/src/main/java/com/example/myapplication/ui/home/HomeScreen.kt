@@ -224,7 +224,7 @@ fun HomeScreen(
                                 Text(
                                     text = "No ${selectedCategory.lowercase()} found for your interests.",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = Color.Gray,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = TextAlign.Center
                                 )
                             }
@@ -239,7 +239,7 @@ fun HomeScreen(
                                 Text(
                                     text = "Follow some interests to see your intelligence feed.",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = Color.Gray,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = TextAlign.Center,
                                     modifier = Modifier.padding(16.dp)
                                 )
