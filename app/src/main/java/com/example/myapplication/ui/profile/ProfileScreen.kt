@@ -40,13 +40,8 @@ fun ProfileScreen(
     var weight by remember(uiState.weight) { mutableStateOf(uiState.weight) }
     var age by remember(uiState.age) { mutableStateOf(uiState.age) }
     var gender by remember(uiState.gender) { mutableStateOf(uiState.gender) }
-    var activityLevel by remember(uiState.activityLevel) { mutableStateOf(uiState.activityLevel) }
     var bodyFat by remember(uiState.bodyFat) { mutableStateOf(uiState.bodyFat) }
     var dietType by remember(uiState.dietType) { mutableStateOf(uiState.dietType) }
-    var goalPace by remember(uiState.goalPace) { mutableStateOf(uiState.goalPace) }
-
-    // Removed automatic sync on launch to prevent constant Toast messages
-    // viewModel.checkHealthConnectStatus() is already called in ViewModel init
 
     val permissionsLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract()
@@ -54,17 +49,15 @@ fun ProfileScreen(
         viewModel.syncHealthConnect()
     }
 
-    LaunchedEffect(height, weight, age, gender, activityLevel, bodyFat, dietType, goalPace) {
+    LaunchedEffect(height, weight, age, gender, bodyFat, dietType) {
         delay(1000)
         viewModel.saveProfile(
             h = height.toDoubleOrNull() ?: 0.0,
             w = weight.toDoubleOrNull() ?: 0.0,
             a = age.toIntOrNull() ?: 0,
             g = gender,
-            act = activityLevel,
             bf = bodyFat.toDoubleOrNull(),
-            d = dietType,
-            p = goalPace
+            d = dietType
         )
     }
 
@@ -138,9 +131,9 @@ fun ProfileScreen(
                                 fontWeight = FontWeight.Bold
                             )
                         }
-                        
+
                         Spacer(modifier = Modifier.height(12.dp))
-                        
+
                         val progress = uiState.aiRequestsToday.toFloat() / uiState.aiDailyLimit.toFloat()
                         LinearProgressIndicator(
                             progress = progress.coerceIn(0f, 1f),
@@ -148,9 +141,9 @@ fun ProfileScreen(
                             color = if (progress > 0.8f) Color.Red else MaterialTheme.colorScheme.primary,
                             trackColor = MaterialTheme.colorScheme.surfaceVariant
                         )
-                        
+
                         Spacer(modifier = Modifier.height(8.dp))
-                        
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -292,24 +285,6 @@ fun ProfileScreen(
                     onSelected = { gender = it }
                 )
             }
-
-            item {
-                ProfileDropdown(
-                    label = "Activity Level",
-                    options = listOf("Sedentary", "Lightly Active", "Moderately Active", "Very Active"),
-                    selected = activityLevel,
-                    onSelected = { activityLevel = it }
-                )
-            }
-
-            item {
-                ProfileDropdown(
-                    label = "Goal Pace",
-                    options = listOf("Lose Fat Fast", "Slow Cut", "Maintain", "Slow Bulk", "Gain Muscle Fast"),
-                    selected = goalPace,
-                    onSelected = { goalPace = it }
-                )
-            }
         }
     }
 }
@@ -325,7 +300,7 @@ fun ProfileDropdown(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    Column(modifier = modifier) {
+    Column(modifier = modifier.fillMaxWidth()) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Box(modifier = Modifier.fillMaxWidth()) {
             OutlinedButton(

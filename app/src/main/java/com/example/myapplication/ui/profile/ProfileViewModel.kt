@@ -28,14 +28,12 @@ private data class Biometrics(
     val height: Double,
     val weight: Double,
     val age: Int,
-    val gender: String,
-    val activity: String
+    val gender: String
 )
 
 private data class Lifestyle(
     val bodyFat: Double?,
-    val diet: String,
-    val pace: String
+    val diet: String
 )
 
 private data class AiUsage(
@@ -57,7 +55,6 @@ class ProfileViewModel @Inject constructor(
     val requiredPermissions = healthConnectManager.permissions
 
     init {
-        // Initial Check without full sync
         checkHealthConnectStatus()
 
         viewModelScope.launch {
@@ -66,31 +63,27 @@ class ProfileViewModel @Inject constructor(
                 userPrefs.userHeight,
                 userPrefs.userWeight,
                 userPrefs.userAge,
-                userPrefs.userGender,
-                userPrefs.userActivity
-            ) { args ->
+                userPrefs.userGender
+            ) { name, h, w, a, g ->
                 Biometrics(
-                    userName = args[0] as String,
-                    height = args[1] as Double,
-                    weight = args[2] as Double,
-                    age = args[3] as Int,
-                    gender = args[4] as String,
-                    activity = args[5] as String
+                    userName = name,
+                    height = h,
+                    weight = w,
+                    age = a,
+                    gender = g
                 )
             }
 
             val lifestyleFlow = combine(
                 userPrefs.userBodyFat,
-                userPrefs.userDiet,
-                userPrefs.userGoalPace
-            ) { bf, d, p -> Lifestyle(bf, d, p) }
+                userPrefs.userDiet
+            ) { bf, d -> Lifestyle(bf, d) }
 
             val aiUsageFlow = combine(
                 userPrefs.aiRequestsToday,
                 userPrefs.aiDailyLimit
             ) { today, limit -> AiUsage(today, limit) }
 
-            // Combine all data sources
             combine(
                 executionRepository.getAllCompletedWorkouts(),
                 biometricsFlow,
@@ -112,10 +105,8 @@ class ProfileViewModel @Inject constructor(
                         weight = bio.weight.toString(),
                         age = bio.age.toString(),
                         gender = bio.gender,
-                        activityLevel = bio.activity,
                         bodyFat = life.bodyFat?.toString() ?: "",
                         dietType = life.diet,
-                        goalPace = life.pace,
                         aiRequestsToday = usage.today,
                         aiDailyLimit = usage.limit
                     )
@@ -136,13 +127,12 @@ class ProfileViewModel @Inject constructor(
         w: Double,
         a: Int,
         g: String,
-        act: String,
         bf: Double?,
-        d: String,
-        p: String
+        d: String
     ) {
         viewModelScope.launch {
-            userPrefs.saveProfile(h, w, a, g, act, bf, d, p)
+            // We pass empty strings for the removed activity/pace variables to satisfy the repo signature
+            userPrefs.saveProfile(h, w, a, g, "", bf, d, "")
         }
     }
 
@@ -162,34 +152,23 @@ class ProfileViewModel @Inject constructor(
 
             try {
                 val isLinked = healthConnectManager.hasPermissions()
-                
-                // 1. Fetch Sleep for Recovery Score
+
                 val sleepDuration = healthConnectManager.getLastNightSleepDuration()
                 val sleepHours = sleepDuration.toMinutes() / 60.0
                 val recoveryScore = ((sleepHours / 8.0) * 100).toInt().coerceIn(0, 100)
                 userPrefs.updateRecoveryScore(recoveryScore)
 
-                // 2. Fetch Latest Weight
                 val latestWeight = healthConnectManager.getLatestWeight()
                 if (latestWeight != null) {
-                    Log.d("ProfileVM", "Bio-Sync: Weight fetched = $latestWeight lbs. Updating Prefs...")
                     userPrefs.updateWeight(latestWeight)
-                } else {
-                    Log.w("ProfileVM", "Bio-Sync: Weight fetched was null")
                 }
 
-                // 3. Fetch Latest Height
                 val latestHeight = healthConnectManager.getLatestHeight()
                 if (latestHeight != null) {
-                    Log.d("ProfileVM", "Bio-Sync: Height fetched = $latestHeight inches. Updating Prefs...")
                     userPrefs.updateHeight(latestHeight)
-                } else {
-                    Log.w("ProfileVM", "Bio-Sync: Height fetched was null")
                 }
-                
-                Log.d("ProfileVM", "Bio-Sync Trace: Sleep=$sleepHours hrs, Recovery=$recoveryScore%")
 
-                delay(500) // Aesthetic delay for UI feedback
+                delay(500)
 
                 val formatter = DateTimeFormatter.ofPattern("MMM dd, HH:mm")
                 val currentTimestamp = LocalDateTime.now().format(formatter)
@@ -205,7 +184,6 @@ class ProfileViewModel @Inject constructor(
                 Toast.makeText(application, "Bio-Sync Complete!", Toast.LENGTH_SHORT).show()
 
             } catch (e: Exception) {
-                Log.e("ProfileVM", "Bio-Sync Trace: FAILED", e)
                 _uiState.update { it.copy(isHealthConnectSyncing = false) }
                 Toast.makeText(application, "Sync Failed: ${e.message}", Toast.LENGTH_SHORT).show()
             }

@@ -18,12 +18,10 @@ data class ProfileUIState(
     val weight: String = "",
     val age: String = "",
 
-    // Biometrics & Goals
+    // Biometrics
     val gender: String = "",
-    val activityLevel: String = "",
     val bodyFat: String = "",
     val dietType: String = "",
-    val goalPace: String = "",
 
     // Integration States
     val isHealthConnectSyncing: Boolean = false,
