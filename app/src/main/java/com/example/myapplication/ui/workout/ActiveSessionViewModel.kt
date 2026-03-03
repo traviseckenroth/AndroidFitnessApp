@@ -347,7 +347,16 @@ class ActiveSessionViewModel @Inject constructor(
     fun updateSetCompletion(set: WorkoutSetEntity, isCompleted: Boolean) {
         // Grab the absolute latest state from memory so we don't lose newly typed reps!
         val freshSet = _sets.value.find { it.setId == set.setId } ?: set
-        val completedSet = freshSet.copy(isCompleted = isCompleted)
+        val finalReps = if (isCompleted) freshSet.actualReps ?: freshSet.suggestedReps else freshSet.actualReps
+        val finalLbs = if (isCompleted) freshSet.actualLbs ?: freshSet.suggestedLbs.toFloat() else freshSet.actualLbs
+        val finalRpe = if (isCompleted) freshSet.actualRpe ?: freshSet.suggestedRpe.toFloat() else freshSet.actualRpe
+
+        val completedSet = freshSet.copy(
+            isCompleted = isCompleted,
+            actualReps = finalReps,
+            actualLbs = finalLbs,
+            actualRpe = finalRpe
+        )
 
         optimisticUpdate(set.setId) { completedSet }
 

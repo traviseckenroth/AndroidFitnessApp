@@ -419,6 +419,7 @@ CIRCUIT RULE (MANDATORY FOR AMRAP/EMOM): You MUST output a SINGLE composite exer
             3. DETERMINE MEAL TYPE: Based on the text (e.g., "For breakfast I had...") or typical consumption time (if vague, default to "Snack").
                Categories: "Breakfast", "Lunch", "Dinner", "Snack".
             4. Calculate totals accurately.
+            5. ABSOLUTELY NO DECIMALS. You must round all calorie and macro calculations to the nearest whole integer (e.g., use 6 instead of 5.7).
             
             OUTPUT FORMAT (RAW JSON ONLY):
             {

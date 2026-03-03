@@ -135,10 +135,21 @@ class WorkoutExecutionRepository @Inject constructor(
         val workout = workoutDao.getWorkoutById(workoutId)
             ?: return WorkoutSummaryResult("Workout Complete", "Good job!", 0, 0)
 
-        val sets = workoutDao.getSetsForWorkoutList(workoutId).filter { it.isCompleted }
+        // Fetch ALL sets for the workout, not just completed ones (for highlights)
+        // But only use completed sets for volume calculation.
+        val allSets = workoutDao.getSetsForWorkoutList(workoutId)
+        val completedSets = allSets.filter { it.isCompleted }
+        
+        // Fetch ALL exercises that were part of this workout
         val exercises = workoutDao.getExercisesForWorkoutOneShot(workoutId)
 
-        val volume = sets.sumOf { (it.actualLbs ?: 0f).toInt() * (it.actualReps ?: 0) }
+        // Fix: Use a safer volume calculation. Use actualLbs/Reps if available, else suggested.
+        val volume = completedSets.sumOf { set ->
+            val weight = (set.actualLbs ?: set.suggestedLbs.toFloat()).toInt()
+            val reps = set.actualReps ?: set.suggestedReps
+            weight * reps
+        }
+        
         val focus = exercises.groupingBy { it.majorMuscle }.eachCount().maxByOrNull { it.value }?.key ?: "Full Body"
 
         var prsCount = 0
@@ -146,25 +157,36 @@ class WorkoutExecutionRepository @Inject constructor(
         val highlights = mutableListOf<String>()
 
         for (exercise in exercises) {
-            val exerciseSets = sets.filter { it.exerciseId == exercise.exerciseId }
-            val maxWeightSession = exerciseSets.maxOfOrNull { it.actualLbs ?: 0f } ?: 0f
-            val totalReps = exerciseSets.sumOf { it.actualReps ?: 0 }
-
-            if (totalReps > 0) highlights.add("${exercise.name}: ${exerciseSets.size} sets")
-
-            try {
-                val history = workoutDao.getCompletedWorkoutsForExercise(exercise.exerciseId).firstOrNull() ?: emptyList()
-                val previousHistory = history.filter { it.completedWorkout.date != workout.scheduledDate }
-                val maxWeightHistory = previousHistory.maxOfOrNull { it.completedWorkout.weight } ?: 0
-
-                if (maxWeightSession > maxWeightHistory && maxWeightSession > 0) {
-                    prsCount++
-                    if (topPRString == null) {
-                        topPRString = "${exercise.name} @ ${maxWeightSession.toInt()}lbs"
-                    }
+            val exerciseSets = allSets.filter { it.exerciseId == exercise.exerciseId }
+            val completedExerciseSets = exerciseSets.filter { it.isCompleted }
+            
+            // Add to highlights if any sets were planned or completed
+            if (exerciseSets.isNotEmpty()) {
+                val completionText = if (completedExerciseSets.isNotEmpty()) {
+                    "${completedExerciseSets.size} sets"
+                } else {
+                    "Planned"
                 }
-            } catch (e: Exception) {
-                Log.e("Summary", "Error checking PR", e)
+                highlights.add("${exercise.name}: $completionText")
+            }
+
+            if (completedExerciseSets.isNotEmpty()) {
+                val maxWeightSession = completedExerciseSets.maxOfOrNull { it.actualLbs ?: it.suggestedLbs.toFloat() } ?: 0f
+
+                try {
+                    val history = workoutDao.getCompletedWorkoutsForExercise(exercise.exerciseId).firstOrNull() ?: emptyList()
+                    val previousHistory = history.filter { it.completedWorkout.date != workout.scheduledDate }
+                    val maxWeightHistory = previousHistory.maxOfOrNull { it.completedWorkout.weight } ?: 0
+
+                    if (maxWeightSession > maxWeightHistory && maxWeightSession > 0) {
+                        prsCount++
+                        if (topPRString == null) {
+                            topPRString = "${exercise.name} @ ${maxWeightSession.toInt()}lbs"
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("Summary", "Error checking PR", e)
+                }
             }
         }
 

@@ -10,6 +10,7 @@ import com.example.myapplication.data.local.UserSubscriptionEntity
 import com.example.myapplication.data.local.WorkoutDao
 import com.example.myapplication.data.remote.BedrockClient
 import com.example.myapplication.data.repository.ContentRepository
+import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.repository.PlanRepository
 import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -39,7 +40,8 @@ class InsightsViewModel @Inject constructor(
     private val executionRepository: WorkoutExecutionRepository,
     private val workoutDao: WorkoutDao,
     private val contentRepository: ContentRepository,
-    private val bedrockClient: BedrockClient
+    private val bedrockClient: BedrockClient,
+    private val userPrefs: UserPreferencesRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(InsightsUiState())
@@ -73,17 +75,44 @@ class InsightsViewModel @Inject constructor(
 
     // 4. Reactive Exercise Stats
     private val _selectedExerciseId = MutableStateFlow<Long?>(null)
-    
-    val selectedExerciseStats = _selectedExerciseId.flatMapLatest { id ->
+
+    val selectedExerciseStats = combine(
+        _selectedExerciseId,
+        userPrefs.userWeight
+    ) { id, bodyWeight ->
+        id to bodyWeight
+    }.flatMapLatest { (id, bodyWeight) ->
         if (id == null) flowOf(emptyList())
-        else executionRepository.getCompletedWorkoutsForExercise(id)
-    }.map { completed ->
-        completed.sortedBy { it.completedWorkout.date }.map {
-            // FIX: Corrected Epley Formula for 1RM: Weight * (1 + Reps/30.0)
-            val weight = it.completedWorkout.weight.toFloat()
-            val reps = it.completedWorkout.reps
-            val estimated1RM = weight * (1 + (reps / 30.0f))
-            Pair(it.completedWorkout.date, estimated1RM)
+        else executionRepository.getCompletedWorkoutsForExercise(id).map { completed ->
+
+            // Group sets by the start of the day to prevent zig-zagging.
+            val groupedByDate = completed.groupBy {
+                Instant.ofEpochMilli(it.completedWorkout.date)
+                    .atZone(ZoneId.systemDefault())
+                    .toLocalDate()
+                    .atStartOfDay(ZoneId.systemDefault())
+                    .toInstant()
+                    .toEpochMilli()
+            }
+
+            groupedByDate.map { (dateMillis, sets) ->
+                val max1RMForDay = sets.maxOf { set ->
+                    val isBodyweight = set.exercise.equipment?.contains("Bodyweight", ignoreCase = true) == true
+
+                    // FIX: Use actual bodyweight for bodyweight exercises instead of the 45lb DB default
+                    val weight = if (isBodyweight) {
+                        if (bodyWeight > 0) bodyWeight.toFloat() else 150f // Fallback to 150 if not set
+                    } else {
+                        set.completedWorkout.weight.toFloat()
+                    }
+
+                    val reps = set.completedWorkout.reps
+
+                    // Epley Formula for 1RM
+                    weight * (1 + (reps / 30.0f))
+                }
+                Pair(dateMillis, max1RMForDay)
+            }.sortedBy { it.first } // Ensure chronologically sorted for the graph
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
