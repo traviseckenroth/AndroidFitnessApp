@@ -20,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.example.myapplication.ui.navigation.Settings
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -32,7 +33,7 @@ import kotlinx.coroutines.delay
 fun ProfileScreen(
     viewModel: ProfileViewModel = hiltViewModel(),
     onBack: () -> Unit,
-    onNavigateToSettings: () -> Unit
+    onNavigate: (Any) -> Unit // CHANGED from specific lambda to generic Any handler
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -72,7 +73,7 @@ fun ProfileScreen(
                     )
                 },
                 actions = {
-                    IconButton(onClick = onNavigateToSettings) {
+                    IconButton(onClick = { onNavigate(Settings) }) { // CHANGED TO OBJECT
                         Icon(
                             imageVector = Icons.Default.Settings,
                             contentDescription = "Settings"

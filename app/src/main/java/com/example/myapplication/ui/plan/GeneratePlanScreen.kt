@@ -500,7 +500,10 @@ fun PlanInputForm(
         Text("Generate Block 1 with AI")
     }
     Spacer(modifier = Modifier.height(16.dp))
-    TextButton(onClick = onManualCreateClick, modifier = Modifier.fillMaxWidth()) {
+    TextButton(
+        onClick = { onManualCreateClick() }, // Ensure NavGraph passes { navController.navigate(ManualPlan) }
+        modifier = Modifier.fillMaxWidth()
+    ) {
         Text("Create Manual Plan")
     }
 }

@@ -36,6 +36,7 @@ import java.util.*
 @Composable
 fun ExerciseHistoryScreen(
     navController: NavController,
+    onBack: () -> Unit, // CHANGED: Pass back lambda instead of full NavController
     viewModel: ExerciseHistoryViewModel = hiltViewModel()
 ) {
     val exerciseHistory by viewModel.exerciseHistory.collectAsState()
@@ -46,7 +47,7 @@ fun ExerciseHistoryScreen(
             TopAppBar(
                 title = { Text(exerciseName) },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = onBack) { // Use onBack
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }

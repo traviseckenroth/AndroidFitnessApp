@@ -16,6 +16,9 @@ import com.example.myapplication.data.local.WorkoutDao
 import com.example.myapplication.data.local.populateDatabase
 import com.example.myapplication.ui.navigation.BottomNavigationBar
 import com.example.myapplication.ui.navigation.NavGraph
+// --- IMPORT NEW TYPE-SAFE ROUTE ---
+import com.example.myapplication.ui.navigation.Nutrition
+// ----------------------------------
 import com.example.myapplication.ui.nutrition.NutritionViewModel
 import com.example.myapplication.ui.theme.MyApplicationTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -46,7 +49,8 @@ class MainActivity : FragmentActivity() {
                         val foodText = data.getQueryParameter("text")
                         if (!foodText.isNullOrBlank()) {
                             nutritionViewModel.logFood(foodText)
-                            navController.navigate("nutrition")
+                            // CHANGED TO TYPE-SAFE OBJECT
+                            navController.navigate(Nutrition)
                         }
                     }
                 }

@@ -54,7 +54,7 @@ class HomeViewModel @Inject constructor(
     private val _selectedCategory = MutableStateFlow("All")
     val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
 
-    private val _navigationEvents = MutableSharedFlow<String>()
+    private val _navigationEvents = MutableSharedFlow<Any>()
     val navigationEvents = _navigationEvents.asSharedFlow()
 
     // Briefing State

@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.R
 import com.example.myapplication.data.local.ExerciseEntity
-import com.example.myapplication.ui.navigation.Screen
+import com.example.myapplication.ui.navigation.*
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -36,7 +36,7 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun InsightsScreen(
-    onNavigate: (String) -> Unit,
+    onNavigate: (Any) -> Unit,
     viewModel: InsightsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -275,7 +275,7 @@ fun InsightsScreen(
                         item = summary,
                         onClick = {
                             summary.workoutId?.let { id ->
-                                onNavigate(Screen.WorkoutSummary.createRoute(id))
+                                onNavigate(WorkoutSummary(workoutId = id))
                             }
                         }
                     )

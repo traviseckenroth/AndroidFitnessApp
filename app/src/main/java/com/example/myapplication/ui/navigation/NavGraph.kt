@@ -141,7 +141,7 @@ fun NavGraph(
         composable<Profile> {
             ProfileScreen(
                 onBack = { navController.popBackStack() },
-                onNavigateToSettings = { navController.navigate(Settings) }
+                onNavigate = { route -> navController.navigate(route) }
             )
         }
 
