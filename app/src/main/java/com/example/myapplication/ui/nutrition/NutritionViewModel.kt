@@ -60,7 +60,7 @@ class NutritionViewModel @Inject constructor(
     val recentFoods = _recentFoods.asStateFlow()
 
     init {
-        loadNutritionData() // <-- Changed to check cache first!
+        loadNutritionData()
         loadFoodLogs()
         loadHistory()
     }
@@ -83,7 +83,6 @@ class NutritionViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = NutritionUiState.Loading
 
-            // 1. Fetch the Active Workout Plan
             val activePlan = planRepository.getActivePlan()
 
             if (activePlan == null) {
@@ -91,32 +90,42 @@ class NutritionViewModel @Inject constructor(
                 return@launch
             }
 
-            // 2. CACHE CHECK: If nutrition is already generated, load it instantly!
+            // CACHE CHECK
             if (!activePlan.nutritionJson.isNullOrBlank()) {
                 try {
                     val json = JSONObject(activePlan.nutritionJson)
-                    val cachedPlan = NutritionPlan(
-                        calories = json.optString("calories", "2000"),
-                        protein = json.optString("protein", "150"),
-                        carbs = json.optString("carbs", "200"),
-                        fats = json.optString("fats", "70"),
-                        explanation = json.optString("explanation", "Loaded from your active plan.")
-                    )
-                    _uiState.value = NutritionUiState.Success(cachedPlan, activePlan.programType)
-                    return@launch // Exit early, NO LLM CALL!
+                    val cachedExplanation = json.optString("explanation", "")
+
+                    if (cachedExplanation.contains("error", ignoreCase = true) || cachedExplanation.isBlank()) {
+                        Log.w("NutritionVM", "Cache contained an error. Stopping auto-generation loop.")
+                        // FIX: Do not auto-spam the API. Show the Empty state so user can click "Generate" manually.
+                        _uiState.value = NutritionUiState.Empty
+                        return@launch
+                    } else {
+                        val cachedPlan = NutritionPlan(
+                            calories = json.optString("calories", "2000"),
+                            protein = json.optString("protein", "150"),
+                            carbs = json.optString("carbs", "200"),
+                            fats = json.optString("fats", "70"),
+                            explanation = cachedExplanation
+                        )
+                        _uiState.value = NutritionUiState.Success(cachedPlan, activePlan.programType)
+                        return@launch
+                    }
                 } catch (e: Exception) {
                     Log.e("NutritionVM", "Failed to parse cached nutrition", e)
+                    _uiState.value = NutritionUiState.Empty
+                    return@launch
                 }
             }
 
-            // 3. If no cache exists, generate a new one using the LLM
+            // Only auto-generate if it's completely empty (first time setting up the plan)
             generateAndCacheNutrition(activePlan)
         }
     }
 
     private suspend fun generateAndCacheNutrition(activePlan: WorkoutPlanEntity) {
         try {
-            // Map Workout Program Type to Nutritional Paradigm
             val nutritionStrategy = when (activePlan.programType) {
                 "Hypertrophy" -> "Caloric Surplus (+300-500 kcal). Evenly distributed protein boluses to stimulate mTOR."
                 "Body Sculpting" -> "Caloric Deficit (-300-500 kcal). Extremely high protein to preserve tissue while maximizing fat oxidation."
@@ -125,13 +134,11 @@ class NutritionViewModel @Inject constructor(
                 else -> "Maintenance calories with balanced macros."
             }
 
-            // Fetch User Stats
             val weight = userPrefs.userWeight.first()
             val height = userPrefs.userHeight.first()
             val age = userPrefs.userAge.first()
             val gender = userPrefs.userGender.first()
 
-            // Generate AI Nutrition Plan
             val remotePlan = bedrockClient.generateNutritionPlan(
                 userAge = age,
                 userHeight = height,
@@ -143,15 +150,27 @@ class NutritionViewModel @Inject constructor(
                 avgWorkoutDurationMins = 60
             )
 
+            // FIX: Never save a failed AI response to the database
+            if (remotePlan.explanation.contains("Error", ignoreCase = true)) {
+                _uiState.value = NutritionUiState.Error("AI Generation Failed. Please try again.")
+                return
+            }
+
+            // FIX: Bulletproof parsing. Safely handles "180.5g", "180", or "180g" without crashing.
+            fun parseSafeInt(value: String, default: Int): String {
+                val match = Regex("([0-9]+(?:\\.[0-9]+)?)").find(value)
+                val numStr = match?.value ?: return default.toString()
+                return numStr.toDoubleOrNull()?.toInt()?.toString() ?: default.toString()
+            }
+
             val nutritionPlan = NutritionPlan(
-                calories = (remotePlan.calories.filter { it.isDigit() }.toIntOrNull() ?: 2000).toString(),
-                protein = (remotePlan.protein.filter { it.isDigit() }.toIntOrNull() ?: 150).toString(),
-                carbs = (remotePlan.carbs.filter { it.isDigit() }.toIntOrNull() ?: 200).toString(),
-                fats = (remotePlan.fats.filter { it.isDigit() }.toIntOrNull() ?: 70).toString(),
+                calories = parseSafeInt(remotePlan.calories, 2000),
+                protein = parseSafeInt(remotePlan.protein, 150),
+                carbs = parseSafeInt(remotePlan.carbs, 200),
+                fats = parseSafeInt(remotePlan.fats, 70),
                 explanation = remotePlan.explanation
             )
 
-            // SAVE TO DATABASE to prevent future LLM calls
             val jsonObj = JSONObject().apply {
                 put("calories", nutritionPlan.calories)
                 put("protein", nutritionPlan.protein)
@@ -161,8 +180,6 @@ class NutritionViewModel @Inject constructor(
             }
 
             val updatedPlan = activePlan.copy(nutritionJson = jsonObj.toString())
-
-            // NOTE: If your repository uses a different name like `updateWorkoutPlan`, change this line!
             planRepository.updatePlan(updatedPlan)
 
             _uiState.value = NutritionUiState.Success(nutritionPlan, activePlan.programType)
@@ -198,7 +215,6 @@ class NutritionViewModel @Inject constructor(
         }
     }
 
-    // Called when the user clicks "Recalculate Plan" in the UI
     fun generateNutrition() {
         viewModelScope.launch {
             _uiState.value = NutritionUiState.Loading
