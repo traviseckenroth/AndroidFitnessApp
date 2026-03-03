@@ -1,3 +1,4 @@
+// app/src/main/java/com/example/myapplication/ui/navigation/NavGraph.kt
 package com.example.myapplication.ui.navigation
 
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -7,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -42,7 +44,6 @@ fun NavGraph(
     modifier: Modifier = Modifier,
     planViewModel: PlanViewModel = hiltViewModel()
 ) {
-    // Helper to determine animation direction using the new Type-Safe hasRoute()
     fun getNavIndex(destination: NavDestination?): Int {
         if (destination == null) return -1
         return when {
@@ -57,12 +58,11 @@ fun NavGraph(
 
     NavHost(
         navController = navController,
-        startDestination = Login, // Passed as an object now!
+        startDestination = Login,
         modifier = modifier,
         enterTransition = {
             val initialIndex = getNavIndex(initialState.destination)
             val targetIndex = getNavIndex(targetState.destination)
-
             if (initialIndex != -1 && targetIndex != -1) {
                 slideIntoContainer(
                     if (targetIndex > initialIndex) AnimatedContentTransitionScope.SlideDirection.Left else AnimatedContentTransitionScope.SlideDirection.Right,
@@ -75,7 +75,6 @@ fun NavGraph(
         exitTransition = {
             val initialIndex = getNavIndex(initialState.destination)
             val targetIndex = getNavIndex(targetState.destination)
-
             if (initialIndex != -1 && targetIndex != -1) {
                 slideOutOfContainer(
                     if (targetIndex > initialIndex) AnimatedContentTransitionScope.SlideDirection.Left else AnimatedContentTransitionScope.SlideDirection.Right,
@@ -84,39 +83,9 @@ fun NavGraph(
             } else {
                 slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Left, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400))
             }
-        },
-        popEnterTransition = {
-            val initialIndex = getNavIndex(initialState.destination)
-            val targetIndex = getNavIndex(targetState.destination)
-
-            if (initialIndex != -1 && targetIndex != -1) {
-                slideIntoContainer(
-                    if (targetIndex > initialIndex) AnimatedContentTransitionScope.SlideDirection.Left else AnimatedContentTransitionScope.SlideDirection.Right,
-                    animationSpec = tween(400)
-                )
-            } else {
-                slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Right, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400))
-            }
-        },
-        popExitTransition = {
-            val initialIndex = getNavIndex(initialState.destination)
-            val targetIndex = getNavIndex(targetState.destination)
-
-            if (initialIndex != -1 && targetIndex != -1) {
-                slideOutOfContainer(
-                    if (targetIndex > initialIndex) AnimatedContentTransitionScope.SlideDirection.Left else AnimatedContentTransitionScope.SlideDirection.Right,
-                    animationSpec = tween(400)
-                )
-            } else {
-                slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Right, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400))
-            }
         }
     ) {
-        // --- AUTH ROUTES ---
-        composable<Login>(
-            enterTransition = { fadeIn(animationSpec = tween(500)) },
-            exitTransition = { fadeOut(animationSpec = tween(500)) }
-        ) {
+        composable<Login> {
             LoginScreen(
                 onLoginSuccess = { navController.navigate(Home) { popUpTo(Login) { inclusive = true } } },
                 onNavigateToSignUp = { navController.navigate(SignUp) }
@@ -130,12 +99,8 @@ fun NavGraph(
             )
         }
 
-        // --- MAIN APP ROUTES ---
         composable<Home> {
-            HomeScreen(
-                // Note: You will need to update HomeScreen's internal buttons to pass objects (e.g. `onNavigate(Profile)`) instead of strings.
-                onNavigate = { route -> navController.navigate(route as Any) }
-            )
+            HomeScreen(onNavigate = { route -> navController.navigate(route as Any) })
         }
 
         composable<Profile> {
@@ -148,11 +113,7 @@ fun NavGraph(
         composable<Settings> {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
-                onLogoutSuccess = {
-                    navController.navigate(Login) {
-                        popUpTo(0) { inclusive = true }
-                    }
-                },
+                onLogoutSuccess = { navController.navigate(Login) { popUpTo(0) { inclusive = true } } },
                 onNavigateToGymSettings = { navController.navigate(GymSettings) },
                 onNavigateToAbout = { navController.navigate(About) }
             )
@@ -178,22 +139,22 @@ fun NavGraph(
         }
 
         composable<Insights> {
-            InsightsScreen(
-                onNavigate = { route -> navController.navigate(route as Any) }
-            )
+            InsightsScreen(onNavigate = { route -> navController.navigate(route as Any) })
         }
 
         composable<Nutrition> { NutritionScreen() }
         composable<WarmUp> { WarmUpScreen(onBack = { navController.popBackStack() }) }
 
-        composable<ExerciseList> {
+        // --- FIXED: Passing navController and isPickerMode correctly ---
+        composable<ExerciseList> { backStackEntry ->
+            val args = backStackEntry.toRoute<ExerciseList>()
             ExerciseListScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToExerciseHistory = { exerciseId -> navController.navigate(ExerciseHistory(exerciseId)) }
+                isPickerMode = args.isPickerMode,
+                navController = navController,
+                onNavigateBack = { navController.popBackStack() }
             )
         }
 
-        // --- ROUTES WITH ARGUMENTS ---
         composable<StretchingSession> { backStackEntry ->
             val args = backStackEntry.toRoute<StretchingSession>()
             StretchingSessionScreen(
@@ -208,47 +169,32 @@ fun NavGraph(
             ContentDiscoveryScreen(contentId = args.contentId, onBack = { navController.popBackStack() })
         }
 
-        composable<ExerciseHistory> { backStackEntry ->
-            // ExerciseHistoryScreen probably extracts the ID from NavController currently.
-            // You can update it to accept the ID directly if desired!
-            ExerciseHistoryScreen(navController = navController)
+        composable<ExerciseHistory> {
+            ExerciseHistoryScreen(
+                onBack = { navController.popBackStack() } // FIXED: Passes the required lambda instead of the controller
+            )
         }
 
         composable<ActiveWorkout> { backStackEntry ->
             val args = backStackEntry.toRoute<ActiveWorkout>()
             ActiveWorkoutScreen(
                 workoutId = args.workoutId,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popBackStack() }, // FIXED: Parameter was previously missing or named incorrectly
+                navController = navController,
                 onWorkoutComplete = { id ->
-                    navController.navigate(WorkoutSummary(id)) {
-                        popUpTo(Home) { inclusive = false }
-                    }
+                    navController.navigate(WorkoutSummary(id)) { popUpTo(Home) { inclusive = false } }
                 },
                 onNavigateToLiveCoach = { navController.navigate(LiveCoach) }
             )
         }
 
-        composable<LiveCoach>(
-            enterTransition = { slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Up, animationSpec = tween(400)) },
-            exitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Down, animationSpec = tween(400)) },
-            popEnterTransition = { fadeIn(animationSpec = tween(400)) },
-            popExitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Down, animationSpec = tween(400)) }
-        ) {
-            // Type-Safe backstack retrieval for the shared ViewModel!
+        composable<LiveCoach> {
             val parentEntry = remember(it) {
-                try {
-                    navController.getBackStackEntry<ActiveWorkout>()
-                } catch (e: Exception) {
-                    null
-                }
+                try { navController.getBackStackEntry<ActiveWorkout>() } catch (e: Exception) { null }
             }
-
             if (parentEntry != null) {
                 val viewModel: ActiveSessionViewModel = hiltViewModel(parentEntry)
-                LiveAutoCoachScreen(
-                    viewModel = viewModel,
-                    onNavigateBack = { navController.popBackStack() }
-                )
+                LiveAutoCoachScreen(viewModel = viewModel, onNavigateBack = { navController.popBackStack() })
             }
         }
 
@@ -256,11 +202,7 @@ fun NavGraph(
             val args = backStackEntry.toRoute<WorkoutSummary>()
             WorkoutSummaryScreen(
                 workoutId = args.workoutId,
-                onNavigateHome = {
-                    navController.navigate(Home) {
-                        popUpTo(Home) { inclusive = true }
-                    }
-                }
+                onNavigateHome = { navController.navigate(Home) { popUpTo(Home) { inclusive = true } } }
             )
         }
     }

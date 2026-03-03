@@ -14,6 +14,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.navigation.compose.currentBackStackEntryAsState
+import com.example.myapplication.ui.navigation.*
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -23,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.navigation.NavController
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -60,6 +63,7 @@ import java.util.Locale
 fun ActiveWorkoutScreen(
     workoutId: Long,
     onBack: () -> Unit,
+    navController: NavController,
     onWorkoutComplete: (Long) -> Unit,
     onNavigateToLiveCoach: () -> Unit,
     viewModel: ActiveSessionViewModel = hiltViewModel()
@@ -154,7 +158,22 @@ fun ActiveWorkoutScreen(
             }
         )
     }
+// FIXED: Explicitly added import and ensured types are inferable
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
 
+    // Observe the saved state handle result with explicit type
+    val selectedExerciseId: State<Long?> = navBackStackEntry?.savedStateHandle
+        ?.getStateFlow<Long?>("selected_exercise_id", null)
+        ?.collectAsState() ?: remember { mutableStateOf(null) }
+
+    // REACT TO THE SELECTION
+    LaunchedEffect(selectedExerciseId.value) {
+        selectedExerciseId.value?.let { id ->
+            viewModel.addExercise(id)
+            // Clear the result immediately
+            navBackStackEntry?.savedStateHandle?.remove<Long>("selected_exercise_id")
+        }
+    }
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
@@ -227,7 +246,8 @@ fun ActiveWorkoutScreen(
             },
             floatingActionButton = {
                 FloatingActionButton(
-                    onClick = { showAddExerciseDialog = true },
+                    onClick = {
+                        navController.navigate(ExerciseList(isPickerMode = true))},
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     shape = CircleShape,

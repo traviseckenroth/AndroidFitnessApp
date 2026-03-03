@@ -35,7 +35,6 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExerciseHistoryScreen(
-    navController: NavController,
     onBack: () -> Unit, // CHANGED: Pass back lambda instead of full NavController
     viewModel: ExerciseHistoryViewModel = hiltViewModel()
 ) {

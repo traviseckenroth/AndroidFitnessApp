@@ -7,7 +7,9 @@ import androidx.compose.ui.graphics.Color
 // Primary Brand Colors
 val FormaBlue = Color(0xFF2563EB)         // Energetic, vibrant blue for main actions
 val FormaBlueDark = Color(0xFF1D4ED8)     // Deeper blue for pressed states/dark mode
+val FormaAccentBlue = Color(0xFF60A5FA)   // Lighter, brighter blue for dark mode visibility
 val FormaTeal = Color(0xFF0D9488)         // Fresh teal for secondary accents/success
+val FormaTealLight = Color(0xFF2DD4BF)    // Brighter teal for dark mode
 
 // Backgrounds & Surfaces (Light)
 val BackgroundLight = Color(0xFFF8FAFC)   // Soft, cool off-white (not harsh)
@@ -25,6 +27,8 @@ val TextSecondaryLight = Color(0xFF64748B) // Medium slate-grey
 val TextPrimaryDark = Color(0xFFF8FAFC)   // Off-white for dark mode text
 val TextSecondaryDark = Color(0xFF94A3B8)
 
-// Status
+// Status & Accents
 val ErrorRed = Color(0xFFEF4444)
+val ErrorRedLight = Color(0xFFF87171)
 val SuccessGreen = Color(0xFF22C55E)
+val Gold = Color(0xFFFBBF24)              // Amber/Gold for awards and trophies

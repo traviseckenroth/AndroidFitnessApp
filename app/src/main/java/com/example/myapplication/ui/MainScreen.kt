@@ -13,38 +13,42 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.myapplication.ui.navigation.NavGraph
-import com.example.myapplication.ui.navigation.Screen
+import com.example.myapplication.ui.navigation.Home
+import com.example.myapplication.ui.navigation.GeneratePlan
+import com.example.myapplication.ui.navigation.Nutrition
+import com.example.myapplication.ui.navigation.Insights
+import com.example.myapplication.ui.navigation.Profile
 
 
 @Composable
 fun MainScreen() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
+    val currentDestination = navBackStackEntry?.destination
 
     Scaffold(
         bottomBar = {
-            // Use the Screen object routes to ensure exact matching and exclude auth screens
-            val authenticatedRoutes = listOf(
-                Screen.Home.route,
-                Screen.Plan.route,
-                Screen.Nutrition.route,
-                Screen.Insights.route,
-                Screen.Profile.route
-            )
+            val showBottomBar = currentDestination?.let { dest ->
+                dest.hasRoute(Home::class) ||
+                dest.hasRoute(GeneratePlan::class) ||
+                dest.hasRoute(Nutrition::class) ||
+                dest.hasRoute(Insights::class) ||
+                dest.hasRoute(Profile::class)
+            } ?: false
 
-            if (currentRoute in authenticatedRoutes) {
+            if (showBottomBar) {
                 NavigationBar {
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.Home, contentDescription = "Home") },
                         label = { Text("Home") },
-                        selected = currentRoute == Screen.Home.route,
+                        selected = currentDestination?.hasRoute(Home::class) == true,
                         onClick = {
-                            navController.navigate(Screen.Home.route) {
+                            navController.navigate(Home) {
                                 popUpTo(navController.graph.findStartDestination().id) {
                                     saveState = true
                                 }
@@ -56,9 +60,9 @@ fun MainScreen() {
                     NavigationBarItem(
                         icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Plan") },
                         label = { Text("Plan") },
-                        selected = currentRoute == Screen.Plan.route,
+                        selected = currentDestination?.hasRoute(GeneratePlan::class) == true,
                         onClick = {
-                            navController.navigate(Screen.Plan.route) {
+                            navController.navigate(GeneratePlan) {
                                 popUpTo(navController.graph.findStartDestination().id) {
                                     saveState = true
                                 }
@@ -70,9 +74,9 @@ fun MainScreen() {
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.Restaurant, contentDescription = "Nutrition") },
                         label = { Text("Nutrition") },
-                        selected = currentRoute == Screen.Nutrition.route,
+                        selected = currentDestination?.hasRoute(Nutrition::class) == true,
                         onClick = {
-                            navController.navigate(Screen.Nutrition.route) {
+                            navController.navigate(Nutrition) {
                                 popUpTo(navController.graph.findStartDestination().id) {
                                     saveState = true
                                 }
@@ -84,9 +88,9 @@ fun MainScreen() {
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.Timeline, contentDescription = "Insights") },
                         label = { Text("Insights") },
-                        selected = currentRoute == Screen.Insights.route,
+                        selected = currentDestination?.hasRoute(Insights::class) == true,
                         onClick = {
-                            navController.navigate(Screen.Insights.route) {
+                            navController.navigate(Insights) {
                                 popUpTo(navController.graph.findStartDestination().id) {
                                     saveState = true
                                 }
@@ -98,9 +102,9 @@ fun MainScreen() {
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.Person, contentDescription = "Profile") },
                         label = { Text("Profile") },
-                        selected = currentRoute == Screen.Profile.route,
+                        selected = currentDestination?.hasRoute(Profile::class) == true,
                         onClick = {
-                            navController.navigate(Screen.Profile.route) {
+                            navController.navigate(Profile) {
                                 popUpTo(navController.graph.findStartDestination().id) {
                                     saveState = true
                                 }

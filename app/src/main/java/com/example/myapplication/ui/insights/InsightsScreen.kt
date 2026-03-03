@@ -1,3 +1,4 @@
+// app/src/main/java/com/example/myapplication/ui/insights/InsightsScreen.kt
 package com.example.myapplication.ui.insights
 
 import androidx.compose.foundation.Canvas
@@ -40,7 +41,6 @@ fun InsightsScreen(
     viewModel: InsightsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
-    var showExerciseDropdown by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (state.isLoading) {
@@ -62,86 +62,40 @@ fun InsightsScreen(
             }
 
             item { AIStatusCard() }
-            
+
             // Muscle Recovery (Moved from Home)
             item {
                 MuscleRecoveryCard(fatigueMap = state.muscleFatigue)
             }
 
-            // 1. Progress Graph with Quick Tabs
+            // 1. Progress Graph with Scrolling Tabs
             item {
                 InsightCard(title = "Estimated 1 Rep Max") {
                     Column {
-                        if (state.topExercises.isNotEmpty()) {
+                        if (state.availableExercises.isNotEmpty()) {
                             ScrollableTabRow(
-                                selectedTabIndex = state.topExercises.indexOf(state.selectedExercise).coerceAtLeast(0),
+                                selectedTabIndex = state.availableExercises.indexOf(state.selectedExercise).coerceAtLeast(0),
                                 containerColor = Color.Transparent,
                                 edgePadding = 0.dp,
                                 divider = {}
                             ) {
-                                state.topExercises.forEach { exercise ->
+                                state.availableExercises.forEach { exercise ->
                                     val selected = state.selectedExercise?.exerciseId == exercise.exerciseId
                                     Tab(
                                         selected = selected,
                                         onClick = { viewModel.selectExercise(exercise) },
-                                        text = { Text(exercise.name, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) }
+                                        text = {
+                                            Text(
+                                                text = exercise.name,
+                                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     )
                                 }
-                                // Fallback "More" Dropdown Trigger
-                                Tab(
-                                    selected = false,
-                                    onClick = { showExerciseDropdown = true },
-                                    text = {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("More", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            Icon(Icons.Default.ArrowDropDown, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                    }
-                                )
                             }
                         } else {
-                            // Fallback Dropdown if no top exercises are found
-                            Box(modifier = Modifier.fillMaxWidth()) {
-                                Surface(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable { showExerciseDropdown = true }
-                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-                                    color = Color.Transparent
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = state.selectedExercise?.name ?: "Select Exercise",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Icon(Icons.Default.ArrowDropDown, contentDescription = "Select")
-                                    }
-                                }
-                            }
-                        }
-
-                        // Hidden Dropdown for non-top exercises
-                        DropdownMenu(
-                            expanded = showExerciseDropdown,
-                            onDismissRequest = { showExerciseDropdown = false },
-                            modifier = Modifier.fillMaxWidth(0.8f)
-                        ) {
-                            state.availableExercises.forEach { exercise ->
-                                DropdownMenuItem(
-                                    text = { Text(exercise.name) },
-                                    onClick = {
-                                        viewModel.selectExercise(exercise)
-                                        showExerciseDropdown = false
-                                    }
-                                )
-                            }
+                            Text("No exercises available.", color = Color.Gray, modifier = Modifier.padding(vertical = 8.dp))
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
@@ -694,8 +648,8 @@ fun WorkoutSummaryCard(item: RecentWorkoutSummary, onClick: () -> Unit) {
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Icon(
-                        Icons.Default.ChevronRight, 
-                        null, 
+                        Icons.Default.ChevronRight,
+                        null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                         modifier = Modifier.size(16.dp)
                     )

@@ -18,7 +18,8 @@ import com.example.myapplication.data.remote.CommunityPick
 import com.example.myapplication.data.repository.NutritionRepository
 import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import com.example.myapplication.data.repository.HealthConnectManager
-import com.example.myapplication.ui.navigation.Screen
+import com.example.myapplication.ui.navigation.ActiveWorkout
+import com.example.myapplication.ui.navigation.StretchingSession
 import com.example.myapplication.util.FormaScore
 import com.example.myapplication.util.ReadinessEngine
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -367,9 +368,9 @@ class HomeViewModel @Inject constructor(
                     )
 
                     val route = if (type == "Stretching") {
-                        Screen.StretchingSession.createRoute(workoutId)
+                        StretchingSession(workoutId = workoutId)
                     } else {
-                        Screen.ActiveWorkout.createRoute(workoutId)
+                        ActiveWorkout(workoutId = workoutId)
                     }
                     _navigationEvents.emit(route)
                 }

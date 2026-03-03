@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 data class AppFeature(
@@ -32,45 +33,51 @@ fun AboutFormaScreen(onBack: () -> Unit) {
 
     val features = listOf(
         AppFeature(
+            title = "Dynamic Autoregulation",
+            description = "Real-time weight adjustments based on your set-by-set performance.",
+            inDepthDescription = "If you miss reps or hit a maximum RPE early in your workout, Forma automatically recalculates the optimal weight for your remaining sets. This prevents overtraining, adapts to your daily strength levels, and ensures you stay within the optimal hypertrophy or strength stimulus range.",
+            icon = Icons.Default.Tune
+        ),
+        AppFeature(
+            title = "Live Audio Coach",
+            description = "Real-time, hands-free coaching using premium AI voice models.",
+            inDepthDescription = "Put your phone in your pocket and let Forma guide you. Powered by advanced TTS models, your coach dictates your next exercise, target weight, and rests. It seamlessly integrates with Pocket Mode, allowing you to stay completely focused on the lift without looking at your screen.",
+            icon = Icons.Default.RecordVoiceOver
+        ),
+        AppFeature(
+            title = "Intelligent Nutrition",
+            description = "Macro optimization aligned directly with your active training cycle.",
+            inDepthDescription = "Forma dynamically adjusts your daily caloric and macro targets based on your specific goal pace (e.g., Slow Cut, Recomp, Bulk). You can log food effortlessly using natural language voice commands, and the AI instantly parses the nutritional breakdown.",
+            icon = Icons.Default.Restaurant
+        ),
+        AppFeature(
             title = "Iterative Mesocycles",
             description = "Continuous macrocycle planning that auto-adapts based on performance.",
             inDepthDescription = "Instead of rigid 4-week templates, Forma connects your workouts into continuous macrocycles. At the end of each block, the AI analyzes the raw tonnage you moved and your RPE logs, automatically generating your next training phase with calculated progressive overload and exercise variation.",
             icon = Icons.Default.Autorenew
         ),
         AppFeature(
-            title = "Dynamic Readiness Score",
-            description = "Auto-regulation driven by your lifting volume and biometric sleep data.",
-            inDepthDescription = "Forma doesn't just guess how you feel. It calculates an Acute:Chronic Workload Ratio (ACWR) based on your workout history and combines it with sleep data pulled securely from Android Health Connect. If your Readiness Score drops, the AI Coach automatically scales back your target weight and volume to prevent injury.",
-            icon = Icons.Default.BatteryChargingFull
+            title = "Advanced Performance Insights",
+            description = "Visualize your 1RM trends, weekly tonnage, and muscle fatigue.",
+            inDepthDescription = "Forma turns your raw lifting data into actionable intelligence. Track your estimated 1-Rep Max across any exercise, monitor your Mesocycle volume progression, and view a visual heatmap of your muscular fatigue to optimize your recovery days.",
+            icon = Icons.Default.Analytics
         ),
         AppFeature(
-            title = "AI Vision Spotter",
-            description = "On-device computer vision to track barbell paths and count reps.",
-            inDepthDescription = "Using Google's ML Kit Pose Detection, Forma acts as your digital spotter. Point your camera at your squat rack, and the app processes your skeletal movement in real-time. It automatically counts your reps and triggers a natural Voice Coach to give you instant form corrections.",
-            icon = Icons.Default.Videocam
+            title = "Bio-Sync via Health Connect",
+            description = "Auto-regulation driven by your sleep and biometric data.",
+            inDepthDescription = "Forma calculates your Acute:Chronic Workload Ratio (ACWR) and combines it with sleep and heart rate data pulled securely from Android Health Connect. If your Readiness Score drops due to poor recovery, the AI Coach automatically scales back your target volume to prevent injury.",
+            icon = Icons.Default.Favorite
         ),
         AppFeature(
-            title = "Muscle Gamification",
-            description = "Turn your lifting volume into XP to level up your digital body.",
-            inDepthDescription = "Every pound you lift is tracked. Hit your chest hard, and the muscle avatar glows red to indicate fatigue (48-72 hours). Once recovered, that volume is converted into lifetime Hypertrophy XP, leveling up your muscle groups from bronze, to silver, to gold.",
-            icon = Icons.Default.AccessibilityNew
-        ),
-        AppFeature(
-            title = "Daily Intelligence Briefing",
-            description = "Curated fitness news synthesized into a daily 3-sentence brief.",
-            inDepthDescription = "Forma's Knowledge Hub crawls the latest articles and videos based on your specific athletic interests (e.g., CrossFit, Hyrox). Claude AI then cross-references this content with your scheduled workout for the day to generate a highly personalized, actionable intelligence briefing.",
-            icon = Icons.Default.Newspaper
-        ),
-        AppFeature(
-            title = "Community Social Heat",
-            description = "Real-time upvotes and trending community workout picks.",
-            inDepthDescription = "Workout in a digital community. Forma uses Firebase Firestore to track trending articles and massive PRs within the user base. You can upvote 'Community Picks' directly from your dashboard to share the motivation.",
-            icon = Icons.Default.Whatshot
+            title = "Type-Safe Architecture",
+            description = "Crash-proof navigation and seamless full-screen interactions.",
+            inDepthDescription = "Built on Jetpack Compose Navigation 2.8.0, Forma uses Kotlin Serialization to pass complex data between screens safely. This ensures a fluid, native-feeling experience whether you are swapping exercises mid-workout or generating a new training block.",
+            icon = Icons.Default.Architecture
         ),
         AppFeature(
             title = "Zero-Knowledge Privacy",
-            description = "Enterprise-grade AWS security that keeps your personal data on-device.",
-            inDepthDescription = "Your identifiable data never trains public models. Forma uses a prompt sanitizer to strip Personally Identifiable Information (PII) before utilizing AWS Bedrock for AI generation. Video form-checking is completely on-device, meaning your gym videos are never sent to the cloud.",
+            description = "Enterprise-grade security that keeps your personal data on-device.",
+            inDepthDescription = "Your identifiable data never trains public models. Forma uses a prompt sanitizer to strip Personally Identifiable Information (PII) before utilizing local and secure cloud models for AI generation. Your health and fitness journey belongs strictly to you.",
             icon = Icons.Default.GppGood
         )
     )
@@ -92,7 +99,7 @@ fun AboutFormaScreen(onBack: () -> Unit) {
                     text = selectedFeature!!.title,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.fillMaxWidth(),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    textAlign = TextAlign.Center
                 )
             },
             text = {
@@ -160,7 +167,7 @@ fun AboutFormaScreen(onBack: () -> Unit) {
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            "Version 2.0.0 (Proxima)",
+                            "Version 2.5.0 (Titan)",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

@@ -20,7 +20,9 @@ import kotlinx.serialization.Serializable
 @Serializable data object GymSettings
 @Serializable data object About
 @Serializable data object WarmUp
-@Serializable data object ExerciseList
+@Serializable data class ExerciseList(
+    val isPickerMode: Boolean = false
+)
 @Serializable data object LiveCoach
 
 // --- ROUTES WITH ARGUMENTS (Type-Safe!) ---

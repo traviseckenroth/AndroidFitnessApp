@@ -5,8 +5,10 @@ import androidx.health.connect.client.PermissionController
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Favorite
@@ -22,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 
@@ -42,6 +45,7 @@ fun SettingsScreen(
 
     val userVoiceSid by viewModel.userVoiceSid.collectAsState(initial = 0)
     val isHealthConnected by viewModel.isHealthConnected.collectAsState()
+    val isDynamicAutoregEnabled by viewModel.isDynamicAutoregEnabled.collectAsState()
 
     val kokoroVoices = mapOf(
         "Bella (Warm Female)" to 2,
@@ -83,7 +87,8 @@ fun SettingsScreen(
             Text(
                 "Preferences",
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
             )
 
             SettingsTile(
@@ -107,16 +112,20 @@ fun SettingsScreen(
             Text(
                 "Integrations",
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
             )
 
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = if (isHealthConnected) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.surfaceVariant
-                )
+                ),
+                shape = RoundedCornerShape(16.dp)
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -124,7 +133,7 @@ fun SettingsScreen(
                         Icon(Icons.Default.Favorite, contentDescription = null, tint = Color.Red)
                         Spacer(Modifier.width(16.dp))
                         Column {
-                            Text("Health Connect", style = MaterialTheme.typography.titleSmall)
+                            Text("Health Connect", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             Text(
                                 if (isHealthConnected) "Connected" else "Sync workouts to Google Fit",
                                 style = MaterialTheme.typography.bodySmall
@@ -144,30 +153,35 @@ fun SettingsScreen(
                 }
             }
 
-            HorizontalDivider()
-            val isDynamicAutoregEnabled by viewModel.isDynamicAutoregEnabled.collectAsState()
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                ListItem(
+                    headlineContent = { Text("Dynamic Autoregulation", fontWeight = FontWeight.Bold) },
+                    supportingContent = { Text("Automatically adjust the weight of remaining sets if you miss reps or max out your RPE on earlier sets.") },
+                    leadingContent = {
+                        Icon(Icons.Default.Tune, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = isDynamicAutoregEnabled,
+                            onCheckedChange = { viewModel.toggleDynamicAutoreg(it) },
+                            colors = SwitchDefaults.colors(checkedTrackColor = MaterialTheme.colorScheme.primary)
+                        )
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                )
+            }
 
-            ListItem(
-                headlineContent = { Text("Dynamic Autoregulation") },
-                supportingContent = { Text("Automatically adjust the weight of remaining sets if you miss reps or max out your RPE on earlier sets.") },
-                leadingContent = {
-                    Icon(Icons.Default.Tune, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                },
-                trailingContent = {
-                    Switch(
-                        checked = isDynamicAutoregEnabled,
-                        onCheckedChange = { viewModel.toggleDynamicAutoreg(it) },
-                        colors = SwitchDefaults.colors(checkedTrackColor = MaterialTheme.colorScheme.primary)
-                    )
-                }
-            )
-            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+            HorizontalDivider()
 
             // --- SECTION: APP INFO ---
             Text(
                 "App Info",
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
             )
 
             SettingsTile(
@@ -179,15 +193,44 @@ fun SettingsScreen(
 
             HorizontalDivider()
 
-            Text("Account", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            // --- SECTION: ACCOUNT (SIGN OUT) ---
+            Text(
+                "Account",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
 
-            Button(
-                onClick = { viewModel.logout(onLogoutSuccess) },
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                modifier = Modifier.fillMaxWidth()
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { viewModel.logout(onLogoutSuccess) },
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                shape = RoundedCornerShape(16.dp)
             ) {
-                Text("Sign Out")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ExitToApp,
+                        contentDescription = "Sign Out",
+                        tint = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "Sign Out",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
             }
+
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
@@ -195,14 +238,17 @@ fun SettingsScreen(
 @Composable
 fun SettingsTile(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(16.dp)
     ) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.width(16.dp))
             Column {
-                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -224,7 +270,8 @@ fun SettingsDropdownTile(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { expanded = true },
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            shape = RoundedCornerShape(16.dp)
         ) {
             Row(
                 modifier = Modifier.padding(16.dp),
@@ -235,7 +282,7 @@ fun SettingsDropdownTile(
                     Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
-                        Text(title, style = MaterialTheme.typography.titleMedium)
+                        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
