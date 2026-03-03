@@ -1,10 +1,12 @@
 package com.example.myapplication.ui.nutrition
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.NutritionPlan
 import com.example.myapplication.data.local.FoodLogEntity
 import com.example.myapplication.data.local.UserPreferencesRepository
+import com.example.myapplication.data.local.WorkoutPlanEntity
 import com.example.myapplication.data.remote.BedrockClient
 import com.example.myapplication.data.remote.MacroSummary
 import com.example.myapplication.data.repository.NutritionRepository
@@ -17,6 +19,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import javax.inject.Inject
 
 sealed interface NutritionUiState {
@@ -57,7 +60,7 @@ class NutritionViewModel @Inject constructor(
     val recentFoods = _recentFoods.asStateFlow()
 
     init {
-        generateNutritionTiedToPlan()
+        loadNutritionData() // <-- Changed to check cache first!
         loadFoodLogs()
         loadHistory()
     }
@@ -76,7 +79,7 @@ class NutritionViewModel @Inject constructor(
         }
     }
 
-    private fun generateNutritionTiedToPlan() {
+    private fun loadNutritionData() {
         viewModelScope.launch {
             _uiState.value = NutritionUiState.Loading
 
@@ -88,13 +91,32 @@ class NutritionViewModel @Inject constructor(
                 return@launch
             }
 
-            val strategy = when (activePlan.goal) {
-                "Hypertrophy" -> "Caloric Surplus (+500 kcal) for mTOR stimulation."
-                "Body Sculpting" -> "Caloric Deficit (-500 kcal) with high protein (3.0g/kg)."
-                else -> "Maintenance calories for performance."
+            // 2. CACHE CHECK: If nutrition is already generated, load it instantly!
+            if (!activePlan.nutritionJson.isNullOrBlank()) {
+                try {
+                    val json = JSONObject(activePlan.nutritionJson)
+                    val cachedPlan = NutritionPlan(
+                        calories = json.optString("calories", "2000"),
+                        protein = json.optString("protein", "150"),
+                        carbs = json.optString("carbs", "200"),
+                        fats = json.optString("fats", "70"),
+                        explanation = json.optString("explanation", "Loaded from your active plan.")
+                    )
+                    _uiState.value = NutritionUiState.Success(cachedPlan, activePlan.programType)
+                    return@launch // Exit early, NO LLM CALL!
+                } catch (e: Exception) {
+                    Log.e("NutritionVM", "Failed to parse cached nutrition", e)
+                }
             }
 
-            // 2. Map Workout Program Type to Nutritional Paradigm
+            // 3. If no cache exists, generate a new one using the LLM
+            generateAndCacheNutrition(activePlan)
+        }
+    }
+
+    private suspend fun generateAndCacheNutrition(activePlan: WorkoutPlanEntity) {
+        try {
+            // Map Workout Program Type to Nutritional Paradigm
             val nutritionStrategy = when (activePlan.programType) {
                 "Hypertrophy" -> "Caloric Surplus (+300-500 kcal). Evenly distributed protein boluses to stimulate mTOR."
                 "Body Sculpting" -> "Caloric Deficit (-300-500 kcal). Extremely high protein to preserve tissue while maximizing fat oxidation."
@@ -103,39 +125,49 @@ class NutritionViewModel @Inject constructor(
                 else -> "Maintenance calories with balanced macros."
             }
 
-            // 3. Fetch User Stats with safe defaults
+            // Fetch User Stats
             val weight = userPrefs.userWeight.first()
             val height = userPrefs.userHeight.first()
             val age = userPrefs.userAge.first()
             val gender = userPrefs.userGender.first()
 
-            // 4. Generate AI Nutrition Plan
-            try {
-                // We call Bedrock with the full parameter list required by BedrockClient
-                val remotePlan = bedrockClient.generateNutritionPlan(
-                    userAge = age,
-                    userHeight = height,
-                    userWeight = weight,
-                    gender = gender,
-                    dietType = "Balanced",
-                    goalPace = nutritionStrategy, // Override goal pace with the strategy tied to the lifting plan
-                    weeklyWorkoutDays = 4,
-                    avgWorkoutDurationMins = 60
-                )
+            // Generate AI Nutrition Plan
+            val remotePlan = bedrockClient.generateNutritionPlan(
+                userAge = age,
+                userHeight = height,
+                userWeight = weight,
+                gender = gender,
+                dietType = "Balanced",
+                goalPace = nutritionStrategy,
+                weeklyWorkoutDays = 4,
+                avgWorkoutDurationMins = 60
+            )
 
-                // Convert Remote plan to Local NutritionPlan domain model
-                val nutritionPlan = NutritionPlan(
-                    calories = (remotePlan.calories.filter { it.isDigit() }.toIntOrNull() ?: 2000).toString(),
-                    protein = (remotePlan.protein.filter { it.isDigit() }.toIntOrNull() ?: 150).toString(),
-                    carbs = (remotePlan.carbs.filter { it.isDigit() }.toIntOrNull() ?: 200).toString(),
-                    fats = (remotePlan.fats.filter { it.isDigit() }.toIntOrNull() ?: 70).toString(),
-                    explanation = remotePlan.explanation
-                )
+            val nutritionPlan = NutritionPlan(
+                calories = (remotePlan.calories.filter { it.isDigit() }.toIntOrNull() ?: 2000).toString(),
+                protein = (remotePlan.protein.filter { it.isDigit() }.toIntOrNull() ?: 150).toString(),
+                carbs = (remotePlan.carbs.filter { it.isDigit() }.toIntOrNull() ?: 200).toString(),
+                fats = (remotePlan.fats.filter { it.isDigit() }.toIntOrNull() ?: 70).toString(),
+                explanation = remotePlan.explanation
+            )
 
-                _uiState.value = NutritionUiState.Success(nutritionPlan, activePlan.programType)
-            } catch (e: Exception) {
-                _uiState.value = NutritionUiState.Error("Nutrition generation failed: ${e.message}")
+            // SAVE TO DATABASE to prevent future LLM calls
+            val jsonObj = JSONObject().apply {
+                put("calories", nutritionPlan.calories)
+                put("protein", nutritionPlan.protein)
+                put("carbs", nutritionPlan.carbs)
+                put("fats", nutritionPlan.fats)
+                put("explanation", nutritionPlan.explanation)
             }
+
+            val updatedPlan = activePlan.copy(nutritionJson = jsonObj.toString())
+
+            // NOTE: If your repository uses a different name like `updateWorkoutPlan`, change this line!
+            planRepository.updatePlan(updatedPlan)
+
+            _uiState.value = NutritionUiState.Success(nutritionPlan, activePlan.programType)
+        } catch (e: Exception) {
+            _uiState.value = NutritionUiState.Error("Nutrition generation failed: ${e.message}")
         }
     }
 
@@ -166,14 +198,15 @@ class NutritionViewModel @Inject constructor(
         }
     }
 
+    // Called when the user clicks "Recalculate Plan" in the UI
     fun generateNutrition() {
         viewModelScope.launch {
             _uiState.value = NutritionUiState.Loading
-            try {
-                val newPlan = nutritionRepository.generateAndSaveNutrition()
-                _uiState.value = NutritionUiState.Success(newPlan)
-            } catch (e: Exception) {
-                _uiState.value = NutritionUiState.Error(e.message ?: "Failed")
+            val activePlan = planRepository.getActivePlan()
+            if (activePlan != null) {
+                generateAndCacheNutrition(activePlan)
+            } else {
+                _uiState.value = NutritionUiState.NoExercisePlan
             }
         }
     }

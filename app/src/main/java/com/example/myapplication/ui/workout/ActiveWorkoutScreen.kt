@@ -33,8 +33,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -42,12 +40,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,13 +54,6 @@ import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.util.AutoCoachState
 import com.example.myapplication.util.PlateCalculator
 import java.util.Locale
-
-private val BackgroundColor = Color(0xFFF9F9F9)
-private val CardBackgroundColor = Color.White
-private val TextColor = Color.Black
-private val SecondaryTextColor = Color(0xFF8E8E8E)
-private val AccentColor = Color.Black
-private val BorderColor = Color(0xFFE5E5EA)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -167,9 +156,9 @@ fun ActiveWorkoutScreen(
         )
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(BackgroundColor)) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Scaffold(
-            containerColor = BackgroundColor,
+            containerColor = MaterialTheme.colorScheme.background,
             topBar = {
                 Column {
                     TopAppBar(
@@ -179,18 +168,18 @@ fun ActiveWorkoutScreen(
                                     text = "Active Session",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = TextColor
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
                                     text = "Est. Time: $totalEstimatedTime min",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = SecondaryTextColor
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         },
                         navigationIcon = {
                             IconButton(onClick = onBack) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextColor)
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onSurface)
                             }
                         },
                         actions = {
@@ -201,7 +190,7 @@ fun ActiveWorkoutScreen(
                                 Icon(
                                     imageVector = Icons.Default.Favorite,
                                     contentDescription = "Connect Heart Rate",
-                                    tint = if (isBleConnected) Color.Red else TextColor
+                                    tint = if (isBleConnected) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                                 )
                             }
 
@@ -209,7 +198,7 @@ fun ActiveWorkoutScreen(
                                 Icon(
                                     imageVector = Icons.Default.Lock,
                                     contentDescription = "Lock Screen",
-                                    tint = TextColor
+                                    tint = MaterialTheme.colorScheme.onSurface
                                 )
                             }
                             IconButton(
@@ -223,16 +212,16 @@ fun ActiveWorkoutScreen(
                                 Icon(
                                     imageVector = Icons.Default.RecordVoiceOver,
                                     contentDescription = "Open Auto-Coach",
-                                    tint = if (autoCoachState != AutoCoachState.OFF) Color(0xFF4CAF50) else TextColor
+                                    tint = if (autoCoachState != AutoCoachState.OFF) Color(0xFF22C55E) else MaterialTheme.colorScheme.onSurface
                                 )
                             }
                         },
-                        colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundColor)
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
                     )
                     LinearProgressIndicator(
                         progress = progress,
                         modifier = Modifier.fillMaxWidth().height(2.dp),
-                        color = Color.Black,
+                        color = MaterialTheme.colorScheme.primary,
                         trackColor = Color.Transparent
                     )
                 }
@@ -240,8 +229,8 @@ fun ActiveWorkoutScreen(
             floatingActionButton = {
                 FloatingActionButton(
                     onClick = { showAddExerciseDialog = true },
-                    containerColor = Color(0xFF4D4D4D),
-                    contentColor = Color.White,
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     shape = CircleShape,
                     modifier = Modifier.size(56.dp)
                 ) {
@@ -278,7 +267,7 @@ fun ActiveWorkoutScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(56.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.Black),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Icon(Icons.Default.Check, contentDescription = null)
@@ -380,8 +369,8 @@ fun ExerciseCard(
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = CardBackgroundColor),
-        border = BorderStroke(1.dp, BorderColor)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             // Header
@@ -392,13 +381,13 @@ fun ExerciseCard(
                             text = exercise.name,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = TextColor
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Icon(
                             imageVector = Icons.Default.HelpOutline,
                             contentDescription = "Description",
-                            tint = SecondaryTextColor,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(16.dp).clickable { showDescriptionDialog = true }
                         )
                     }
@@ -406,7 +395,7 @@ fun ExerciseCard(
                         Text(
                             text = "${exercise.muscleGroup} • ${getTierName(exercise.tier)} • ${exercise.equipment ?: ""}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = SecondaryTextColor
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
                         if (isAMRAP) {
@@ -424,14 +413,14 @@ fun ExerciseCard(
                         Spacer(modifier = Modifier.width(8.dp))
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = Color(0xFFF2F2F7),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
                             modifier = Modifier.clickable { showSwapDialog = true }
                         ) {
                             Text(
                                 text = "Swap",
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                 fontSize = 10.sp,
-                                color = SecondaryTextColor,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontWeight = FontWeight.Medium
                             )
                         }
@@ -440,14 +429,12 @@ fun ExerciseCard(
                 Icon(
                     imageVector = if (state.areSetsVisible) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                     contentDescription = null,
-                    tint = SecondaryTextColor,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.clickable { viewModel.toggleExerciseVisibility(exercise.exerciseId) }
                 )
             }
 
-            // NEW: Distinct, color-coded Circuit Instructions Box
             // DYNAMIC NOTES & INSTRUCTIONS BOX
-            // Prioritize AI 'notes', fallback to 'description' if notes are empty
             val displayNotes = exercise.notes?.takeIf { it.isNotBlank() } ?: exercise.description.takeIf { it.isNotBlank() }
 
             if (!displayNotes.isNullOrBlank()) {
@@ -479,14 +466,14 @@ fun ExerciseCard(
                             Text(
                                 text = displayNotes,
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = TextColor
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                         }
                     }
                 } else {
-                    // Clean gray box for standard exercise notes (like "15 minutes steady state...")
+                    // Clean box for standard exercise notes
                     Surface(
-                        color = Color(0xFFF2F2F7),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -494,14 +481,14 @@ fun ExerciseCard(
                             Icon(
                                 imageVector = Icons.Default.Info,
                                 contentDescription = "Notes",
-                                tint = SecondaryTextColor,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = displayNotes,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = TextColor,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                             )
                         }
@@ -512,10 +499,10 @@ fun ExerciseCard(
             if (state.areSetsVisible) {
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Table Header dynamically adjusted for Circuits
+                // Table Header
                 Row(modifier = Modifier.fillMaxWidth()) {
                     val headerStyle = MaterialTheme.typography.labelSmall.copy(
-                        color = Color(0xFFC7C7CC),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                         fontWeight = FontWeight.Bold,
                         fontSize = 10.sp
                     )
@@ -553,9 +540,9 @@ fun ExerciseCard(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.clickable { viewModel.addSet(exercise.exerciseId) }
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = TextColor)
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurface)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Add Set", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                            Text("Add Set", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                         }
 
                         if (!isBodyweight) {
@@ -565,14 +552,14 @@ fun ExerciseCard(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.clickable { viewModel.addWarmUpSets(exercise.exerciseId, state.sets.firstOrNull()?.suggestedLbs ?: 135, exercise.equipment) }
                             ) {
-                                Icon(Icons.Default.Whatshot, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFFC7C7CC))
+                                Icon(Icons.Default.Whatshot, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Warm Up", style = MaterialTheme.typography.labelMedium, color = SecondaryTextColor)
+                                Text("Warm Up", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     } else {
                         // Keep spacing clean for circuits
-                        Text("Log your final circuit score.", style = MaterialTheme.typography.labelSmall, color = SecondaryTextColor)
+                        Text("Log your final circuit score.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
 
                     Spacer(modifier = Modifier.weight(1f))
@@ -602,14 +589,14 @@ fun ExerciseCard(
     if (showDescriptionDialog) {
         AlertDialog(
             onDismissRequest = { showDescriptionDialog = false },
-            title = { Text(exercise.name) },
-            text = { Text(exercise.description) },
+            title = { Text(exercise.name, color = MaterialTheme.colorScheme.onSurface) },
+            text = { Text(exercise.description, color = MaterialTheme.colorScheme.onSurface) },
             confirmButton = {
                 TextButton(onClick = { showDescriptionDialog = false }) {
-                    Text("Close")
+                    Text("Close", color = MaterialTheme.colorScheme.primary)
                 }
             },
-            containerColor = CardBackgroundColor,
+            containerColor = MaterialTheme.colorScheme.surface,
             shape = RoundedCornerShape(16.dp)
         )
     }
@@ -632,7 +619,7 @@ fun StyledInputBox(
         placeholder = {
             Text(
                 text = placeholderText,
-                style = textStyle.copy(color = textStyle.color.copy(alpha = 0.3f)), // Fades it by 70%
+                style = textStyle.copy(color = textStyle.color.copy(alpha = 0.5f)),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -644,7 +631,7 @@ fun StyledInputBox(
             disabledContainerColor = Color.Transparent,
             focusedIndicatorColor = Color.Transparent,
             unfocusedIndicatorColor = Color.Transparent,
-            cursorColor = AccentColor
+            cursorColor = MaterialTheme.colorScheme.primary
         ),
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
@@ -670,7 +657,6 @@ fun SetRow(
 
     val isCircuit = set.isAMRAP || set.isEMOM || exercise.name.contains("AMRAP", true) || exercise.name.contains("EMOM", true)
 
-    // FIX: Completely hide LBS & RPE columns for circuits
     val hideLbs = isBodyweight || isCircuit
     val hideRpe = isCircuit || isBodyweight
 
@@ -683,14 +669,14 @@ fun SetRow(
     }
 
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        // SET NUMBER (Always visible)
+        // SET NUMBER
         Text(
             text = set.setNumber.toString(),
             modifier = Modifier.weight(0.8f),
             textAlign = TextAlign.Center,
             fontWeight = FontWeight.Bold,
             fontSize = 18.sp,
-            color = TextColor
+            color = MaterialTheme.colorScheme.onSurface
         )
 
         // DYNAMIC UI BLOCK
@@ -701,11 +687,11 @@ fun SetRow(
                 placeholderText = set.suggestedLbs.toString(),
                 onValueChange = { viewModel.updateSetWeight(set, it) },
                 modifier = Modifier.weight(1.5f),
-                textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray),
+                textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
             )
-            Text(" mi", style = MaterialTheme.typography.labelSmall, color = SecondaryTextColor)
+            Text(" mi", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             val actualRepsStr = set.actualReps?.toString() ?: ""
             StyledInputBox(
@@ -713,13 +699,12 @@ fun SetRow(
                 placeholderText = set.suggestedReps.toString(),
                 onValueChange = { viewModel.updateSetReps(set, it) },
                 modifier = Modifier.weight(if (isBodyweight) 2.4f else 1.2f),
-                textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, color = SecondaryTextColor),
+                textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
             )
-            Text(" min", style = MaterialTheme.typography.labelSmall, color = SecondaryTextColor)
+            Text(" min", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-            // Empty space for RPE column to maintain alignment
             Spacer(modifier = Modifier.weight(1f))
 
         } else {
@@ -733,9 +718,9 @@ fun SetRow(
                     val actualWeightStr = set.actualLbs?.let { if (it % 1 == 0f) it.toInt().toString() else it.toString() } ?: ""
 
                     val weightColor = if (set.isAutoAdjusted && set.actualLbs == null) {
-                        MaterialTheme.colorScheme.primary // Use your app's primary theme color
+                        MaterialTheme.colorScheme.primary
                     } else {
-                        Color.DarkGray
+                        MaterialTheme.colorScheme.onSurface
                     }
 
                     StyledInputBox(
@@ -760,13 +745,13 @@ fun SetRow(
                             imageVector = Icons.Default.Calculate,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp).clickable { showPlateCalc = true },
-                            tint = Color(0xFFC7C7CC)
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
             }
 
-            // Reps block scaled to fill missing columns
+            // REPS
             val repsWeight = 1.2f + (if (hideLbs) 1.5f else 0f) + (if (hideRpe) 1f else 0f)
             val actualRepsStr = set.actualReps?.toString() ?: ""
             val repsPlaceholder = if (isCircuit) "Total Score" else set.suggestedReps.toString()
@@ -776,7 +761,7 @@ fun SetRow(
                 placeholderText = repsPlaceholder,
                 onValueChange = { viewModel.updateSetReps(set, it) },
                 modifier = Modifier.weight(repsWeight),
-                textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, color = SecondaryTextColor),
+                textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
             )
@@ -790,19 +775,19 @@ fun SetRow(
                     placeholderText = set.suggestedRpe.toString(),
                     onValueChange = { viewModel.updateSetRpe(set, it) },
                     modifier = Modifier.weight(1f),
-                    textStyle = TextStyle(fontSize = 18.sp, color = Color(0xFFC7C7CC)),
+                    textStyle = TextStyle(fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
                 )
             }
         }
 
-        // DONE CHECKBOX (Always visible)
+        // DONE CHECKBOX
         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
             Box(
                 modifier = Modifier
                     .size(24.dp)
-                    .border(2.dp, if (set.isCompleted) Color.Black else BorderColor, RoundedCornerShape(4.dp))
+                    .border(2.dp, if (set.isCompleted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(4.dp))
                     .clickable {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         viewModel.updateSetCompletion(set, !set.isCompleted)
@@ -810,7 +795,7 @@ fun SetRow(
                 contentAlignment = Alignment.Center
             ) {
                 if (set.isCompleted) {
-                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.Black)
+                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
                 }
             }
         }
@@ -828,7 +813,7 @@ fun SetTimerPill(
     val timeString = String.format(Locale.US, "%02d:%02d", displayMinutes, displaySeconds)
 
     Surface(
-        color = Color(0xFFF2F2F7),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(20.dp),
         modifier = Modifier.clickable {
             if (timerState.isRunning) onSkip() else onStart()
@@ -841,14 +826,14 @@ fun SetTimerPill(
             Icon(
                 imageVector = Icons.Default.Timer,
                 contentDescription = null,
-                tint = SecondaryTextColor,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(16.dp)
             )
             Spacer(modifier = Modifier.width(6.6.dp))
             Text(
                 text = timeString,
                 style = MaterialTheme.typography.labelLarge,
-                color = TextColor,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.Bold
             )
         }
@@ -883,17 +868,17 @@ fun SearchField(
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        placeholder = { Text(placeholder, color = SecondaryTextColor) },
+        placeholder = { Text(placeholder, color = MaterialTheme.colorScheme.onSurfaceVariant) },
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = TextColor,
-            unfocusedBorderColor = BorderColor,
-            focusedContainerColor = CardBackgroundColor,
-            unfocusedContainerColor = CardBackgroundColor,
-            cursorColor = TextColor
+            focusedBorderColor = MaterialTheme.colorScheme.primary,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+            focusedContainerColor = MaterialTheme.colorScheme.surface,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+            cursorColor = MaterialTheme.colorScheme.primary
         ),
-        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = SecondaryTextColor) },
+        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
         singleLine = true
     )
 }
@@ -914,7 +899,7 @@ fun AddExerciseDialog(viewModel: ActiveSessionViewModel, onDismiss: () -> Unit, 
                     text = "Add Exercise",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = TextColor
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 SearchField(
@@ -937,24 +922,24 @@ fun AddExerciseDialog(viewModel: ActiveSessionViewModel, onDismiss: () -> Unit, 
                             text = ex.name,
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.SemiBold,
-                            color = TextColor
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
                             text = "${ex.muscleGroup} • ${getTierName(ex.tier)}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = SecondaryTextColor
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    HorizontalDivider(color = BorderColor, thickness = 0.5.dp)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp)
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = SecondaryTextColor, fontWeight = FontWeight.Bold)
+                Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
             }
         },
-        containerColor = CardBackgroundColor,
+        containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(16.dp)
     )
 }
@@ -963,22 +948,22 @@ fun AddExerciseDialog(viewModel: ActiveSessionViewModel, onDismiss: () -> Unit, 
 fun BleDeviceDialog(foundDevices: List<BluetoothDevice>, onDismiss: () -> Unit, onConnect: (BluetoothDevice) -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Connect HR Monitor", fontWeight = FontWeight.Bold) },
+        title = { Text("Connect HR Monitor", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface) },
         text = {
             LazyColumn {
                 items(foundDevices) { device ->
                     ListItem(
-                        headlineContent = { Text(try { device.name ?: "Unknown" } catch (e: SecurityException) { "Unknown" }) },
+                        headlineContent = { Text(try { device.name ?: "Unknown" } catch (e: SecurityException) { "Unknown" }, color = MaterialTheme.colorScheme.onSurface) },
                         modifier = Modifier.clickable { onConnect(device) }
                     )
-                    HorizontalDivider(color = BorderColor, thickness = 0.5.dp)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp)
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", color = SecondaryTextColor) }
+            TextButton(onClick = onDismiss) { Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         },
-        containerColor = CardBackgroundColor,
+        containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(16.dp)
     )
 }
@@ -1019,7 +1004,8 @@ fun SwapExerciseDialog(originalExercise: ExerciseEntity, viewModel: ActiveSessio
             Text(
                 text = "Swap ${originalExercise.name}",
                 fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.titleLarge
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface
             )
         },
         text = {
@@ -1031,17 +1017,17 @@ fun SwapExerciseDialog(originalExercise: ExerciseEntity, viewModel: ActiveSessio
                             .clickable { onSwap(alt.exerciseId) }
                             .padding(vertical = 12.dp)
                     ) {
-                        Text(text = alt.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                        Text(text = alt.muscleGroup ?: "", style = MaterialTheme.typography.labelSmall, color = SecondaryTextColor)
+                        Text(text = alt.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                        Text(text = alt.muscleGroup ?: "", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    HorizontalDivider(color = BorderColor, thickness = 0.5.dp)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp)
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", color = SecondaryTextColor) }
+            TextButton(onClick = onDismiss) { Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         },
-        containerColor = CardBackgroundColor,
+        containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(16.dp)
     )
 }
@@ -1051,10 +1037,10 @@ fun PlateCalculatorDialog(targetWeight: Double, barWeight: Double, onDismiss: ()
     val platesText = PlateCalculator.calculatePlates(targetWeight, barWeight)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Load for $targetWeight lbs", fontWeight = FontWeight.Bold) },
-        text = { Text(if (targetWeight <= barWeight) "Just the bar!" else "Plates per side: $platesText") },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("OK", fontWeight = FontWeight.Bold) } },
-        containerColor = CardBackgroundColor,
+        title = { Text("Load for $targetWeight lbs", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface) },
+        text = { Text(if (targetWeight <= barWeight) "Just the bar!" else "Plates per side: $platesText", color = MaterialTheme.colorScheme.onSurface) },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("OK", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) } },
+        containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(16.dp)
     )
 }

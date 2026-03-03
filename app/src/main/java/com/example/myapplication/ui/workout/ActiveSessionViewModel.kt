@@ -354,7 +354,11 @@ class ActiveSessionViewModel @Inject constructor(
         viewModelScope.launch {
             repository.updateSet(completedSet)
 
-            if (isCompleted && isDynamicEnabled.value) {
+            // FIX: Read the exact current setting directly from DataStore on every click
+            val isDynamicEnabled = userPrefs.isDynamicAutoregEnabled.first()
+
+            // Only run the engine if the user has the setting turned ON
+            if (isCompleted && isDynamicEnabled) {
                 val exercise = _exerciseStates.value.find { it.exercise.exerciseId == completedSet.exerciseId }?.exercise
                 if (exercise != null) {
                     applyDynamicAutoregulation(completedSet, exercise)

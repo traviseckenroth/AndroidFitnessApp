@@ -452,7 +452,9 @@ class PlanRepository @Inject constructor(
     }
     fun getAllExercises(): Flow<List<ExerciseEntity>> = workoutDao.getAllExercises()
     fun getAllWorkoutDates(): Flow<List<Long>> = workoutDao.getAllWorkoutDates()
-
+    suspend fun updatePlan(plan: WorkoutPlanEntity) {
+        workoutDao.updatePlan(plan)
+    }
     fun getWorkoutForDate(date: Long): Flow<DailyWorkoutEntity?> {
         val cal = Calendar.getInstance().apply {
             timeInMillis = date

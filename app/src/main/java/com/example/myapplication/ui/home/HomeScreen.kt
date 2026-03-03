@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,8 +39,8 @@ import com.example.myapplication.data.local.UserSubscriptionEntity
 import com.example.myapplication.data.remote.CommunityPick
 import com.example.myapplication.data.repository.PlanProgress
 import com.example.myapplication.ui.navigation.Screen
-import com.example.myapplication.ui.theme.PrimaryAccent
-import com.example.myapplication.ui.theme.SecondaryAccent
+import com.example.myapplication.ui.theme.FormaBlue
+import com.example.myapplication.ui.theme.FormaTeal
 import com.example.myapplication.ui.theme.SuccessGreen
 import com.example.myapplication.util.FormaScore
 import java.time.LocalDate
@@ -712,9 +713,9 @@ fun RestDayRecoveryCard(
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.SelfImprovement, null, tint = PrimaryAccent , modifier = Modifier.size(32.dp))
+                Icon(Icons.Default.SelfImprovement, null, tint = FormaBlue , modifier = Modifier.size(32.dp))
                 Spacer(modifier = Modifier.width(12.dp))
-                Text("REST & RECHARGE", style = MaterialTheme.typography.labelLarge, color = PrimaryAccent)
+                Text("REST & RECHARGE", style = MaterialTheme.typography.labelLarge, color = FormaBlue)
             }
             Spacer(modifier = Modifier.height(12.dp))
             Text("Your body grows while you rest. Use today to stay mobile.",
@@ -730,13 +731,13 @@ fun RestDayRecoveryCard(
             Spacer(modifier = Modifier.height(24.dp))
 
             if (isGenerating) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = PrimaryAccent )
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = FormaBlue)
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(
                         onClick = onGenerateStretching,
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryAccent)
+                        colors = ButtonDefaults.buttonColors(containerColor = FormaBlue)
                     ) {
                         Icon(Icons.Default.AutoMode, null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
@@ -745,11 +746,11 @@ fun RestDayRecoveryCard(
                     OutlinedButton(
                         onClick = onGenerateAccessory,
                         modifier = Modifier.fillMaxWidth(),
-                        border = BorderStroke(1.dp, SecondaryAccent)
+                        border = BorderStroke(1.dp, FormaTeal)
                     ) {
-                        Icon(Icons.Default.FitnessCenter, null, tint = SecondaryAccent, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.FitnessCenter, null, tint = FormaTeal, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("GENERATE ACCESSORY WORK", color = SecondaryAccent)
+                        Text("GENERATE ACCESSORY WORK", color = FormaTeal)
                     }
                 }
             }
@@ -766,7 +767,7 @@ fun QuickActionsSection(onNavigate: (String) -> Unit) {
         QuickActionCard(
             title = "New Plan",
             icon = Icons.Default.AutoMode,
-            color = PrimaryAccent,
+            color = FormaBlue,
             modifier = Modifier.weight(1f),
             onClick = { onNavigate(Screen.GeneratePlan.route) }
         )
@@ -774,7 +775,7 @@ fun QuickActionsSection(onNavigate: (String) -> Unit) {
         QuickActionCard(
             title = "Free Lift",
             icon = Icons.Default.FitnessCenter,
-            color = SecondaryAccent,
+            color = FormaTeal,
             modifier = Modifier.weight(1f),
             onClick = { onNavigate(Screen.ManualPlan.route) }
         )
@@ -867,42 +868,35 @@ fun WorkoutCard(
     val isStretching = workout.title.contains("Recovery", ignoreCase = true) ||
             workout.title.contains("Stretching", ignoreCase = true)
 
-    Card(
+    // Use Teal for recovery days, Blue for standard lifting days
+    val accentColor = if (isStretching) FormaTeal else FormaBlue
+    val icon = if (isStretching) Icons.Default.SelfImprovement else Icons.Default.FitnessCenter
+    val labelText = if (isStretching) "RECOVERY SESSION" else "SCHEDULED SESSION"
+    val subtitleText = if (isStretching) "Focus on breathing and restoring range of motion." else "Time to put in the work and hit your targets."
+
+    ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-        shape = RoundedCornerShape(20.dp)
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.padding(24.dp)) {
+
+            // Top row with Icon, Label, and Progress Badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.background.copy(alpha = 0.5f),
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(if (isStretching) "🧘" else "💪", fontSize = 24.sp)
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column {
-                        Text(workout.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text(
-                            text = if (isStretching) "Mobility Session" else "Scheduled Session",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Icon(icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(32.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(labelText, style = MaterialTheme.typography.labelLarge, color = accentColor)
                 }
-                
+
                 // Progress Counter Badge
                 progress?.let {
                     Surface(
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                        color = accentColor.copy(alpha = 0.1f),
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
@@ -910,25 +904,43 @@ fun WorkoutCard(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            color = accentColor
                         )
                     }
                 }
             }
-            
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Title & Subtitle
+            Text(
+                text = workout.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                text = subtitleText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+
             // Progress Bar
             progress?.let {
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
                 LinearProgressIndicator(
                     progress = it.percentage,
                     modifier = Modifier.fillMaxWidth().height(6.dp),
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    trackColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f),
+                    color = accentColor,
+                    trackColor = accentColor.copy(alpha = 0.1f),
                     strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
                 )
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Action Button
             Button(
                 onClick = {
                     if (isStretching) {
@@ -939,14 +951,14 @@ fun WorkoutCard(
                 },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                colors = ButtonDefaults.buttonColors(containerColor = accentColor)
             ) {
                 Text(
                     text = if (isStretching) "START MOBILITY" else "START SESSION",
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
             }
         }
     }

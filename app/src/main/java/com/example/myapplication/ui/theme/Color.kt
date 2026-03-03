@@ -1,27 +1,30 @@
-// app/src/main/java/com/example/myapplication/ui/theme/Color.kt
-
 package com.example.myapplication.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// --- Minimalist Studio Palette ---
-// These colors replace the high-contrast "Midnight" scheme with a clean, modern aesthetic.
+// --- Athletic & Vibrant Palette ---
 
-// Backgrounds & Surfaces: Focused on "breathability" and subtle depth
-val StudioBackground = Color(0xFFFAFAFA) // Neutral off-white, no blue tint
-val StudioSurface = Color(0xFFFFFFFF)    // Pure white for elevated cards
-val SubtleOutline = Color(0xFFE0E2E6)    // Very light borders for containers
+// Primary Brand Colors
+val FormaBlue = Color(0xFF2563EB)         // Energetic, vibrant blue for main actions
+val FormaBlueDark = Color(0xFF1D4ED8)     // Deeper blue for pressed states/dark mode
+val FormaTeal = Color(0xFF0D9488)         // Fresh teal for secondary accents/success
 
-// Accents: Premium, serious, and sleek
-val PrimaryAccent = Color(0xFF121212)    // Carbon Black for primary actions
-val SecondaryAccent = Color(0xFF545454)  // Slate Charcoal for secondary elements
-val SuccessGreen = Color(0xFF2E7D32)     // Deeper, richer green for positive actions
+// Backgrounds & Surfaces (Light)
+val BackgroundLight = Color(0xFFF8FAFC)   // Soft, cool off-white (not harsh)
+val SurfaceLight = Color(0xFFFFFFFF)      // Pure white for cards
+val OutlineLight = Color(0xFFE2E8F0)      // Soft slate-grey for borders
 
-// Highlights: Professional Studio Blue (Replacing the default light purple)
-val StudioHighlight = Color(0xFF005FB7)          // Professional Blue for highlights
-val StudioHighlightContainer = Color(0xFFD1E3FF) // Soft Blue for container backgrounds
+// Backgrounds & Surfaces (Dark)
+val BackgroundDark = Color(0xFF0F172A)    // Deep rich slate (much softer than pure black)
+val SurfaceDark = Color(0xFF1E293B)       // Elevated slate for cards
+val OutlineDark = Color(0xFF334155)       // Visible but subtle borders
 
-// Text: Hierarchy through tonal greys
-val WhitePrimary = Color(0xFFEEEEEE)
-val NeutralGrey = Color(0xFF676767)
-val MutedGrey = Color(0xFF8E8E93)
+// Typography Colors
+val TextPrimaryLight = Color(0xFF0F172A)  // Very dark slate (easier to read than pure black)
+val TextSecondaryLight = Color(0xFF64748B) // Medium slate-grey
+val TextPrimaryDark = Color(0xFFF8FAFC)   // Off-white for dark mode text
+val TextSecondaryDark = Color(0xFF94A3B8)
+
+// Status
+val ErrorRed = Color(0xFFEF4444)
+val SuccessGreen = Color(0xFF22C55E)

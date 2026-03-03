@@ -36,8 +36,8 @@ import androidx.compose.ui.zIndex
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.repository.WorkoutSummaryResult
-import com.example.myapplication.ui.theme.PrimaryAccent
-import com.example.myapplication.ui.theme.SecondaryAccent
+import com.example.myapplication.ui.theme.FormaBlue
+import com.example.myapplication.ui.theme.FormaTeal
 import com.example.myapplication.ui.workout.ActiveSessionViewModel
 import kotlinx.coroutines.launch
 import java.io.File
@@ -96,19 +96,24 @@ fun WorkoutSummaryScreen(
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.Black),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = FormaBlue,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
                         enabled = summary != null
                     ) {
                         Icon(Icons.Default.Share, null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("SHARE TO STORY")
+                        Text("SHARE TO STORY", fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedButton(
                         onClick = onNavigateHome,
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("DONE")
+                        Text("DONE", fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -118,7 +123,7 @@ fun WorkoutSummaryScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Spacer(modifier = Modifier.height(24.dp))
-                Icon(Icons.Default.CheckCircle, null, tint = PrimaryAccent, modifier = Modifier.size(64.dp))
+                Icon(Icons.Default.CheckCircle, null, tint = FormaTeal, modifier = Modifier.size(64.dp))
                 Text(
                     text = summary?.title ?: "Workout Complete!",
                     style = MaterialTheme.typography.headlineMedium,
@@ -127,7 +132,7 @@ fun WorkoutSummaryScreen(
                 Text(
                     text = summary?.subtitle ?: "Great effort today.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.Gray,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
                 )
 
@@ -137,7 +142,7 @@ fun WorkoutSummaryScreen(
                 Card(
                     modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 24.dp),
                     shape = RoundedCornerShape(24.dp),
-                    elevation = CardDefaults.cardElevation(4.dp)
+                    elevation = CardDefaults.cardElevation(8.dp)
                 ) {
                     if (summary != null) {
                         // In the UI preview, we make it scrollable so user can see all items
@@ -146,7 +151,7 @@ fun WorkoutSummaryScreen(
                         }
                     } else {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator()
+                            CircularProgressIndicator(color = FormaBlue)
                         }
                     }
                 }
@@ -160,16 +165,21 @@ fun WorkoutSummaryScreen(
 fun ShareableWorkoutCard(data: WorkoutSummaryResult, isPreview: Boolean = false) {
     // If we're not in preview mode (i.e., we are capturing), we use a fixed height and fit content
     val containerModifier = if (isPreview) Modifier.fillMaxWidth() else Modifier.fillMaxSize()
-    
+
+    // Hardcoded vibrant export colors (Deep Slate theme) so it always looks premium on Instagram
+    val exportBackgroundStart = Color(0xFF0F172A) // BackgroundDark
+    val exportBackgroundEnd = Color(0xFF1E293B)   // SurfaceDark
+    val exportAccent = Color(0xFF60A5FA)          // Bright Blue for contrast against slate
+
     Box(
         modifier = containerModifier
-            .background(Brush.verticalGradient(listOf(Color(0xFF1A1A1A), Color(0xFF000000))))
+            .background(Brush.verticalGradient(listOf(exportBackgroundStart, exportBackgroundEnd)))
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val step = 40.dp.toPx()
             for (x in 0..size.width.toInt() step step.toInt()) {
                 for (y in 0..size.height.toInt() step step.toInt()) {
-                    drawCircle(Color.White.copy(alpha = 0.03f), radius = 1.5.dp.toPx(), center = Offset(x.toFloat(), y.toFloat()))
+                    drawCircle(Color.White.copy(alpha = 0.04f), radius = 1.5.dp.toPx(), center = Offset(x.toFloat(), y.toFloat()))
                 }
             }
         }
@@ -182,7 +192,7 @@ fun ShareableWorkoutCard(data: WorkoutSummaryResult, isPreview: Boolean = false)
             Text(
                 "WORKOUT SUMMARY",
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
+                color = exportAccent,
                 letterSpacing = 3.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -190,31 +200,31 @@ fun ShareableWorkoutCard(data: WorkoutSummaryResult, isPreview: Boolean = false)
             Text(
                 LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMM dd")),
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.Gray
+                color = Color(0xFF94A3B8) // Slate Gray
             )
-            
+
             Spacer(modifier = Modifier.height(32.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                BigStatItem("VOLUME MOVED", "${data.totalVolume}", "LBS")
-                BigStatItem("PRS BROKEN", "${data.prsBroken}", "RECORDS")
+                BigStatItem("VOLUME MOVED", "${data.totalVolume}", "LBS", exportAccent)
+                BigStatItem("PRS BROKEN", "${data.prsBroken}", "RECORDS", exportAccent)
             }
 
             if (data.topPR != null) {
                 Spacer(modifier = Modifier.height(32.dp))
                 Surface(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                    color = exportAccent.copy(alpha = 0.1f),
                     shape = RoundedCornerShape(16.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                    border = androidx.compose.foundation.BorderStroke(1.dp, exportAccent.copy(alpha = 0.3f))
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.EmojiEvents, null, tint = Color(0xFFFFD700), modifier = Modifier.size(24.dp))
+                        Icon(Icons.Default.EmojiEvents, null, tint = Color(0xFFFBBF24), modifier = Modifier.size(24.dp))
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
-                            Text("TOP HIGHLIGHT", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                            Text("TOP HIGHLIGHT", style = MaterialTheme.typography.labelSmall, color = Color(0xFF94A3B8))
                             Text(data.topPR, style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
                         }
                     }
@@ -224,14 +234,13 @@ fun ShareableWorkoutCard(data: WorkoutSummaryResult, isPreview: Boolean = false)
             Spacer(modifier = Modifier.height(32.dp))
 
             // Lifts Summary - Show ALL exercises
-            // If there are many, we reduce the font size slightly
             val liftFontSize = if (data.highlights.size > 8) 12.sp else 14.sp
-            
+
             Column(horizontalAlignment = Alignment.Start, modifier = Modifier.fillMaxWidth()) {
                 data.highlights.forEach { highlight ->
                     Text(
                         text = "• $highlight",
-                        color = Color.White.copy(alpha = 0.8f),
+                        color = Color.White.copy(alpha = 0.85f),
                         fontSize = liftFontSize,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(vertical = 2.dp)
@@ -240,13 +249,13 @@ fun ShareableWorkoutCard(data: WorkoutSummaryResult, isPreview: Boolean = false)
             }
 
             Spacer(modifier = Modifier.height(48.dp))
-            
+
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.FitnessCenter, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.FitnessCenter, null, tint = exportAccent, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(12.dp))
-                Text("AI COACH", style = MaterialTheme.typography.titleSmall, color = Color.White, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                Text("Forma Fitness", style = MaterialTheme.typography.titleSmall, color = Color.White, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
             }
-            
+
             if (isPreview) {
                 Spacer(modifier = Modifier.height(24.dp))
             }
@@ -255,9 +264,9 @@ fun ShareableWorkoutCard(data: WorkoutSummaryResult, isPreview: Boolean = false)
 }
 
 @Composable
-fun BigStatItem(label: String, value: String, unit: String) {
+fun BigStatItem(label: String, value: String, unit: String, accentColor: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = Color(0xFF94A3B8))
         Text(
             text = value,
             style = MaterialTheme.typography.headlineMedium,
@@ -265,7 +274,7 @@ fun BigStatItem(label: String, value: String, unit: String) {
             fontWeight = FontWeight.Black,
             fontSize = 36.sp
         )
-        Text(unit, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+        Text(unit, style = MaterialTheme.typography.labelSmall, color = accentColor, fontWeight = FontWeight.Bold)
     }
 }
 
