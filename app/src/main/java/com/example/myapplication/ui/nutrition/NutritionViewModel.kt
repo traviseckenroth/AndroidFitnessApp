@@ -41,6 +41,9 @@ class NutritionViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<NutritionUiState>(NutritionUiState.Loading)
     val uiState = _uiState.asStateFlow()
 
+    // Expose current goal pace to UI for the dropdown default
+    val currentGoalPace = userPrefs.userGoalPace.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Maintain")
+
     private val _foodLogs = MutableStateFlow<List<FoodLogEntity>>(emptyList())
     val foodLogs = _foodLogs.asStateFlow()
 
@@ -98,7 +101,6 @@ class NutritionViewModel @Inject constructor(
 
                     if (cachedExplanation.contains("error", ignoreCase = true) || cachedExplanation.isBlank()) {
                         Log.w("NutritionVM", "Cache contained an error. Stopping auto-generation loop.")
-                        // FIX: Do not auto-spam the API. Show the Empty state so user can click "Generate" manually.
                         _uiState.value = NutritionUiState.Empty
                         return@launch
                     } else {
@@ -119,20 +121,28 @@ class NutritionViewModel @Inject constructor(
                 }
             }
 
-            // Only auto-generate if it's completely empty (first time setting up the plan)
+            // Only auto-generate if it's completely empty
             generateAndCacheNutrition(activePlan)
         }
     }
 
-    private suspend fun generateAndCacheNutrition(activePlan: WorkoutPlanEntity) {
+    private suspend fun generateAndCacheNutrition(activePlan: WorkoutPlanEntity, customGoalPace: String? = null) {
         try {
-            val nutritionStrategy = when (activePlan.programType) {
-                "Hypertrophy" -> "Caloric Surplus (+300-500 kcal). Evenly distributed protein boluses to stimulate mTOR."
-                "Body Sculpting" -> "Caloric Deficit (-300-500 kcal). Extremely high protein to preserve tissue while maximizing fat oxidation."
-                "Strength" -> "Maintenance or slight surplus. High carbohydrates for CNS recovery."
-                "Endurance" -> "Maintenance. Aggressive carbohydrate periodization and hydration focus."
-                else -> "Maintenance calories with balanced macros."
+            // 1. Program Strategy (Dictates Macro Split)
+            val baseStrategy = when (activePlan.programType) {
+                "Hypertrophy" -> "Focus on evenly distributed protein boluses to stimulate mTOR."
+                "Body Sculpting" -> "Extremely high protein to preserve tissue while maximizing fat oxidation."
+                "Strength" -> "High carbohydrates for CNS recovery."
+                "Endurance" -> "Aggressive carbohydrate periodization and hydration focus."
+                else -> "Balanced macros."
             }
+
+            // 2. Caloric Goal Pace (Dictates Total Calories)
+            val storedPace = userPrefs.userGoalPace.first()
+            val finalPace = customGoalPace ?: storedPace.ifBlank { "Maintain" }
+
+            // Combine both into a master instruction for the AI
+            val nutritionStrategy = "Goal Pace: $finalPace. $baseStrategy"
 
             val weight = userPrefs.userWeight.first()
             val height = userPrefs.userHeight.first()
@@ -150,13 +160,11 @@ class NutritionViewModel @Inject constructor(
                 avgWorkoutDurationMins = 60
             )
 
-            // FIX: Never save a failed AI response to the database
             if (remotePlan.explanation.contains("Error", ignoreCase = true)) {
                 _uiState.value = NutritionUiState.Error("AI Generation Failed. Please try again.")
                 return
             }
 
-            // FIX: Bulletproof parsing. Safely handles "180.5g", "180", or "180g" without crashing.
             fun parseSafeInt(value: String, default: Int): String {
                 val match = Regex("([0-9]+(?:\\.[0-9]+)?)").find(value)
                 val numStr = match?.value ?: return default.toString()
@@ -194,9 +202,7 @@ class NutritionViewModel @Inject constructor(
             _isLogging.value = true
             try {
                 nutritionRepository.logFood(query)
-            } catch (e: Exception) {
-                // handle error
-            } finally {
+            } catch (e: Exception) {} finally {
                 _isLogging.value = false
             }
         }
@@ -205,22 +211,18 @@ class NutritionViewModel @Inject constructor(
     fun logManual(name: String, cals: String, pro: String, carb: String, fat: String, meal: String) {
         viewModelScope.launch {
             nutritionRepository.logManualFood(
-                name,
-                cals.toIntOrNull() ?: 0,
-                pro.toIntOrNull() ?: 0,
-                carb.toIntOrNull() ?: 0,
-                fat.toIntOrNull() ?: 0,
-                meal
+                name, cals.toIntOrNull() ?: 0, pro.toIntOrNull() ?: 0, carb.toIntOrNull() ?: 0, fat.toIntOrNull() ?: 0, meal
             )
         }
     }
 
-    fun generateNutrition() {
+    // Accepts the custom pace from the UI Dialog
+    fun generateNutrition(customGoalPace: String? = null) {
         viewModelScope.launch {
             _uiState.value = NutritionUiState.Loading
             val activePlan = planRepository.getActivePlan()
             if (activePlan != null) {
-                generateAndCacheNutrition(activePlan)
+                generateAndCacheNutrition(activePlan, customGoalPace)
             } else {
                 _uiState.value = NutritionUiState.NoExercisePlan
             }

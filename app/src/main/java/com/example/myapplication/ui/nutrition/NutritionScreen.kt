@@ -41,12 +41,14 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
     val recentFoods by viewModel.recentFoods.collectAsState()
     val isLogging by viewModel.isLogging.collectAsState()
     val consumed by viewModel.consumedMacros.collectAsState()
+    val currentGoalPace by viewModel.currentGoalPace.collectAsState()
 
     val scrollState = rememberScrollState()
     val context = LocalContext.current
 
     var showVoiceDialog by remember { mutableStateOf(false) }
     var showManualDialog by remember { mutableStateOf(false) }
+    var showRecalculateDialog by remember { mutableStateOf(false) } // NEW STATE
 
     val speechLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -62,6 +64,17 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
     }
 
     // --- DIALOGS ---
+    if (showRecalculateDialog) {
+        RecalculatePlanDialog(
+            currentPace = currentGoalPace,
+            onDismiss = { showRecalculateDialog = false },
+            onConfirm = { selectedPace ->
+                viewModel.generateNutrition(selectedPace)
+                showRecalculateDialog = false
+            }
+        )
+    }
+
     if (showVoiceDialog) {
         VoiceLogDialog(
             onDismiss = { showVoiceDialog = false },
@@ -123,7 +136,7 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
                     )
                 }
 
-                is NutritionUiState.Empty -> EmptyNutritionCard(onGenerateClick = { viewModel.generateNutrition() })
+                is NutritionUiState.Empty -> EmptyNutritionCard(onGenerateClick = { showRecalculateDialog = true })
 
                 is NutritionUiState.Success -> {
                     Column {
@@ -144,7 +157,7 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
                         NutritionDetailCard(
                             plan = state.plan,
                             consumed = consumed,
-                            onRegenerateClick = { viewModel.generateNutrition() }
+                            onRegenerateClick = { showRecalculateDialog = true }
                         )
                     }
                 }
@@ -200,7 +213,6 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
                         Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
-                // Fallback for custom types
                 grouped.filterKeys { it !in order }.forEach { (type, logs) ->
                     Text(
                         type,
@@ -218,9 +230,88 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
 
 // --- HELPER COMPOSABLES ---
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RecalculatePlanDialog(
+    currentPace: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var selectedPace by remember { mutableStateOf(currentPace.ifBlank { "Maintain" }) }
+    var expanded by remember { mutableStateOf(false) }
+
+    // Upgrade options to include how the AI handles them
+    val options = listOf(
+        Pair("Lose Fat Fast", "Aggressive deficit. Max protein to preserve muscle tissue."),
+        Pair("Slow Cut", "Moderate deficit. Steady fat loss while maintaining performance."),
+        Pair("Maintain", "Maintenance calories. Optimized for recovery and recomposition."),
+        Pair("Slow Bulk", "Slight surplus. Builds dense muscle with minimal fat gain."),
+        Pair("Gain Muscle Fast", "Aggressive surplus. Maximizes raw size, strength, and energy.")
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Recalculate Nutrition", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text(
+                    "Select a goal pace to override your daily caloric targets. Your macro split will still remain optimized for your active workout program.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = { expanded = it }
+                ) {
+                    OutlinedTextField(
+                        value = selectedPace,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Goal Pace") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+                        options.forEach { (title, description) ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(title, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                        Text(
+                                            description,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    selectedPace = title
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(selectedPace) }) { Text("Generate Plan") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
 @Composable
 fun ManualFoodDialog(
-    recentFoods: List<FoodLogEntity>, // Updated to accept Entity List
+    recentFoods: List<FoodLogEntity>,
     onDismiss: () -> Unit,
     onConfirm: (String, String, String, String, String, String) -> Unit
 ) {
@@ -232,7 +323,6 @@ fun ManualFoodDialog(
     var mealType by remember { mutableStateOf("Snack") }
     var showDropdown by remember { mutableStateOf(false) }
 
-    // Filter based on inputQuery (Name)
     val filteredHistory = recentFoods.filter {
         it.inputQuery.contains(name, ignoreCase = true) && it.inputQuery != name
     }.take(3)
@@ -260,7 +350,6 @@ fun ManualFoodDialog(
                             DropdownMenuItem(
                                 text = { Text(historyItem.inputQuery) },
                                 onClick = {
-                                    // Populate Name and Macros
                                     name = historyItem.inputQuery
                                     calories = historyItem.totalCalories.toString()
                                     protein = historyItem.totalProtein.toString()

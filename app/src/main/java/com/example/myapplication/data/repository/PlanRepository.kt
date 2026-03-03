@@ -88,6 +88,8 @@ class PlanRepository @Inject constructor(
             days = days,
             duration = duration.toFloat(),
             workoutHistory = workoutHistory,
+            allExercises = allExercises,             // <-- ADDED THIS
+            excludedEquipment = excludedEquipment,
             availableExercises = availableExercises,
             userAge = age,
             userHeight = finalHeight,

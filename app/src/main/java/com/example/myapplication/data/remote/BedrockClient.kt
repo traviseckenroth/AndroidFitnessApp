@@ -84,6 +84,17 @@ data class GeneratedDay(
     @SerialName("workoutName") val title: String = "Workout",
     val exercises: List<GeneratedExercise> = emptyList()
 )
+@Serializable
+data class CacheControl(
+    val type: String = "ephemeral"
+)
+
+@Serializable
+data class SystemBlock(
+    val type: String = "text",
+    val text: String,
+    val cache_control: CacheControl? = null
+)
 
 @Serializable
 data class GeneratedExercise(
@@ -108,7 +119,7 @@ data class GeneratedExercise(
 data class ClaudeRequest(
     val anthropic_version: String = "bedrock-2023-05-31",
     val max_tokens: Int,
-    val system: String,
+    val system: List<SystemBlock>,
     val messages: List<Message>
 )
 
@@ -118,13 +129,21 @@ data class Message(val role: String, val content: String)
 @Serializable
 data class ClaudeResponse(
     val content: List<ContentBlock>,
-    @SerialName("stop_reason") val stopReason: String? = null
+    @SerialName("stop_reason") val stopReason: String? = null,
+    val usage: UsageMetrics? = null
 )
 
 @Serializable
 data class ContentBlock(
     val type: String = "text",
     val text: String? = null
+)
+@Serializable
+data class UsageMetrics(
+    val input_tokens: Int = 0,
+    val output_tokens: Int = 0,
+    val cache_creation_input_tokens: Int = 0,
+    val cache_read_input_tokens: Int = 0
 )
 
 @Serializable
@@ -162,6 +181,7 @@ private val jsonConfig = Json {
     isLenient = true
     coerceInputValues = true
     allowTrailingComma = true
+    explicitNulls = false
 }
 
 private const val tierDefinitions = """
@@ -226,7 +246,9 @@ class BedrockClient @Inject constructor(
         days: List<String>,
         duration: Float,
         workoutHistory: List<CompletedWorkoutWithExercise>,
-        availableExercises: List<ExerciseEntity>,
+        allExercises: List<ExerciseEntity>, // <-- Pass ALL exercises, not filtered
+        excludedEquipment: Set<String>,
+        availableExercises: List<ExerciseEntity>, // Kept for signature compatibility
         userAge: Int,
         userHeight: Double,
         userWeight: Double,
@@ -236,6 +258,7 @@ class BedrockClient @Inject constructor(
     ): GeneratedPlanResponse = withContext(Dispatchers.Default) {
 
         try {
+            // 1. DYNAMIC DATA (Changes per user/session - NOT CACHED)
             val historySummary = workoutHistory
                 .groupBy { it.completedWorkout.date }
                 .entries.joinToString("\n") { (date, sessionSets) ->
@@ -248,28 +271,54 @@ class BedrockClient @Inject constructor(
                     "On ${Date(date)}, you did: $sessionDetails."
                 }
 
-            val exerciseListString = availableExercises.joinToString("\n") {
-                "- ${it.name} (Muscle: ${it.muscleGroup ?: "General"}, Tier: ${it.tier})"
+            val dynamicUserContext = """
+                CRITICAL INSTRUCTION: Ignore any placeholder user stats or history in the previous system prompt. 
+                USE THIS EXACT USER DATA FOR YOUR GENERATION:
+                Age: $userAge | Ht: ${userHeight.toInt()} in | Wt: ${userWeight.toInt()} lbs
+                Schedule: ${days.joinToString()}
+                Excluded Equipment: ${if (excludedEquipment.isEmpty()) "None" else excludedEquipment.joinToString()}
+                History: ${historySummary.ifBlank { "No previous history." }}
+            """.trimIndent()
+
+            // 2. STATIC DATA (Identical for EVERY user - CACHED!)
+            // We use the FULL exercise database so the token hash is identical for everyone.
+            val exerciseMasterList = allExercises.joinToString("\n") {
+                "- ${it.name} (Muscle: ${it.muscleGroup ?: "General"}, Tier: ${it.tier}, Equip: ${it.equipment})"
             }
 
             val totalMinutes = (duration * 60).toInt()
 
-            val systemPrompt = promptRepository.getWorkoutSystemPrompt(
+            // Pass dummy values to the repository. This ensures the resulting string is
+            // 100% identical for every user requesting this programType, triggering the AWS Cache!
+            val staticRulesPrompt = promptRepository.getWorkoutSystemPrompt(
                 goal = goal,
                 programType = programType,
-                days = days,
+                days = emptyList(), // Dummy
                 totalMinutes = totalMinutes,
-                userAge = userAge,
-                userHeight = userHeight,
-                userWeight = userWeight,
-                exerciseListString = exerciseListString,
-                historySummary = historySummary
+                userAge = 0, // Dummy
+                userHeight = 0.0, // Dummy
+                userWeight = 0.0, // Dummy
+                exerciseListString = exerciseMasterList,
+                historySummary = "" // Dummy
             )
 
-            // NO thinkingBudget. Just a pure prompt request to Claude 3.7.
-            val cleanJson = invokeClaude(
-                systemPrompt = systemPrompt,
-                userPrompt = "Generate Block $block plan.",
+            // 3. ASSEMBLE THE CACHED REQUEST
+            val systemBlocks = listOf(
+                // Block 1: The Massive Ruleset & Exercise Database (CACHED!)
+                SystemBlock(
+                    text = staticRulesPrompt,
+                    cache_control = CacheControl(type = "ephemeral")
+                ),
+                // Block 2: The User's Specific Data (NOT CACHED)
+                SystemBlock(
+                    text = dynamicUserContext
+                )
+            )
+
+            // 4. INVOKE API USING BLOCKS
+            val cleanJson = doInvokeClaudeWithBlocks(
+                systemBlocks = systemBlocks,
+                userPrompt = "Generate Block $block plan. Do not use my Excluded Equipment.",
                 modelId = CLAUDE_SONNET
             )
 
@@ -553,7 +602,7 @@ class BedrockClient @Inject constructor(
 
         val requestBody = ClaudeRequest(
             max_tokens = 300,
-            system = systemPrompt,
+            system = listOf(SystemBlock(text = systemPrompt)), // FIX: Wrapped in SystemBlock List
             messages = sanitizedMessages
         )
 
@@ -591,6 +640,7 @@ class BedrockClient @Inject constructor(
         }
         return@withContext fullText.toString()
     }
+
     suspend fun generatePreWorkoutScript(
         recovery: Int,
         workoutTitle: String?,
@@ -728,14 +778,22 @@ class BedrockClient @Inject constructor(
     ): String {
         Log.d("BedrockClient", "InvokeClaude System Instruction: $systemPrompt")
         enforceLimit()
+        val standardBlock = listOf(SystemBlock(text = systemPrompt))
+        return doInvokeClaudeWithBlocks(standardBlock, userPrompt, modelId)
+    }
 
-        // FIX: Bump Sonnet back to 8192 to accommodate the massive JSON output.
-        // The previous AWS crash was caused by the 'thinking' block, not this token limit!
+    private suspend fun doInvokeClaudeWithBlocks(
+        systemBlocks: List<SystemBlock>,
+        userPrompt: String,
+        modelId: String
+    ): String {
+        enforceLimit()
+
         val maxTokensToUse = if (modelId.contains("sonnet", ignoreCase = true)) 8192 else 4096
 
         val requestBody = ClaudeRequest(
             max_tokens = maxTokensToUse,
-            system = systemPrompt,
+            system = systemBlocks,
             messages = listOf(Message(role = "user", content = userPrompt))
         )
 
@@ -748,11 +806,22 @@ class BedrockClient @Inject constructor(
             body = jsonString.toByteArray()
         }
 
-        // Use the getter method so we generate fresh credentials every time
         val response = getClient().invokeModel(request)
-
         val responseBody = response.body?.decodeToString() ?: ""
+
+        Log.e("PROMPT_CACHE", "RAW AWS RESPONSE: $responseBody")
+
         val outerResponse = jsonConfig.decodeFromString<ClaudeResponse>(responseBody)
+
+        // --- LOG CACHE METRICS TO ANDROID STUDIO ---
+        outerResponse.usage?.let { u ->
+            Log.e("PROMPT_CACHE", """
+                🔥 CACHE METRICS 🔥
+                Standard Input Tokens: ${u.input_tokens}
+                Cache CREATED (Paid full price): ${u.cache_creation_input_tokens}
+                Cache READ (90% Discount!): ${u.cache_read_input_tokens}
+            """.trimIndent())
+        }
 
         val rawText = outerResponse.content.firstOrNull { it.type == "text" }?.text ?: ""
 
@@ -775,7 +844,7 @@ class BedrockClient @Inject constructor(
 
         val requestBody = ClaudeRequest(
             max_tokens = 4096,
-            system = systemPrompt,
+            system = listOf(SystemBlock(text = systemPrompt)), // FIX: Wrapped in SystemBlock List
             messages = listOf(Message(role = "user", content = userPrompt))
         )
 
