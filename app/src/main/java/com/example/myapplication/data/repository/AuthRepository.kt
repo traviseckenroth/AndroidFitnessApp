@@ -8,13 +8,13 @@ import aws.sdk.kotlin.services.cognitoidentityprovider.CognitoIdentityProviderCl
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.AttributeType
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.AuthFlowType
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.ChallengeNameType
+import aws.sdk.kotlin.services.cognitoidentityprovider.model.ConfirmForgotPasswordRequest
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.ConfirmSignUpRequest
+import aws.sdk.kotlin.services.cognitoidentityprovider.model.ForgotPasswordRequest
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.GetUserRequest
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.InitiateAuthRequest
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.RespondToAuthChallengeRequest
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.SignUpRequest
-import aws.sdk.kotlin.services.cognitoidentityprovider.model.ForgotPasswordRequest
-import aws.sdk.kotlin.services.cognitoidentityprovider.model.ConfirmForgotPasswordRequest
 import com.example.myapplication.BuildConfig
 import com.example.myapplication.data.local.UserPreferencesRepository
 import dagger.hilt.android.qualifiers.ApplicationContext

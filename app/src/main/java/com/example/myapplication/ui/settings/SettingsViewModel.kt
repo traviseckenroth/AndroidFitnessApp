@@ -6,11 +6,11 @@ import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.repository.AuthRepository
 import com.example.myapplication.data.repository.HealthConnectManager
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.launch
-import javax.inject.Inject
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(

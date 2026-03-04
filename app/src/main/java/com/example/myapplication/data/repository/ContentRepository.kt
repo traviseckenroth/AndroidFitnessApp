@@ -5,14 +5,14 @@ import android.util.Log
 import com.example.myapplication.data.local.ContentSourceEntity
 import com.example.myapplication.data.local.WorkoutDao
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 import org.jsoup.parser.Parser
 import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.firstOrNull
 
 @Singleton
 class ContentRepository @Inject constructor(

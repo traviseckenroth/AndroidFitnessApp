@@ -11,27 +11,35 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.example.myapplication.data.local.ExerciseEntity
+import com.example.myapplication.data.local.MemoryDao
+import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.remote.BedrockClient
-import com.example.myapplication.data.local.UserPreferencesRepository
-import com.example.myapplication.data.local.MemoryDao
 import com.example.myapplication.data.repository.HealthConnectManager
 import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import com.example.myapplication.data.repository.WorkoutSummaryResult
-import com.example.myapplication.service.WorkoutTimerService
 import com.example.myapplication.service.WorkoutSyncWorker
-import com.example.myapplication.util.PlateCalculator
-import com.example.myapplication.util.ReadinessEngine
-import com.example.myapplication.util.SpeechToTextManager
-import com.example.myapplication.util.VoiceManager
+import com.example.myapplication.service.WorkoutTimerService
 import com.example.myapplication.util.AutoCoachEngine
 import com.example.myapplication.util.AutoCoachState
 import com.example.myapplication.util.BleHeartRateManager
 import com.example.myapplication.util.ContinuousAudioStreamer
 import com.example.myapplication.util.NativeAutoCoachVoice
+import com.example.myapplication.util.PlateCalculator
+import com.example.myapplication.util.ReadinessEngine
+import com.example.myapplication.util.SpeechToTextManager
+import com.example.myapplication.util.VoiceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -408,7 +416,7 @@ class ActiveSessionViewModel @Inject constructor(
         // RULE 2: Overperformance
         else if (actualReps > completedSet.suggestedReps) {
             loadMultiplier = 1.05f
-        } else if (actualReps == completedSet.suggestedReps && actualRpe <= targetRpe - 2f) {
+        } else if (actualRpe <= targetRpe - 2f) {
             loadMultiplier = 1.05f
         }
 

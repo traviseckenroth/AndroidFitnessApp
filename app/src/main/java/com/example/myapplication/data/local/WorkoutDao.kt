@@ -1,12 +1,23 @@
 // File: app/src/main/java/com/example/myapplication/data/local/WorkoutDao.kt
 package com.example.myapplication.data.local
 
-import androidx.room.*
+import androidx.room.Dao
+import androidx.room.Delete
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Transaction
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 data class MuscleVolumeAggregation(
     val muscleGroup: String,
     val totalVolume: Double
+)
+
+data class MuscleVolumeTuple(
+    val muscleGroup: String?, // Nullable just in case an exercise lacks a muscle group
+    val totalVolume: Double   // Double matches the InsightsUiState map
 )
 
 @Dao

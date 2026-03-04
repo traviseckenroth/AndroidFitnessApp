@@ -6,11 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.ContentSourceEntity
 import com.example.myapplication.data.local.DailyWorkoutEntity
 import com.example.myapplication.data.local.ExerciseEntity
+import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.local.UserSubscriptionEntity
 import com.example.myapplication.data.local.WorkoutDao
 import com.example.myapplication.data.remote.BedrockClient
 import com.example.myapplication.data.repository.ContentRepository
-import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.repository.PlanRepository
 import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,20 +22,20 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.Instant
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
-import kotlinx.coroutines.flow.first
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel

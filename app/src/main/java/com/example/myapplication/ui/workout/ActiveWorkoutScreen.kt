@@ -7,13 +7,23 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -24,9 +34,50 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Whatshot
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,7 +101,7 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
-import com.example.myapplication.ui.navigation.*
+import com.example.myapplication.ui.navigation.ExerciseList
 import com.example.myapplication.ui.theme.AmrapOrange
 import com.example.myapplication.ui.theme.EmomPink
 import com.example.myapplication.ui.theme.SuccessGreen
@@ -88,9 +139,10 @@ fun ActiveWorkoutScreen(
     val coachBriefing by viewModel.coachBriefing.collectAsState()
     val totalEstimatedTime by viewModel.totalEstimatedTime.collectAsState()
 
-    var showAddExerciseDialog by remember { mutableStateOf(false) }
-    var showBleDialog by remember { mutableStateOf(false) }
-    var isPocketModeActive by remember { mutableStateOf(false) }
+    // FIX: Destructured state to prevent false positive lint warnings
+    val (showAddExerciseDialog, setShowAddExerciseDialog) = remember { mutableStateOf(false) }
+    val (showBleDialog, setShowBleDialog) = remember { mutableStateOf(false) }
+    val (isPocketModeActive, setIsPocketModeActive) = remember { mutableStateOf(false) }
 
     val workoutListState = rememberLazyListState()
     val progress by viewModel.workoutProgress.collectAsState()
@@ -136,10 +188,10 @@ fun ActiveWorkoutScreen(
     if (showAddExerciseDialog) {
         AddExerciseDialog(
             viewModel = viewModel,
-            onDismiss = { showAddExerciseDialog = false },
+            onDismiss = { setShowAddExerciseDialog(false) },
             onExerciseSelected = { exerciseId ->
                 viewModel.addExercise(exerciseId)
-                showAddExerciseDialog = false
+                setShowAddExerciseDialog(false)
             }
         )
     }
@@ -149,11 +201,11 @@ fun ActiveWorkoutScreen(
             foundDevices = foundDevices,
             onDismiss = {
                 viewModel.stopBleScan()
-                showBleDialog = false
+                setShowBleDialog(false)
             },
             onConnect = { device ->
                 viewModel.connectBleDevice(device)
-                showBleDialog = false
+                setShowBleDialog(false)
             }
         )
     }
@@ -201,7 +253,7 @@ fun ActiveWorkoutScreen(
                         actions = {
                             IconButton(onClick = {
                                 viewModel.startBleScan()
-                                showBleDialog = true
+                                setShowBleDialog(true)
                             }) {
                                 Icon(
                                     imageVector = Icons.Default.Favorite,
@@ -210,7 +262,7 @@ fun ActiveWorkoutScreen(
                                 )
                             }
 
-                            IconButton(onClick = { isPocketModeActive = true }) {
+                            IconButton(onClick = { setIsPocketModeActive(true) }) {
                                 Icon(
                                     imageVector = Icons.Default.Lock,
                                     contentDescription = "Lock Screen",
@@ -273,7 +325,7 @@ fun ActiveWorkoutScreen(
                         state = state,
                         viewModel = viewModel,
                         haptic = haptic,
-                        modifier = Modifier.animateItem() // FIX: Replaced deprecated animateItemPlacement
+                        modifier = Modifier.animateItem()
                     )
                 }
 
@@ -304,7 +356,7 @@ fun ActiveWorkoutScreen(
             PocketModeOverlay(
                 onUnlock = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    isPocketModeActive = false
+                    setIsPocketModeActive(false)
                 }
             )
         }
@@ -364,8 +416,9 @@ fun ExerciseCard(
     val exercise = state.exercise
     val isBodyweight = exercise.equipment?.contains("Bodyweight", ignoreCase = true) == true
 
-    var showSwapDialog by remember { mutableStateOf(false) }
-    var showDescriptionDialog by remember { mutableStateOf(false) }
+    // FIX: Destructured states
+    val (showSwapDialog, setShowSwapDialog) = remember { mutableStateOf(false) }
+    val (showDescriptionDialog, setShowDescriptionDialog) = remember { mutableStateOf(false) }
 
     // Evaluate if the entire exercise block should be styled for AMRAP/EMOM
     val isAMRAP = state.sets.any { it.isAMRAP } || exercise.name.contains("AMRAP", true)
@@ -394,10 +447,10 @@ fun ExerciseCard(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.HelpOutline, // FIX: Updated to AutoMirrored
+                            imageVector = Icons.AutoMirrored.Filled.HelpOutline,
                             contentDescription = "Description",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp).clickable { showDescriptionDialog = true }
+                            modifier = Modifier.size(16.dp).clickable { setShowDescriptionDialog(true) }
                         )
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -423,7 +476,7 @@ fun ExerciseCard(
                         Surface(
                             shape = RoundedCornerShape(4.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.clickable { showSwapDialog = true }
+                            modifier = Modifier.clickable { setShowSwapDialog(true) }
                         ) {
                             Text(
                                 text = "Swap",
@@ -587,21 +640,21 @@ fun ExerciseCard(
         SwapExerciseDialog(
             originalExercise = exercise,
             viewModel = viewModel,
-            onDismiss = { showSwapDialog = false },
+            onDismiss = { setShowSwapDialog(false) },
             onSwap = { newExerciseId ->
                 viewModel.swapExercise(exercise.exerciseId, newExerciseId)
-                showSwapDialog = false
+                setShowSwapDialog(false)
             }
         )
     }
 
     if (showDescriptionDialog) {
         AlertDialog(
-            onDismissRequest = { showDescriptionDialog = false },
+            onDismissRequest = { setShowDescriptionDialog(false) },
             title = { Text(exercise.name, color = MaterialTheme.colorScheme.onSurface) },
             text = { Text(exercise.description, color = MaterialTheme.colorScheme.onSurface) },
             confirmButton = {
-                TextButton(onClick = { showDescriptionDialog = false }) {
+                TextButton(onClick = { setShowDescriptionDialog(false) }) {
                     Text("Close", color = MaterialTheme.colorScheme.primary)
                 }
             },
@@ -656,7 +709,9 @@ fun SetRow(
     haptic: androidx.compose.ui.hapticfeedback.HapticFeedback
 ) {
     val focusManager = LocalFocusManager.current
-    var showPlateCalc by remember { mutableStateOf(false) }
+
+    // FIX: Destructured state
+    val (showPlateCalc, setShowPlateCalc) = remember { mutableStateOf(false) }
 
     val isBodyweight = exercise.equipment?.contains("Bodyweight", ignoreCase = true) == true
     val isRunning = exercise.name.contains("run", ignoreCase = true) ||
@@ -673,7 +728,7 @@ fun SetRow(
         PlateCalculatorDialog(
             targetWeight = set.actualLbs?.toDouble() ?: set.suggestedLbs.toDouble(),
             barWeight = viewModel.barWeight.collectAsState().value,
-            onDismiss = { showPlateCalc = false }
+            onDismiss = { setShowPlateCalc(false) }
         )
     }
 
@@ -753,7 +808,7 @@ fun SetRow(
                         Icon(
                             imageVector = Icons.Default.Calculate,
                             contentDescription = null,
-                            modifier = Modifier.size(18.dp).clickable { showPlateCalc = true },
+                            modifier = Modifier.size(18.dp).clickable { setShowPlateCalc(true) },
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -964,7 +1019,6 @@ fun BleDeviceDialog(foundDevices: List<BluetoothDevice>, onDismiss: () -> Unit, 
                     ListItem(
                         headlineContent = {
                             Text(
-                                // FIX: Updated exception parameter to `_` to suppress unused parameter warning
                                 try { device.name ?: "Unknown" } catch (_: SecurityException) { "Unknown" },
                                 color = MaterialTheme.colorScheme.onSurface
                             )

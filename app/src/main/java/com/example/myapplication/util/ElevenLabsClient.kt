@@ -36,7 +36,7 @@ class ElevenLabsClient @Inject constructor(
             var tempAudioFile: File? = null
 
             // FIX: Added check for "null" string which can happen with some build configurations
-            if (apiKey.isNullOrBlank() || apiKey == "null") {
+            if (apiKey.isBlank() || apiKey == "null") {
                 Log.e("AutoCoach", "ElevenLabs: API Key is missing!")
                 if (continuation.isActive) continuation.resume(false)
                 return@suspendCancellableCoroutine

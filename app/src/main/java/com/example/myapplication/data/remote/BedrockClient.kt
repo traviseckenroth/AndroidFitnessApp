@@ -3,7 +3,6 @@
 package com.example.myapplication.data.remote
 
 import android.util.Log
-import com.example.myapplication.data.local.ContentSourceEntity
 import aws.sdk.kotlin.services.bedrockruntime.BedrockRuntimeClient
 import aws.sdk.kotlin.services.bedrockruntime.model.InvokeModelRequest
 import aws.sdk.kotlin.services.bedrockruntime.model.InvokeModelWithResponseStreamRequest
@@ -11,25 +10,26 @@ import aws.sdk.kotlin.services.bedrockruntime.model.ResponseStream
 import aws.smithy.kotlin.runtime.http.engine.okhttp.OkHttpEngine
 import com.example.myapplication.BuildConfig
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
-import kotlinx.serialization.json.decodeFromJsonElement
-import org.json.JSONObject
-import kotlinx.coroutines.CancellationException
+import com.example.myapplication.data.local.ContentSourceEntity
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.UserMemoryEntity
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.repository.AuthRepository
 import com.example.myapplication.data.repository.PromptRepository
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromJsonElement
+import org.json.JSONObject
+import java.util.Date
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration.Companion.seconds
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.json.Json
-import java.util.Date
-import kotlinx.coroutines.flow.first
-import kotlinx.serialization.ExperimentalSerializationApi
 
 // --- AI RESPONSE DATA MODELS ---
 @Serializable
@@ -775,7 +775,7 @@ class BedrockClient @Inject constructor(
         content: List<ContentSourceEntity>,
         workoutTitle: String? = null
     ): String = withContext(Dispatchers.Default) {
-        if (content.isEmpty() && workoutTitle == null) return@withContext "No news yet."
+        if (content.isEmpty() && workoutTitle == null) return@withContext "No No news yet."
 
         val contentList = content.joinToString("\n") { "- ${it.title}: ${it.summary}" }
         val workoutContext = if (workoutTitle != null) "The user's workout for today is: $workoutTitle." else "No workout scheduled today."
@@ -881,11 +881,22 @@ class BedrockClient @Inject constructor(
 
         val requestBody = ClaudeRequest(
             max_tokens = 300,
-            system = listOf(SystemBlock(text = systemPrompt)), // FIX: Wrapped in SystemBlock List
+            system = listOf(SystemBlock(text = systemPrompt)),
             messages = sanitizedMessages
         )
 
         val jsonString = jsonConfig.encodeToString(ClaudeRequest.serializer(), requestBody)
+
+        // --- NEW LOGGING: Intercept the streaming conversation request ---
+        try {
+            val prettyJson = JSONObject(jsonString).toString(4)
+            Log.d("BedrockClient", "=================== BEDROCK STREAMING REQUEST ===================")
+            Log.d("BedrockClient", "MODEL: $CLAUDE_HAIKU")
+            Log.d("BedrockClient", "PAYLOAD:\n$prettyJson")
+            Log.d("BedrockClient", "===============================================================")
+        } catch (e: Exception) {
+            Log.d("BedrockClient", "Failed to pretty-print JSON payload. Raw: $jsonString")
+        }
 
         val request = InvokeModelWithResponseStreamRequest {
             this.modelId = CLAUDE_HAIKU
@@ -1055,7 +1066,6 @@ class BedrockClient @Inject constructor(
         userPrompt: String,
         modelId: String
     ): String {
-        Log.d("BedrockClient", "InvokeClaude System Instruction: $systemPrompt")
         enforceLimit()
         val standardBlock = listOf(SystemBlock(text = systemPrompt))
         return doInvokeClaudeWithBlocks(standardBlock, userPrompt, modelId)
@@ -1077,6 +1087,17 @@ class BedrockClient @Inject constructor(
         )
 
         val jsonString = jsonConfig.encodeToString(ClaudeRequest.serializer(), requestBody)
+
+        // --- NEW LOGGING: Intercept standard Bedrock request ---
+        try {
+            val prettyJson = JSONObject(jsonString).toString(4)
+            Log.d("BedrockClient", "=================== BEDROCK REQUEST (STANDARD) ===================")
+            Log.d("BedrockClient", "MODEL: $modelId")
+            Log.d("BedrockClient", "PAYLOAD:\n$prettyJson")
+            Log.d("BedrockClient", "==================================================================")
+        } catch (e: Exception) {
+            Log.d("BedrockClient", "Failed to pretty-print JSON payload. Raw: $jsonString")
+        }
 
         val request = InvokeModelRequest {
             this.modelId = modelId
@@ -1131,6 +1152,17 @@ class BedrockClient @Inject constructor(
 
         val jsonString = jsonConfig.encodeToString(ClaudeRequest.serializer(), requestBody)
 
+        // --- NEW LOGGING: Intercept Tool Use Bedrock request ---
+        try {
+            val prettyJson = JSONObject(jsonString).toString(4)
+            Log.d("BedrockClient", "=================== BEDROCK REQUEST (TOOL USE) ===================")
+            Log.d("BedrockClient", "MODEL: $modelId")
+            Log.d("BedrockClient", "PAYLOAD:\n$prettyJson")
+            Log.d("BedrockClient", "==================================================================")
+        } catch (e: Exception) {
+            Log.d("BedrockClient", "Failed to pretty-print JSON payload. Raw: $jsonString")
+        }
+
         val request = InvokeModelRequest {
             this.modelId = modelId
             contentType = "application/json"
@@ -1162,16 +1194,26 @@ class BedrockClient @Inject constructor(
         userPrompt: String,
         modelId: String
     ): String {
-        Log.d("BedrockClient", "InvokeClaudeStreaming System Instruction: $systemPrompt")
         enforceLimit()
 
         val requestBody = ClaudeRequest(
             max_tokens = 4096,
-            system = listOf(SystemBlock(text = systemPrompt)), // FIX: Wrapped in SystemBlock List
+            system = listOf(SystemBlock(text = systemPrompt)),
             messages = listOf(Message(role = "user", content = userPrompt))
         )
 
         val jsonString = jsonConfig.encodeToString(ClaudeRequest.serializer(), requestBody)
+
+        // --- NEW LOGGING: Intercept generic streaming request ---
+        try {
+            val prettyJson = JSONObject(jsonString).toString(4)
+            Log.d("BedrockClient", "=================== BEDROCK REQUEST (STREAMING) ===================")
+            Log.d("BedrockClient", "MODEL: $modelId")
+            Log.d("BedrockClient", "PAYLOAD:\n$prettyJson")
+            Log.d("BedrockClient", "===================================================================")
+        } catch (e: Exception) {
+            Log.d("BedrockClient", "Failed to pretty-print JSON payload. Raw: $jsonString")
+        }
 
         val request = InvokeModelWithResponseStreamRequest {
             this.modelId = modelId

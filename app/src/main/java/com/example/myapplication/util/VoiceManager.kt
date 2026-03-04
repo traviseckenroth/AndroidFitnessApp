@@ -6,8 +6,6 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -26,6 +24,8 @@ class VoiceManager @Inject constructor(@ApplicationContext private val context: 
     private var isInitialized = false
     private var onSpeechDone: (() -> Unit)? = null
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+
+    // We keep the Android S (API 31) check since your minSdk is likely 26, not 31.
     private val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
     } else {
@@ -130,58 +130,38 @@ class VoiceManager @Inject constructor(@ApplicationContext private val context: 
 
     // --- AUDIO DUCKING LOGIC ---
     private fun requestAudioFocus() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ASSISTANT)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build()
-                )
-                .build()
-            audioManager.requestAudioFocus(focusRequest)
-        } else {
-            @Suppress("DEPRECATION")
-            audioManager.requestAudioFocus(
-                null,
-                AudioManager.STREAM_MUSIC,
-                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+        // FIX: Removed SDK 26 check
+        val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
             )
-        }
+            .build()
+        audioManager.requestAudioFocus(focusRequest)
     }
 
     private fun abandonAudioFocus() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).build()
-            audioManager.abandonAudioFocusRequest(focusRequest)
-        } else {
-            @Suppress("DEPRECATION")
-            audioManager.abandonAudioFocus(null)
-        }
+        // FIX: Removed SDK 26 check
+        val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).build()
+        audioManager.abandonAudioFocusRequest(focusRequest)
     }
 
     // --- HAPTIC FEEDBACK ---
     fun vibrateSuccess() {
         if (vibrator.hasVibrator()) {
             // Double tap pattern (Set Complete)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 50, 50, 100), -1))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(longArrayOf(0, 50, 50, 100), -1)
-            }
+            // FIX: Removed SDK 26 check
+            vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 50, 50, 100), -1))
         }
     }
 
     fun vibrateTimerEnd() {
         if (vibrator.hasVibrator()) {
             // Long buzz pattern (Timer End)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(1000, VibrationEffect.DEFAULT_AMPLITUDE))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(1000)
-            }
+            // FIX: Removed SDK 26 check
+            vibrator.vibrate(VibrationEffect.createOneShot(1000, VibrationEffect.DEFAULT_AMPLITUDE))
         }
     }
 }

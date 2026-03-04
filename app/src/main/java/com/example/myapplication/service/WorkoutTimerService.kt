@@ -1,6 +1,5 @@
 package com.example.myapplication.service
 
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -9,15 +8,19 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.media.ToneGenerator
-import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.example.myapplication.MainActivity
 import com.example.myapplication.R
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 data class TimerState(
     val isRunning: Boolean = false,
@@ -165,15 +168,14 @@ class WorkoutTimerService : Service() {
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Workout Timer",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
-        }
+        // FIX: Removed the SDK_INT >= 26 check
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "Workout Timer",
+            NotificationManager.IMPORTANCE_LOW
+        )
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(channel)
     }
 
     override fun onDestroy() {

@@ -19,7 +19,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         UserSubscriptionEntity::class,
         UserMemoryEntity::class
     ],
-    version = 39,
+    version = 40,
     exportSchema = false)
 
 

@@ -3,11 +3,10 @@ package com.example.myapplication.util
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
-import android.media.AudioFocusRequest
-import android.os.Build
 import android.util.Base64
 import android.util.Log
 import com.example.myapplication.BuildConfig
@@ -77,7 +76,7 @@ class ElevenLabsStreamer @Inject constructor(
     }
 
     fun isAvailable(): Boolean {
-        return !apiKey.isNullOrBlank() && apiKey != "null"
+        return !apiKey.isNotBlank() && apiKey != "null"
     }
 
     fun connect() {
@@ -184,18 +183,13 @@ class ElevenLabsStreamer @Inject constructor(
     }
 
     private fun requestAudioFocus() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-                .setAudioAttributes(AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ASSISTANT)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build())
-                .build()
-            audioManager.requestAudioFocus(focusRequest)
-        } else {
-            @Suppress("DEPRECATION")
-            audioManager.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-        }
+        val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            .setAudioAttributes(AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build())
+            .build()
+        audioManager.requestAudioFocus(focusRequest)
     }
 
     fun streamTextChunk(textChunk: String) {

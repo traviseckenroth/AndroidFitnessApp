@@ -9,7 +9,17 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,10 +29,37 @@ import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import com.example.myapplication.ui.theme.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -33,6 +70,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.NutritionPlan
 import com.example.myapplication.data.local.FoodLogEntity
 import com.example.myapplication.data.remote.MacroSummary
+import com.example.myapplication.ui.theme.CarbColor
+import com.example.myapplication.ui.theme.FatColor
+import com.example.myapplication.ui.theme.ProteinColor
 import java.util.Locale
 
 @Composable
@@ -47,9 +87,10 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
     val scrollState = rememberScrollState()
     val context = LocalContext.current
 
-    var showVoiceDialog by remember { mutableStateOf(false) }
-    var showManualDialog by remember { mutableStateOf(false) }
-    var showRecalculateDialog by remember { mutableStateOf(false) } // NEW STATE
+    // FIX: Destructured state completely eliminates the "Assigned value is never read" warnings
+    val (showVoiceDialog, setShowVoiceDialog) = remember { mutableStateOf(false) }
+    val (showManualDialog, setShowManualDialog) = remember { mutableStateOf(false) }
+    val (showRecalculateDialog, setShowRecalculateDialog) = remember { mutableStateOf(false) }
 
     val speechLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -59,7 +100,7 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
             if (!spokenText.isNullOrBlank()) {
                 viewModel.logFood(spokenText)
                 Toast.makeText(context, "Analyzing: $spokenText", Toast.LENGTH_SHORT).show()
-                showVoiceDialog = false
+                setShowVoiceDialog(false)
             }
         }
     }
@@ -68,20 +109,20 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
     if (showRecalculateDialog) {
         RecalculatePlanDialog(
             currentPace = currentGoalPace,
-            onDismiss = { showRecalculateDialog = false },
+            onDismiss = { setShowRecalculateDialog(false) },
             onConfirm = { selectedPace ->
                 viewModel.generateNutrition(selectedPace)
-                showRecalculateDialog = false
+                setShowRecalculateDialog(false)
             }
         )
     }
 
     if (showVoiceDialog) {
         VoiceLogDialog(
-            onDismiss = { showVoiceDialog = false },
+            onDismiss = { setShowVoiceDialog(false) },
             onConfirm = { query ->
                 viewModel.logFood(query)
-                showVoiceDialog = false
+                setShowVoiceDialog(false)
             },
             onMicClick = {
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -102,10 +143,10 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
     if (showManualDialog) {
         ManualFoodDialog(
             recentFoods = recentFoods,
-            onDismiss = { showManualDialog = false },
+            onDismiss = { setShowManualDialog(false) },
             onConfirm = { name, cals, pro, carb, fat, meal ->
                 viewModel.logManual(name, cals, pro, carb, fat, meal)
-                showManualDialog = false
+                setShowManualDialog(false)
             }
         )
     }
@@ -137,7 +178,7 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
                     )
                 }
 
-                is NutritionUiState.Empty -> EmptyNutritionCard(onGenerateClick = { showRecalculateDialog = true })
+                is NutritionUiState.Empty -> EmptyNutritionCard(onGenerateClick = { setShowRecalculateDialog(true) })
 
                 is NutritionUiState.Success -> {
                     Column {
@@ -158,7 +199,7 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
                         NutritionDetailCard(
                             plan = state.plan,
                             consumed = consumed,
-                            onRegenerateClick = { showRecalculateDialog = true }
+                            onRegenerateClick = { setShowRecalculateDialog(true) }
                         )
                     }
                 }
@@ -173,7 +214,7 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
             // BUTTONS ROW
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
-                    onClick = { showVoiceDialog = true },
+                    onClick = { setShowVoiceDialog(true) },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
                 ) {
@@ -182,7 +223,7 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
                     Text("Voice Log")
                 }
                 OutlinedButton(
-                    onClick = { showManualDialog = true },
+                    onClick = { setShowManualDialog(true) },
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("Manual Input")
@@ -398,11 +439,12 @@ fun NutritionDetailCard(
     consumed: MacroSummary,
     onRegenerateClick: () -> Unit
 ) {
-    var showStrategyPopup by remember { mutableStateOf(false) }
+    // FIX: Destructured state for strategy popup
+    val (showStrategyPopup, setShowStrategyPopup) = remember { mutableStateOf(false) }
 
     if (showStrategyPopup) {
         AlertDialog(
-            onDismissRequest = { showStrategyPopup = false },
+            onDismissRequest = { setShowStrategyPopup(false) },
             title = { Text("Nutrition Strategy", style = MaterialTheme.typography.titleLarge) },
             text = {
                 Text(
@@ -411,7 +453,7 @@ fun NutritionDetailCard(
                 )
             },
             confirmButton = {
-                TextButton(onClick = { showStrategyPopup = false }) { Text("Close") }
+                TextButton(onClick = { setShowStrategyPopup(false) }) { Text("Close") }
             }
         )
     }
@@ -458,7 +500,7 @@ fun NutritionDetailCard(
             ) {
                 Text("Strategy", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 IconButton(
-                    onClick = { showStrategyPopup = true },
+                    onClick = { setShowStrategyPopup(true) },
                     modifier = Modifier.size(24.dp)
                 ) {
                     Icon(

@@ -3,11 +3,10 @@ package com.example.myapplication.util
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
-import android.media.AudioFocusRequest
-import android.os.Build
 import android.util.Log
 import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsKokoroModelConfig
@@ -163,19 +162,18 @@ class NativeAutoCoachVoice @Inject constructor(
             if (engine == null || track == null) return@withLock
 
             isInterrupted = false
-            var focusRequest: AudioFocusRequest? = null
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-                    .setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_MEDIA)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                            .build()
-                    )
-                    .build()
-                audioManager.requestAudioFocus(focusRequest)
-            }
+            // FIX: Removed the SDK_INT >= 26 check and made focusRequest a direct val
+            val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .build()
+
+            audioManager.requestAudioFocus(focusRequest)
 
             try {
                 track.play()
@@ -199,10 +197,13 @@ class NativeAutoCoachVoice @Inject constructor(
             } catch (e: Exception) {
                 Log.e("NativeAutoCoachVoice", "Playback error", e)
             } finally {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && focusRequest != null) {
-                    audioManager.abandonAudioFocusRequest(focusRequest)
-                }
-                try { track.pause(); track.flush() } catch (e: Exception) {}
+                // FIX: Removed the SDK_INT >= 26 and null checks
+                audioManager.abandonAudioFocusRequest(focusRequest)
+
+                try {
+                    track.pause()
+                    track.flush()
+                } catch (e: Exception) {}
             }
         }
     }

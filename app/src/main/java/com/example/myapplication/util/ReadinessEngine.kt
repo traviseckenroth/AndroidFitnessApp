@@ -1,14 +1,10 @@
 package com.example.myapplication.util
 
 import androidx.compose.ui.graphics.Color
-import com.example.myapplication.data.local.DailyWorkoutEntity
 import com.example.myapplication.data.local.WorkoutDao
-import com.example.myapplication.data.remote.RemoteNutritionPlan
 import com.example.myapplication.data.repository.HealthConnectManager
 import com.example.myapplication.data.repository.NutritionRepository
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.serialization.json.Json
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject

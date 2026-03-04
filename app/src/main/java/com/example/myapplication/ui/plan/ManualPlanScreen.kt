@@ -2,17 +2,44 @@ package com.example.myapplication.ui.plan
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check // <--- FIX: Added this import
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,12 +60,11 @@ fun ManualPlanScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
 
     var showBottomSheet by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState()
 
     Scaffold(
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { showBottomSheet = true },
+                onClick = { showBottomSheet = true }, // State assignment
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary
             ) {
@@ -68,73 +94,98 @@ fun ManualPlanScreen(
             }
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp)
-        ) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                "Build Your Session",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                "Add exercises to create a custom plan for today.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(24.dp))
-
-            if (selectedExercises.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Tap + to add exercises", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(bottom = 80.dp)
-                ) {
-                    items(selectedExercises, key = { it.exerciseId }) { exercise ->
-                        SelectedExerciseCard(
-                            exercise = exercise,
-                            onRemove = { viewModel.removeExercise(exercise) }
-                        )
-                    }
-                }
-            }
-        }
-
-        if (showBottomSheet) {
-            ModalBottomSheet(
-                onDismissRequest = { showBottomSheet = false },
-                sheetState = sheetState
+        Box(modifier = Modifier.fillMaxSize()) { // Wrapping in a Box helps with state scoping
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = 16.dp)
             ) {
-                Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { viewModel.updateSearch(it) },
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("Search exercises...") },
-                        leadingIcon = { Icon(Icons.Default.Search, null) },
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    "Build Your Session",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "Add exercises to create a custom plan for today.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(24.dp))
 
+                if (selectedExercises.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("Tap + to add exercises", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                } else {
                     LazyColumn(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(bottom = 32.dp)
+                        contentPadding = PaddingValues(bottom = 80.dp)
                     ) {
-                        items(filteredExercises, key = { it.exerciseId }) { exercise ->
-                            val isSelected = selectedExercises.contains(exercise)
-                            LibraryExerciseItem(
+                        items(selectedExercises, key = { it.exerciseId }) { exercise ->
+                            SelectedExerciseCard(
                                 exercise = exercise,
-                                isSelected = isSelected,
-                                onAdd = { viewModel.addExercise(exercise) }
+                                onRemove = { viewModel.removeExercise(exercise) }
                             )
                         }
                     }
+                }
+            }
+
+            // State read
+            if (showBottomSheet) {
+                ExerciseSelectionBottomSheet(
+                    searchQuery = searchQuery,
+                    filteredExercises = filteredExercises,
+                    selectedExercises = selectedExercises,
+                    onSearchUpdate = { viewModel.updateSearch(it) },
+                    onAddExercise = { viewModel.addExercise(it) },
+                    onDismiss = { showBottomSheet = false } // State assignment
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ExerciseSelectionBottomSheet(
+    searchQuery: String,
+    filteredExercises: List<ExerciseEntity>,
+    selectedExercises: List<ExerciseEntity>,
+    onSearchUpdate: (String) -> Unit,
+    onAddExercise: (ExerciseEntity) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState()
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState
+    ) {
+        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onSearchUpdate,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Search exercises...") },
+                leadingIcon = { Icon(Icons.Default.Search, null) },
+                shape = RoundedCornerShape(12.dp)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(bottom = 32.dp)
+            ) {
+                items(filteredExercises, key = { it.exerciseId }) { exercise ->
+                    val isSelected = selectedExercises.contains(exercise)
+                    LibraryExerciseItem(
+                        exercise = exercise,
+                        isSelected = isSelected,
+                        onAdd = { onAddExercise(exercise) }
+                    )
                 }
             }
         }

@@ -3,18 +3,28 @@ package com.example.myapplication.util
 
 import android.util.Log
 import com.example.myapplication.data.local.ExerciseEntity
-import com.example.myapplication.data.local.WorkoutSetEntity
-import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.local.MemoryDao
+import com.example.myapplication.data.local.UserPreferencesRepository
+import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.remote.BedrockClient
 import com.example.myapplication.data.remote.Message
 import com.example.myapplication.service.WorkoutTimerService
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 enum class AutoCoachState {

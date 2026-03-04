@@ -16,26 +16,26 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import com.example.myapplication.ui.about.AboutFormaScreen
-import com.example.myapplication.ui.workout.ContentDiscoveryScreen
 import com.example.myapplication.ui.auth.LoginScreen
 import com.example.myapplication.ui.auth.SignUpScreen
 import com.example.myapplication.ui.exercise.ExerciseListScreen
 import com.example.myapplication.ui.exercise_history.ExerciseHistoryScreen
 import com.example.myapplication.ui.home.HomeScreen
 import com.example.myapplication.ui.insights.InsightsScreen
-import com.example.myapplication.ui.settings.GymSettingsScreen
 import com.example.myapplication.ui.nutrition.NutritionScreen
 import com.example.myapplication.ui.plan.GeneratePlanScreen
 import com.example.myapplication.ui.plan.ManualPlanScreen
 import com.example.myapplication.ui.plan.PlanViewModel
 import com.example.myapplication.ui.profile.ProfileScreen
+import com.example.myapplication.ui.settings.GymSettingsScreen
 import com.example.myapplication.ui.settings.SettingsScreen
-import com.example.myapplication.ui.workout.WorkoutSummaryScreen
 import com.example.myapplication.ui.warmup.WarmUpScreen
 import com.example.myapplication.ui.workout.ActiveSessionViewModel
 import com.example.myapplication.ui.workout.ActiveWorkoutScreen
-import com.example.myapplication.ui.workout.StretchingSessionScreen
+import com.example.myapplication.ui.workout.ContentDiscoveryScreen
 import com.example.myapplication.ui.workout.LiveAutoCoachScreen
+import com.example.myapplication.ui.workout.StretchingSessionScreen
+import com.example.myapplication.ui.workout.WorkoutSummaryScreen
 
 @Composable
 fun NavGraph(
