@@ -11,35 +11,27 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.example.myapplication.data.local.ExerciseEntity
-import com.example.myapplication.data.local.MemoryDao
-import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.remote.BedrockClient
+import com.example.myapplication.data.local.UserPreferencesRepository
+import com.example.myapplication.data.local.MemoryDao
 import com.example.myapplication.data.repository.HealthConnectManager
 import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import com.example.myapplication.data.repository.WorkoutSummaryResult
-import com.example.myapplication.service.WorkoutSyncWorker
 import com.example.myapplication.service.WorkoutTimerService
+import com.example.myapplication.service.WorkoutSyncWorker
+import com.example.myapplication.util.PlateCalculator
+import com.example.myapplication.util.ReadinessEngine
+import com.example.myapplication.util.SpeechToTextManager
+import com.example.myapplication.util.VoiceManager
 import com.example.myapplication.util.AutoCoachEngine
 import com.example.myapplication.util.AutoCoachState
 import com.example.myapplication.util.BleHeartRateManager
 import com.example.myapplication.util.ContinuousAudioStreamer
 import com.example.myapplication.util.NativeAutoCoachVoice
-import com.example.myapplication.util.PlateCalculator
-import com.example.myapplication.util.ReadinessEngine
-import com.example.myapplication.util.SpeechToTextManager
-import com.example.myapplication.util.VoiceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -191,8 +183,6 @@ class ActiveSessionViewModel @Inject constructor(
             _workoutId.collectLatest { id ->
                 if (id != -1L) {
                     repository.getSetsForSession(id).collect { loadedSets ->
-                        // FIX: We no longer artificially inject 'actual' values here.
-                        // We let them remain null so the UI knows they haven't been completed yet.
                         _sets.value = loadedSets
                     }
                 }
@@ -352,13 +342,11 @@ class ActiveSessionViewModel @Inject constructor(
 
     // --- 4. EXERCISE & SET UPDATES ---
 
-    // NEW: Instantly update local flow so the engine never gets state-lagged
     private fun optimisticUpdate(setId: Long, modifier: (WorkoutSetEntity) -> WorkoutSetEntity) {
         _sets.value = _sets.value.map { if (it.setId == setId) modifier(it) else it }
     }
 
     fun updateSetCompletion(set: WorkoutSetEntity, isCompleted: Boolean) {
-        // Grab the absolute latest state from memory so we don't lose newly typed reps!
         val freshSet = _sets.value.find { it.setId == set.setId } ?: set
         val finalReps = if (isCompleted) freshSet.actualReps ?: freshSet.suggestedReps else freshSet.actualReps
         val finalLbs = if (isCompleted) freshSet.actualLbs ?: freshSet.suggestedLbs.toFloat() else freshSet.actualLbs
@@ -376,10 +364,8 @@ class ActiveSessionViewModel @Inject constructor(
         viewModelScope.launch {
             repository.updateSet(completedSet)
 
-            // FIX: Read the exact current setting directly from DataStore on every click
             val isDynamicEnabled = userPrefs.isDynamicAutoregEnabled.first()
 
-            // Only run the engine if the user has the setting turned ON
             if (isCompleted && isDynamicEnabled) {
                 val exercise = _exerciseStates.value.find { it.exercise.exerciseId == completedSet.exerciseId }?.exercise
                 if (exercise != null) {
@@ -388,6 +374,37 @@ class ActiveSessionViewModel @Inject constructor(
             }
 
             if (isCompleted && autoCoachState.value != AutoCoachState.OFF) {
+                autoCoachEngine.notifySetCompletedManually()
+            }
+        }
+    }
+
+    // NEW: Handle a user swiping the set to mark it as not attempted
+    fun markSetNotAttempted(set: WorkoutSetEntity) {
+        val freshSet = _sets.value.find { it.setId == set.setId } ?: set
+
+        val skippedSet = freshSet.copy(
+            isCompleted = true,
+            actualReps = 0, // 0 reps denotes not attempted / skipped
+            actualLbs = freshSet.actualLbs ?: freshSet.suggestedLbs.toFloat(),
+            actualRpe = freshSet.actualRpe ?: freshSet.suggestedRpe.toFloat()
+        )
+
+        optimisticUpdate(set.setId) { skippedSet }
+
+        viewModelScope.launch {
+            repository.updateSet(skippedSet)
+
+            // Allow the autoregulation engine to drop weight for subsequent sets
+            val isDynamicEnabled = userPrefs.isDynamicAutoregEnabled.first()
+            if (isDynamicEnabled) {
+                val exercise = _exerciseStates.value.find { it.exercise.exerciseId == skippedSet.exerciseId }?.exercise
+                if (exercise != null) {
+                    applyDynamicAutoregulation(skippedSet, exercise)
+                }
+            }
+
+            if (autoCoachState.value != AutoCoachState.OFF) {
                 autoCoachEngine.notifySetCompletedManually()
             }
         }
@@ -407,7 +424,7 @@ class ActiveSessionViewModel @Inject constructor(
 
         var loadMultiplier = 1.0f
 
-        // RULE 1: Underperformance
+        // RULE 1: Underperformance or Skipped
         if (actualReps < completedSet.suggestedReps) {
             loadMultiplier = 0.90f
         } else if (actualReps == completedSet.suggestedReps && actualRpe > targetRpe) {
@@ -441,9 +458,8 @@ class ActiveSessionViewModel @Inject constructor(
         }
     }
 
-    // FIX: Bypassing the buggy repository SQL entirely. We update the specific object.
     fun updateSetReps(set: WorkoutSetEntity, newReps: String) {
-        val repsInt = newReps.toIntOrNull() // Null if empty string
+        val repsInt = newReps.toIntOrNull()
         val updatedSet = set.copy(actualReps = repsInt)
         optimisticUpdate(set.setId) { updatedSet }
         viewModelScope.launch { repository.updateSet(updatedSet) }

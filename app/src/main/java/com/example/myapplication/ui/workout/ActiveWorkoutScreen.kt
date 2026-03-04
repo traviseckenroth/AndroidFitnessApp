@@ -7,23 +7,13 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -34,52 +24,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Calculate
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.RecordVoiceOver
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.filled.Whatshot
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -101,7 +51,7 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
-import com.example.myapplication.ui.navigation.ExerciseList
+import com.example.myapplication.ui.navigation.*
 import com.example.myapplication.ui.theme.AmrapOrange
 import com.example.myapplication.ui.theme.EmomPink
 import com.example.myapplication.ui.theme.SuccessGreen
@@ -139,7 +89,6 @@ fun ActiveWorkoutScreen(
     val coachBriefing by viewModel.coachBriefing.collectAsState()
     val totalEstimatedTime by viewModel.totalEstimatedTime.collectAsState()
 
-    // FIX: Destructured state to prevent false positive lint warnings
     val (showAddExerciseDialog, setShowAddExerciseDialog) = remember { mutableStateOf(false) }
     val (showBleDialog, setShowBleDialog) = remember { mutableStateOf(false) }
     val (isPocketModeActive, setIsPocketModeActive) = remember { mutableStateOf(false) }
@@ -416,7 +365,6 @@ fun ExerciseCard(
     val exercise = state.exercise
     val isBodyweight = exercise.equipment?.contains("Bodyweight", ignoreCase = true) == true
 
-    // FIX: Destructured states
     val (showSwapDialog, setShowSwapDialog) = remember { mutableStateOf(false) }
     val (showDescriptionDialog, setShowDescriptionDialog) = remember { mutableStateOf(false) }
 
@@ -701,6 +649,7 @@ fun StyledInputBox(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SetRow(
     set: WorkoutSetEntity,
@@ -709,8 +658,6 @@ fun SetRow(
     haptic: androidx.compose.ui.hapticfeedback.HapticFeedback
 ) {
     val focusManager = LocalFocusManager.current
-
-    // FIX: Destructured state
     val (showPlateCalc, setShowPlateCalc) = remember { mutableStateOf(false) }
 
     val isBodyweight = exercise.equipment?.contains("Bodyweight", ignoreCase = true) == true
@@ -732,134 +679,180 @@ fun SetRow(
         )
     }
 
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        // SET NUMBER
-        Text(
-            text = set.setNumber.toString(),
-            modifier = Modifier.weight(0.8f),
-            textAlign = TextAlign.Center,
-            fontWeight = FontWeight.Bold,
-            fontSize = 18.sp,
-            color = MaterialTheme.colorScheme.onSurface
-        )
+    // A set is considered skipped/not attempted if it is marked as completed but has 0 reps.
+    val isSkipped = set.isCompleted && set.actualReps == 0
 
-        // DYNAMIC UI BLOCK
-        if (isRunning) {
-            val actualWeightStr = set.actualLbs?.let { if (it % 1 == 0f) it.toInt().toString() else it.toString() } ?: ""
-            StyledInputBox(
-                value = actualWeightStr,
-                placeholderText = set.suggestedLbs.toString(),
-                onValueChange = { viewModel.updateSetWeight(set, it) },
-                modifier = Modifier.weight(1.5f),
-                textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
-            )
-            Text(" mi", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { dismissValue ->
+            if (dismissValue == SwipeToDismissBoxValue.EndToStart) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                viewModel.markSetNotAttempted(set)
+                false // Snap back gracefully so the row remains visible but updated
+            } else {
+                false
+            }
+        },
+        positionalThreshold = { it * 0.4f }
+    )
 
-            val actualRepsStr = set.actualReps?.toString() ?: ""
-            StyledInputBox(
-                value = actualRepsStr,
-                placeholderText = set.suggestedReps.toString(),
-                onValueChange = { viewModel.updateSetReps(set, it) },
-                modifier = Modifier.weight(if (isBodyweight) 2.4f else 1.2f),
-                textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
-            )
-            Text(" min", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-
-            Spacer(modifier = Modifier.weight(1f))
-
-        } else {
-            // --- STANDARD, AMRAP & EMOM UI ---
-            if (!hideLbs) {
-                Row(
-                    modifier = Modifier.weight(1.5f),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val actualWeightStr = set.actualLbs?.let { if (it % 1 == 0f) it.toInt().toString() else it.toString() } ?: ""
-
-                    val weightColor = if (set.isAutoAdjusted && set.actualLbs == null) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    }
-
-                    StyledInputBox(
-                        value = actualWeightStr,
-                        placeholderText = set.suggestedLbs.toString(),
-                        onValueChange = { viewModel.updateSetWeight(set, it) },
-                        modifier = Modifier.width(80.dp),
-                        textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = weightColor),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
-                    )
-
-                    if (set.isAutoAdjusted && set.actualLbs == null) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = "Auto-adjusted",
-                            modifier = Modifier.size(12.dp).padding(start = 2.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    } else if (exercise.equipment?.contains("Barbell", ignoreCase = true) == true) {
-                        Icon(
-                            imageVector = Icons.Default.Calculate,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp).clickable { setShowPlateCalc(true) },
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false, // Only swipe right-to-left
+        enableDismissFromEndToStart = !set.isCompleted, // Only allow skipping if not already completed
+        backgroundContent = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.errorContainer)
+                    .padding(horizontal = 16.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Not Attempted", color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(8.dp))
+                    Icon(Icons.Default.Block, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
                 }
             }
-
-            // REPS
-            val repsWeight = 1.2f + (if (hideLbs) 1.5f else 0f) + (if (hideRpe) 1f else 0f)
-            val actualRepsStr = set.actualReps?.toString() ?: ""
-            val repsPlaceholder = if (isCircuit) "Total Score" else set.suggestedReps.toString()
-
-            StyledInputBox(
-                value = actualRepsStr,
-                placeholderText = repsPlaceholder,
-                onValueChange = { viewModel.updateSetReps(set, it) },
-                modifier = Modifier.weight(repsWeight),
-                textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+        }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(vertical = 4.dp)
+                .alpha(if (isSkipped) 0.4f else 1f), // Fade out the row if skipped
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // SET NUMBER
+            Text(
+                text = set.setNumber.toString(),
+                modifier = Modifier.weight(0.8f),
+                textAlign = TextAlign.Center,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                color = MaterialTheme.colorScheme.onSurface
             )
 
-            // RPE
-            if (!hideRpe) {
-                val actualRpeStr = set.actualRpe?.let { if (it % 1 == 0f) it.toInt().toString() else it.toString() } ?: ""
-
+            // DYNAMIC UI BLOCK
+            if (isRunning) {
+                val actualWeightStr = set.actualLbs?.let { if (it % 1 == 0f) it.toInt().toString() else it.toString() } ?: ""
                 StyledInputBox(
-                    value = actualRpeStr,
-                    placeholderText = set.suggestedRpe.toString(),
-                    onValueChange = { viewModel.updateSetRpe(set, it) },
-                    modifier = Modifier.weight(1f),
-                    textStyle = TextStyle(fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface),
+                    value = actualWeightStr,
+                    placeholderText = set.suggestedLbs.toString(),
+                    onValueChange = { viewModel.updateSetWeight(set, it) },
+                    modifier = Modifier.weight(1.5f),
+                    textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+                )
+                Text(" mi", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                val actualRepsStr = set.actualReps?.toString() ?: ""
+                StyledInputBox(
+                    value = actualRepsStr,
+                    placeholderText = set.suggestedReps.toString(),
+                    onValueChange = { viewModel.updateSetReps(set, it) },
+                    modifier = Modifier.weight(if (isBodyweight) 2.4f else 1.2f),
+                    textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
                 )
-            }
-        }
+                Text(" min", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-        // DONE CHECKBOX
-        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-            Box(
-                modifier = Modifier
-                    .size(24.dp)
-                    .border(2.dp, if (set.isCompleted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(4.dp))
-                    .clickable {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        viewModel.updateSetCompletion(set, !set.isCompleted)
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                if (set.isCompleted) {
-                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.weight(1f))
+
+            } else {
+                // --- STANDARD, AMRAP & EMOM UI ---
+                if (!hideLbs) {
+                    Row(
+                        modifier = Modifier.weight(1.5f),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val actualWeightStr = set.actualLbs?.let { if (it % 1 == 0f) it.toInt().toString() else it.toString() } ?: ""
+
+                        val weightColor = if (set.isAutoAdjusted && set.actualLbs == null) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        }
+
+                        StyledInputBox(
+                            value = actualWeightStr,
+                            placeholderText = set.suggestedLbs.toString(),
+                            onValueChange = { viewModel.updateSetWeight(set, it) },
+                            modifier = Modifier.width(80.dp),
+                            textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = weightColor),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+                        )
+
+                        if (set.isAutoAdjusted && set.actualLbs == null) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = "Auto-adjusted",
+                                modifier = Modifier.size(12.dp).padding(start = 2.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        } else if (exercise.equipment?.contains("Barbell", ignoreCase = true) == true) {
+                            Icon(
+                                imageVector = Icons.Default.Calculate,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp).clickable { setShowPlateCalc(true) },
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                // REPS
+                val repsWeight = 1.2f + (if (hideLbs) 1.5f else 0f) + (if (hideRpe) 1f else 0f)
+                val actualRepsStr = set.actualReps?.toString() ?: ""
+                val repsPlaceholder = if (isCircuit) "Total Score" else set.suggestedReps.toString()
+
+                StyledInputBox(
+                    value = actualRepsStr,
+                    placeholderText = repsPlaceholder,
+                    onValueChange = { viewModel.updateSetReps(set, it) },
+                    modifier = Modifier.weight(repsWeight),
+                    textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+                )
+
+                // RPE
+                if (!hideRpe) {
+                    val actualRpeStr = set.actualRpe?.let { if (it % 1 == 0f) it.toInt().toString() else it.toString() } ?: ""
+
+                    StyledInputBox(
+                        value = actualRpeStr,
+                        placeholderText = set.suggestedRpe.toString(),
+                        onValueChange = { viewModel.updateSetRpe(set, it) },
+                        modifier = Modifier.weight(1f),
+                        textStyle = TextStyle(fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+                    )
+                }
+            }
+
+            // DONE CHECKBOX
+            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .border(2.dp, if (set.isCompleted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(4.dp))
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            viewModel.updateSetCompletion(set, !set.isCompleted)
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (set.isCompleted) {
+                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                    }
                 }
             }
         }
