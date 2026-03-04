@@ -99,6 +99,8 @@ dependencies {
     implementation(libs.androidx.compose.material.icons)
     implementation("org.jsoup:jsoup:1.17.2")
 
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
+
     // --- Architecture & Navigation ---
     implementation(libs.androidx.lifecycle.viewmodel)
     implementation(libs.androidx.navigation.compose)

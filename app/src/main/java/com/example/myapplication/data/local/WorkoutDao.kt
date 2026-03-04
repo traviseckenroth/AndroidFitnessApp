@@ -29,6 +29,16 @@ interface WorkoutDao {
     @Query("SELECT * FROM exercises")
     fun getAllExercises(): Flow<List<ExerciseEntity>>
 
+    // Instead of pulling all sets and grouping in Kotlin, do this:
+    @Query("""
+    SELECT muscleGroup, SUM(weight * reps) as totalVolume 
+    FROM completed_workouts 
+    INNER JOIN exercises ON completed_workouts.exerciseId = exercises.exerciseId
+    WHERE date >= :thirtyDaysAgo 
+    GROUP BY muscleGroup
+""")
+    fun getMuscleVolumeDistribution(thirtyDaysAgo: Long): Flow<List<MuscleVolumeTuple>>
+
     @Query("SELECT * FROM exercises WHERE exerciseId IN (:exerciseIds)")
     fun getExercisesByIds(exerciseIds: List<Long>): Flow<List<ExerciseEntity>>
 

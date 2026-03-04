@@ -229,10 +229,18 @@ class ElevenLabsStreamer @Inject constructor(
     fun disconnect() {
         webSocket?.close(1000, "Workout Ended")
         webSocket = null
+
+        // ADD THESE LINES to prevent memory leaks:
+        audioQueue.cancel()
+
         try {
+            audioTrack?.pause()
+            audioTrack?.flush()
             audioTrack?.stop()
             audioTrack?.release()
-        } catch (e: Exception) { }
+        } catch (e: Exception) {
+            Log.e("ElevenLabs", "Error releasing AudioTrack", e)
+        }
         audioTrack = null
     }
 }

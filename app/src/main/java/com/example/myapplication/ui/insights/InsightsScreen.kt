@@ -30,6 +30,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.R
 import com.example.myapplication.ui.navigation.*
 import java.text.SimpleDateFormat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -40,7 +41,7 @@ fun InsightsScreen(
     onNavigate: (Any) -> Unit,
     viewModel: InsightsViewModel = hiltViewModel()
 ) {
-    val state by viewModel.uiState.collectAsState()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     // We removed the artificial delay and the blocking full-screen CircularProgressIndicator.
     // The LazyRow is efficient enough that the screen can render instantly alongside the animation.
@@ -233,7 +234,10 @@ fun InsightsScreen(
             if (state.recentWorkouts.isEmpty() && !state.isLoading) {
                 item { Text("No recent workouts logged.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             } else {
-                items(state.recentWorkouts) { summary ->
+                items(
+                    items = state.recentWorkouts,
+                    key = { summary -> summary.workoutId ?: summary.date }
+                ) { summary ->
                     WorkoutSummaryCard(
                         item = summary,
                         onClick = {
