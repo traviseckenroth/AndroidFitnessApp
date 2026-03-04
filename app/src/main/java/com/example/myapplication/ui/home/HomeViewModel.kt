@@ -15,8 +15,6 @@ import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.local.WorkoutDao
 import com.example.myapplication.data.repository.CommunityRepository
 import com.example.myapplication.data.remote.CommunityPick
-import com.example.myapplication.data.repository.NutritionRepository
-import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import com.example.myapplication.data.repository.HealthConnectManager
 import com.example.myapplication.ui.navigation.ActiveWorkout
 import com.example.myapplication.ui.navigation.StretchingSession
@@ -40,8 +38,6 @@ class HomeViewModel @Inject constructor(
     private val contentRepository: ContentRepository,
     private val communityRepository: CommunityRepository,
     private val userPrefs: UserPreferencesRepository,
-    private val nutritionRepository: NutritionRepository,
-    private val executionRepository: WorkoutExecutionRepository,
     val healthConnectManager: HealthConnectManager,
     private val readinessEngine: ReadinessEngine
 ) : ViewModel() {
@@ -353,9 +349,9 @@ class HomeViewModel @Inject constructor(
                 val dateMillis = _selectedDate.value.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
                 val aiResponse = if (type == "Stretching") {
-                    bedrockClient.generateStretchingFlow(activePlan.goal, history, availableExercises)
+                    bedrockClient.generateStretchingFlow(activePlan.goal, availableExercises)
                 } else {
-                    bedrockClient.generateAccessoryWorkout(activePlan.goal, history, availableExercises)
+                    bedrockClient.generateAccessoryWorkout(activePlan.goal, availableExercises)
                 }
 
                 if (aiResponse.schedule.isNotEmpty()) {

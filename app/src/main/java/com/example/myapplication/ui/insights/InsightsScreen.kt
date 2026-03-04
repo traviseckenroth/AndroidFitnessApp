@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,7 +28,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.R
-import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.ui.navigation.*
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -42,10 +42,10 @@ fun InsightsScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
 
+    // We removed the artificial delay and the blocking full-screen CircularProgressIndicator.
+    // The LazyRow is efficient enough that the screen can render instantly alongside the animation.
+
     Box(modifier = Modifier.fillMaxSize()) {
-        if (state.isLoading) {
-            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-        }
 
         LazyColumn(
             modifier = Modifier
@@ -54,43 +54,49 @@ fun InsightsScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             item {
-                Text(
-                    "Performance Insights",
-                    style = MaterialTheme.typography.headlineLarge,
-                    fontWeight = FontWeight.Bold
-                )
+                Column {
+                    Text(
+                        "Performance Insights",
+                        style = MaterialTheme.typography.headlineLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    // Show a subtle, non-blocking loading bar at the top instead of hiding the screen
+                    if (state.isLoading) {
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = Color.Transparent
+                        )
+                    }
+                }
             }
 
             item { AIStatusCard() }
 
-            // Muscle Recovery (Moved from Home)
+            // Muscle Recovery
             item {
                 MuscleRecoveryCard(fatigueMap = state.muscleFatigue)
             }
 
-            // 1. Progress Graph with Scrolling Tabs
+            // 1. Progress Graph with LAZY Scrolling Chips
             item {
                 InsightCard(title = "Estimated 1 Rep Max") {
                     Column {
                         if (state.availableExercises.isNotEmpty()) {
-                            ScrollableTabRow(
-                                selectedTabIndex = state.availableExercises.indexOf(state.selectedExercise).coerceAtLeast(0),
-                                containerColor = Color.Transparent,
-                                edgePadding = 0.dp,
-                                divider = {}
+                            LazyRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                state.availableExercises.forEach { exercise ->
+                                items(state.availableExercises, key = { it.exerciseId }) { exercise ->
                                     val selected = state.selectedExercise?.exerciseId == exercise.exerciseId
-                                    Tab(
+                                    FilterChip(
                                         selected = selected,
                                         onClick = { viewModel.selectExercise(exercise) },
-                                        text = {
-                                            Text(
-                                                text = exercise.name,
-                                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
+                                        label = { Text(exercise.name) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
                                     )
                                 }
                             }
@@ -103,10 +109,10 @@ fun InsightsScreen(
                         if (state.oneRepMaxHistory.isNotEmpty()) {
                             OneRepMaxGraph(
                                 dataPoints = state.oneRepMaxHistory,
-                                lineColor = MaterialTheme.colorScheme.secondary, // Use Highlight color
+                                lineColor = MaterialTheme.colorScheme.secondary,
                                 surfaceColor = MaterialTheme.colorScheme.surface
                             )
-                        } else {
+                        } else if (!state.isLoading) {
                             Box(modifier = Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
                                 Text("Log sets to track your 1RM trend.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
@@ -115,7 +121,7 @@ fun InsightsScreen(
                 }
             }
 
-            // 2. Mesocycle Progression (Tonnage Trend)
+            // 2. Mesocycle Progression
             item {
                 InsightCard(title = "Mesocycle Progression") {
                     Column {
@@ -159,14 +165,14 @@ fun InsightsScreen(
                                     )
                                 }
                             }
-                        } else {
+                        } else if (!state.isLoading) {
                             Text("Complete a week of workouts to see your progression.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
             }
 
-            // 3. Muscle Distribution (Relative Percentages)
+            // 3. Muscle Distribution
             item {
                 InsightCard(title = "30-Day Muscle Focus") {
                     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -179,19 +185,22 @@ fun InsightsScreen(
                         val maxVol = state.muscleVolumeDistribution.values.maxOrNull() ?: 1.0
                         val totalVol = state.muscleVolumeDistribution.values.sum()
 
-                        state.muscleVolumeDistribution.entries
-                            .sortedByDescending { it.value }
-                            .forEach { (muscle, volume) ->
-                                MuscleVolumeRow(muscle, volume, maxVol, totalVol)
-                            }
-                        if (state.muscleVolumeDistribution.isEmpty()) {
+                        val sortedMuscleDistribution = remember(state.muscleVolumeDistribution) {
+                            state.muscleVolumeDistribution.entries.sortedByDescending { it.value }
+                        }
+
+                        sortedMuscleDistribution.forEach { (muscle, volume) ->
+                            MuscleVolumeRow(muscle, volume, maxVol, totalVol)
+                        }
+
+                        if (state.muscleVolumeDistribution.isEmpty() && !state.isLoading) {
                             Text("No workout data in the last 30 days.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
             }
 
-            // 4. Knowledge Hub (Interests)
+            // 4. Knowledge Hub
             item {
                 Column {
                     Text(
@@ -215,7 +224,7 @@ fun InsightsScreen(
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold
                     )
-                    TextButton(onClick = { /* Could navigate to a full history screen if one existed */ }) {
+                    TextButton(onClick = { /* Navigate to history */ }) {
                         Text("Past Sessions")
                     }
                 }
@@ -275,6 +284,15 @@ fun AIStatusCard() {
 
 @Composable
 fun MuscleRecoveryCard(fatigueMap: Map<String, Float>) {
+    // PERFORMANCE FIX: Cache string filtering logic so it doesn't recalculate on every single frame rendering
+    val chest = remember(fatigueMap) { fatigueMap.entries.filter { it.key.contains("chest", true) || it.key.contains("pec", true) }.maxOfOrNull { it.value } ?: 0f }
+    val back = remember(fatigueMap) { fatigueMap.entries.filter { it.key.contains("back", true) || it.key.contains("lat", true) }.maxOfOrNull { it.value } ?: 0f }
+    val shoulders = remember(fatigueMap) { fatigueMap.entries.filter { it.key.contains("shoulder", true) || it.key.contains("delt", true) }.maxOfOrNull { it.value } ?: 0f }
+    val arms = remember(fatigueMap) { fatigueMap.entries.filter { it.key.contains("arm", true) || it.key.contains("bicep", true) || it.key.contains("tricep", true) }.maxOfOrNull { it.value } ?: 0f }
+    val core = remember(fatigueMap) { fatigueMap.entries.filter { it.key.contains("ab", true) || it.key.contains("core", true) }.maxOfOrNull { it.value } ?: 0f }
+    val quads = remember(fatigueMap) { fatigueMap.entries.filter { it.key.contains("quad", true) || it.key.contains("leg", true) }.maxOfOrNull { it.value } ?: 0f }
+    val hams = remember(fatigueMap) { fatigueMap.entries.filter { it.key.contains("ham", true) || it.key.contains("glute", true) }.maxOfOrNull { it.value } ?: 0f }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -297,43 +315,29 @@ fun MuscleRecoveryCard(fatigueMap: Map<String, Float>) {
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Parse Fatigue Data (Consolidating similar names)
-                val chest = fatigueMap.entries.filter { it.key.contains("chest", true) || it.key.contains("pec", true) }.maxOfOrNull { it.value } ?: 0f
-                val back = fatigueMap.entries.filter { it.key.contains("back", true) || it.key.contains("lat", true) }.maxOfOrNull { it.value } ?: 0f
-                val shoulders = fatigueMap.entries.filter { it.key.contains("shoulder", true) || it.key.contains("delt", true) }.maxOfOrNull { it.value } ?: 0f
-                val arms = fatigueMap.entries.filter { it.key.contains("arm", true) || it.key.contains("bicep", true) || it.key.contains("tricep", true) }.maxOfOrNull { it.value } ?: 0f
-                val core = fatigueMap.entries.filter { it.key.contains("ab", true) || it.key.contains("core", true) }.maxOfOrNull { it.value } ?: 0f
-                val quads = fatigueMap.entries.filter { it.key.contains("quad", true) || it.key.contains("leg", true) }.maxOfOrNull { it.value } ?: 0f
-                val hams = fatigueMap.entries.filter { it.key.contains("ham", true) || it.key.contains("glute", true) }.maxOfOrNull { it.value } ?: 0f
-
-                // Left Labels
                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(24.dp)) {
                     FatigueLabel("Shoulders", shoulders)
                     FatigueLabel("Arms", arms)
                     FatigueLabel("Quads", quads)
                 }
 
-                // IMAGE-BASED HEATMAP WITH PRECISE OVERLAYS
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier.height(240.dp).width(120.dp)
                 ) {
-                    // 1. Draw your uploaded image as the base layer
                     Image(
-                        painter = painterResource(id = R.drawable.male_body), // Must match your drawable filename
+                        painter = painterResource(id = R.drawable.male_body),
                         contentDescription = "Human Body Outline",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit
                     )
 
-                    // 2. Draw localized glowing heat spots OVER the image
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         val w = size.width
                         val h = size.height
 
-                        // Helper function to draw a glowing spot
                         fun drawHeatSpot(xPercent: Float, yPercent: Float, radiusPercent: Float, fatigue: Float) {
-                            if (fatigue <= 0.05f) return // Don't draw if fully rested to keep UI clean
+                            if (fatigue <= 0.05f) return
 
                             val center = Offset(w * xPercent, h * yPercent)
                             val radius = w * radiusPercent
@@ -350,35 +354,20 @@ fun MuscleRecoveryCard(fatigueMap: Map<String, Float>) {
                             )
                         }
 
-                        // --- COORDINATES ---
-                        // Tweak these xPercent and yPercent values to perfectly align with your specific image!
-
-                        // Chest (Pecs)
-                        drawHeatSpot(0.4f, 0.28f, 0.15f, chest) // Left Pec
-                        drawHeatSpot(0.6f, 0.28f, 0.15f, chest) // Right Pec
-
-                        // Core (Abs)
+                        drawHeatSpot(0.4f, 0.28f, 0.15f, chest)
+                        drawHeatSpot(0.6f, 0.28f, 0.15f, chest)
                         drawHeatSpot(0.5f, 0.42f, 0.18f, core)
-
-                        // Shoulders (Delts)
-                        drawHeatSpot(0.28f, 0.25f, 0.12f, shoulders) // Left Delt
-                        drawHeatSpot(0.72f, 0.25f, 0.12f, shoulders) // Right Delt
-
-                        // Arms (Biceps/Triceps area)
-                        drawHeatSpot(0.22f, 0.38f, 0.12f, arms) // Left Arm
-                        drawHeatSpot(0.78f, 0.38f, 0.12f, arms) // Right Arm
-
-                        // Legs (Quads)
-                        drawHeatSpot(0.4f, 0.65f, 0.18f, maxOf(quads, hams)) // Left Thigh
-                        drawHeatSpot(0.6f, 0.65f, 0.18f, maxOf(quads, hams)) // Right Thigh
-
-                        // Calves
-                        drawHeatSpot(0.42f, 0.85f, 0.1f, maxOf(quads, hams)) // Left Calf
-                        drawHeatSpot(0.58f, 0.85f, 0.1f, maxOf(quads, hams)) // Right Calf
+                        drawHeatSpot(0.28f, 0.25f, 0.12f, shoulders)
+                        drawHeatSpot(0.72f, 0.25f, 0.12f, shoulders)
+                        drawHeatSpot(0.22f, 0.38f, 0.12f, arms)
+                        drawHeatSpot(0.78f, 0.38f, 0.12f, arms)
+                        drawHeatSpot(0.4f, 0.65f, 0.18f, maxOf(quads, hams))
+                        drawHeatSpot(0.6f, 0.65f, 0.18f, maxOf(quads, hams))
+                        drawHeatSpot(0.42f, 0.85f, 0.1f, maxOf(quads, hams))
+                        drawHeatSpot(0.58f, 0.85f, 0.1f, maxOf(quads, hams))
                     }
                 }
 
-                // Right Labels
                 Column(horizontalAlignment = Alignment.Start, verticalArrangement = Arrangement.spacedBy(24.dp)) {
                     FatigueLabel("Chest", chest)
                     FatigueLabel("Core", core)
@@ -444,7 +433,7 @@ fun MuscleVolumeRow(muscle: String, volume: Double, maxVolume: Double, totalVolu
         ) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(maxPercentage) // Draw bar relative to max for good visual scaling
+                    .fillMaxWidth(maxPercentage)
                     .fillMaxHeight()
                     .clip(CircleShape)
                     .background(
@@ -459,11 +448,9 @@ fun MuscleVolumeRow(muscle: String, volume: Double, maxVolume: Double, totalVolu
 
 @Composable
 fun OneRepMaxGraph(dataPoints: List<Pair<Long, Float>>, lineColor: Color, surfaceColor: Color) {
-    // 1. Read the theme colors OUTSIDE the Canvas block
     val gridLineColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
     val axisTextColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
 
-    // 2. Pass the axisTextColor as a key to remember, so it updates if Dark Mode toggles
     val textPaint = remember(axisTextColor) {
         android.graphics.Paint().apply {
             color = axisTextColor
@@ -493,7 +480,6 @@ fun OneRepMaxGraph(dataPoints: List<Pair<Long, Float>>, lineColor: Color, surfac
 
         val pointSpacing = if (dataPoints.size > 1) graphWidth / (dataPoints.size - 1) else graphWidth / 2f
 
-        // Draw Y-Axis Lines and Text
         for (i in 0..4) {
             val yRatio = i / 4f
             val yPos = graphHeight * (1 - yRatio)
@@ -507,7 +493,7 @@ fun OneRepMaxGraph(dataPoints: List<Pair<Long, Float>>, lineColor: Color, surfac
             )
 
             drawLine(
-                color = gridLineColor, // 3. Use the pre-calculated color variable here!
+                color = gridLineColor,
                 start = Offset(textWidth, yPos),
                 end = Offset(size.width, yPos),
                 strokeWidth = 1.dp.toPx()
@@ -620,8 +606,9 @@ fun KnowledgeHubControl(viewModel: InsightsViewModel) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WorkoutSummaryCard(item: RecentWorkoutSummary, onClick: () -> Unit) {
-    val sdf = SimpleDateFormat("EEEE, MMM dd", Locale.getDefault())
-    val dateString = sdf.format(Date(item.date))
+    // PERFORMANCE FIX: Cache date formatter and execution so it doesn't repeatedly process when scrolling
+    val sdf = remember { SimpleDateFormat("EEEE, MMM dd", Locale.getDefault()) }
+    val dateString = remember(item.date) { sdf.format(Date(item.date)) }
 
     Card(
         modifier = Modifier

@@ -129,7 +129,6 @@ class NutritionViewModel @Inject constructor(
                 userHeight = height,
                 userWeight = weight,
                 gender = gender,
-                dietType = "Balanced",
                 goalPace = nutritionStrategy,
                 weeklyWorkoutDays = 4,
                 avgWorkoutDurationMins = 60

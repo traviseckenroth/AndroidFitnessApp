@@ -1,14 +1,12 @@
 package com.example.myapplication.ui.profile
 
 import android.app.Application
-import android.util.Log
 import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.repository.HealthConnectManager
-import com.example.myapplication.data.repository.NutritionRepository
 import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
@@ -43,7 +41,6 @@ private data class AiUsage(
 
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
-    private val nutritionRepository: NutritionRepository,
     private val executionRepository: WorkoutExecutionRepository,
     private val userPrefs: UserPreferencesRepository,
     private val healthConnectManager: HealthConnectManager,
@@ -132,7 +129,7 @@ class ProfileViewModel @Inject constructor(
     ) {
         viewModelScope.launch {
             // We pass empty strings for the removed activity/pace variables to satisfy the repo signature
-            userPrefs.saveProfile(h, w, a, g, "", bf, d, "")
+            userPrefs.saveProfile(h, w, a, g, bf, d, "")
         }
     }
 

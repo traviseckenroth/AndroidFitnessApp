@@ -7,15 +7,9 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
-import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.navigation.compose.currentBackStackEntryAsState
-import com.example.myapplication.ui.navigation.*
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -25,11 +19,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.navigation.NavController
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -52,8 +46,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.NavController
+import androidx.navigation.compose.currentBackStackEntryAsState
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
+import com.example.myapplication.ui.navigation.*
 import com.example.myapplication.ui.theme.AmrapOrange
 import com.example.myapplication.ui.theme.EmomPink
 import com.example.myapplication.ui.theme.SuccessGreen
@@ -61,7 +58,7 @@ import com.example.myapplication.util.AutoCoachState
 import com.example.myapplication.util.PlateCalculator
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActiveWorkoutScreen(
     workoutId: Long,
@@ -92,11 +89,10 @@ fun ActiveWorkoutScreen(
     val totalEstimatedTime by viewModel.totalEstimatedTime.collectAsState()
 
     var showAddExerciseDialog by remember { mutableStateOf(false) }
-
     var showBleDialog by remember { mutableStateOf(false) }
     var isPocketModeActive by remember { mutableStateOf(false) }
-    val workoutListState = rememberLazyListState()
 
+    val workoutListState = rememberLazyListState()
     val progress by viewModel.workoutProgress.collectAsState()
 
     var permissionsGranted by remember {
@@ -161,22 +157,21 @@ fun ActiveWorkoutScreen(
             }
         )
     }
-// FIXED: Explicitly added import and ensured types are inferable
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
 
-    // Observe the saved state handle result with explicit type
-    val selectedExerciseId: State<Long?> = navBackStackEntry?.savedStateHandle
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val savedStateHandle = navBackStackEntry?.savedStateHandle
+    val selectedExerciseId by savedStateHandle
         ?.getStateFlow<Long?>("selected_exercise_id", null)
         ?.collectAsState() ?: remember { mutableStateOf(null) }
 
     // REACT TO THE SELECTION
-    LaunchedEffect(selectedExerciseId.value) {
-        selectedExerciseId.value?.let { id ->
+    LaunchedEffect(selectedExerciseId) {
+        selectedExerciseId?.let { id ->
             viewModel.addExercise(id)
-            // Clear the result immediately
-            navBackStackEntry?.savedStateHandle?.remove<Long>("selected_exercise_id")
+            savedStateHandle?.remove<Long>("selected_exercise_id")
         }
     }
+
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
@@ -240,7 +235,7 @@ fun ActiveWorkoutScreen(
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
                     )
                     LinearProgressIndicator(
-                        progress = progress,
+                        progress = { progress },
                         modifier = Modifier.fillMaxWidth().height(2.dp),
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = Color.Transparent
@@ -249,8 +244,7 @@ fun ActiveWorkoutScreen(
             },
             floatingActionButton = {
                 FloatingActionButton(
-                    onClick = {
-                        navController.navigate(ExerciseList(isPickerMode = true))},
+                    onClick = { navController.navigate(ExerciseList(isPickerMode = true)) },
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     shape = CircleShape,
@@ -279,7 +273,7 @@ fun ActiveWorkoutScreen(
                         state = state,
                         viewModel = viewModel,
                         haptic = haptic,
-                        modifier = Modifier.animateItemPlacement()
+                        modifier = Modifier.animateItem() // FIX: Replaced deprecated animateItemPlacement
                     )
                 }
 
@@ -361,7 +355,6 @@ fun getTierName(tier: Int): String {
 }
 
 @Composable
-@OptIn(ExperimentalLayoutApi::class)
 fun ExerciseCard(
     state: ExerciseState,
     viewModel: ActiveSessionViewModel,
@@ -370,12 +363,7 @@ fun ExerciseCard(
 ) {
     val exercise = state.exercise
     val isBodyweight = exercise.equipment?.contains("Bodyweight", ignoreCase = true) == true
-    val isRunning = exercise.name.contains("run", ignoreCase = true) ||
-            exercise.name.contains("sprint", ignoreCase = true) ||
-            exercise.name.contains("treadmill", ignoreCase = true) ||
-            exercise.movementPattern.contains("cardio", ignoreCase = true)
 
-    val allSetsCompleted = state.sets.isNotEmpty() && state.sets.all { it.isCompleted }
     var showSwapDialog by remember { mutableStateOf(false) }
     var showDescriptionDialog by remember { mutableStateOf(false) }
 
@@ -384,7 +372,6 @@ fun ExerciseCard(
     val isEMOM = state.sets.any { it.isEMOM } || exercise.name.contains("EMOM", true)
     val isCircuit = isAMRAP || isEMOM
 
-    // FIX: Force hide LBS and RPE completely if it's a circuit
     val hideLbs = isBodyweight || isCircuit
     val hideRpe = isCircuit || isBodyweight
 
@@ -407,7 +394,7 @@ fun ExerciseCard(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Icon(
-                            imageVector = Icons.Default.HelpOutline,
+                            imageVector = Icons.AutoMirrored.Filled.HelpOutline, // FIX: Updated to AutoMirrored
                             contentDescription = "Description",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(16.dp).clickable { showDescriptionDialog = true }
@@ -975,7 +962,13 @@ fun BleDeviceDialog(foundDevices: List<BluetoothDevice>, onDismiss: () -> Unit, 
             LazyColumn {
                 items(foundDevices) { device ->
                     ListItem(
-                        headlineContent = { Text(try { device.name ?: "Unknown" } catch (e: SecurityException) { "Unknown" }, color = MaterialTheme.colorScheme.onSurface) },
+                        headlineContent = {
+                            Text(
+                                // FIX: Updated exception parameter to `_` to suppress unused parameter warning
+                                try { device.name ?: "Unknown" } catch (_: SecurityException) { "Unknown" },
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        },
                         modifier = Modifier.clickable { onConnect(device) }
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp)
@@ -988,31 +981,6 @@ fun BleDeviceDialog(foundDevices: List<BluetoothDevice>, onDismiss: () -> Unit, 
         containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(16.dp)
     )
-}
-
-@Composable
-fun AMRAPPill(isAMRAP: Boolean, timeRemaining: Int?) {
-    if (isAMRAP) {
-        Surface(
-            color = AmrapOrange, // High-visibility orange for AMRAP
-            shape = RoundedCornerShape(8.dp),
-            modifier = Modifier.padding(vertical = 4.dp)
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Default.Timer, "AMRAP", tint = Color.White, modifier = Modifier.size(14.dp))
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    text = "AMRAP: ${timeRemaining ?: "PUSH TO FAILURE"}",
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Black
-                )
-            }
-        }
-    }
 }
 
 @Composable

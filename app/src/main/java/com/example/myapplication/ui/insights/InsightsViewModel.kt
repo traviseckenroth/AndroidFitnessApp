@@ -14,6 +14,8 @@ import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.repository.PlanRepository
 import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -22,6 +24,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -34,6 +37,7 @@ import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import kotlinx.coroutines.flow.first
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class InsightsViewModel @Inject constructor(
     private val planRepository: PlanRepository,
@@ -58,7 +62,7 @@ class InsightsViewModel @Inject constructor(
 
     // 3. Feed of Content
     private val _rawSubscribedContent = workoutDao.getSubscribedContent()
-    
+
     val filteredContent: StateFlow<List<ContentSourceEntity>> = combine(
         _rawSubscribedContent,
         _uiState.map { it.selectedKnowledgeCategory }.distinctUntilChanged()
@@ -68,7 +72,9 @@ class InsightsViewModel @Inject constructor(
             "Videos" -> content.filter { it.mediaType == "Video" }
             else -> content
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }
+        .flowOn(Dispatchers.Default) // <--- OFF-LOAD FILTERING TO BACKGROUND
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _recommendations = MutableStateFlow<List<String>>(emptyList())
     val recommendations: StateFlow<List<String>> = _recommendations.asStateFlow()
@@ -99,9 +105,8 @@ class InsightsViewModel @Inject constructor(
                 val max1RMForDay = sets.maxOf { set ->
                     val isBodyweight = set.exercise.equipment?.contains("Bodyweight", ignoreCase = true) == true
 
-                    // FIX: Use actual bodyweight for bodyweight exercises instead of the 45lb DB default
                     val weight = if (isBodyweight) {
-                        if (bodyWeight > 0) bodyWeight.toFloat() else 150f // Fallback to 150 if not set
+                        if (bodyWeight > 0) bodyWeight.toFloat() else 150f
                     } else {
                         set.completedWorkout.weight.toFloat()
                     }
@@ -112,8 +117,8 @@ class InsightsViewModel @Inject constructor(
                     weight * (1 + (reps / 30.0f))
                 }
                 Pair(dateMillis, max1RMForDay)
-            }.sortedBy { it.first } // Ensure chronologically sorted for the graph
-        }
+            }.sortedBy { it.first }
+        }.flowOn(Dispatchers.Default) // <--- OFF-LOAD HEAVY MATH/DATES TO BACKGROUND
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
@@ -121,7 +126,7 @@ class InsightsViewModel @Inject constructor(
         observeWorkoutHistory()
         observeSubscriptions()
         observeContentForBriefing()
-        
+
         // Sync exercise stats into UI State
         viewModelScope.launch {
             selectedExerciseStats.collect { history ->
@@ -155,6 +160,7 @@ class InsightsViewModel @Inject constructor(
                 executionRepository.getCompletedWorkoutsRecent(thirtyDaysAgo),
                 workoutDao.getCompletedWorkouts()
             ) { completedSets, completedSessions ->
+
                 // 1. Current Block Muscle Focus (30 Days)
                 val volumeByMuscle = completedSets
                     .filter { it.exercise.muscleGroup != null }
@@ -200,9 +206,8 @@ class InsightsViewModel @Inject constructor(
                 }.map { (localDate, sets) ->
                     val distinctExercises = sets.map { it.exercise.name }.distinct()
                     val sessionDate = localDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                    
-                    // Match with DailyWorkoutEntity to get the actual workoutId for navigation
-                    val matchedSession = completedSessions.find { 
+
+                    val matchedSession = completedSessions.find {
                         Instant.ofEpochMilli(it.scheduledDate).atZone(ZoneId.systemDefault()).toLocalDate() == localDate
                     }
 
@@ -233,31 +238,35 @@ class InsightsViewModel @Inject constructor(
                 val finalFatigueMap = fatigueMap.mapValues { it.value.coerceIn(0f, 1f) }
 
                 Triple(Triple(volumeByMuscle, tonnage, topExercises), groupedHistory, finalFatigueMap)
-            }.collect { (tripleStats, groupedHistory, finalFatigueMap) ->
-                val (volumeByMuscle, tonnage, topExercises) = tripleStats
-                _uiState.update { state ->
-                    val newSelected = if (state.selectedExercise == null) topExercises.firstOrNull() else state.selectedExercise
-                    if (newSelected != null && _selectedExerciseId.value == null) {
-                        _selectedExerciseId.value = newSelected.exerciseId
-                    }
-
-                    state.copy(
-                        isLoading = false,
-                        muscleVolumeDistribution = volumeByMuscle,
-                        weeklyTonnage = tonnage,
-                        topExercises = topExercises,
-                        recentWorkouts = groupedHistory,
-                        muscleFatigue = finalFatigueMap
-                    )
-                }
             }
+                .flowOn(Dispatchers.Default) // <--- CRITICAL FIX: MOVES HEAVY MATH OFF THE UI THREAD
+                .collect { (tripleStats, groupedHistory, finalFatigueMap) ->
+                    val (volumeByMuscle, tonnage, topExercises) = tripleStats
+                    _uiState.update { state ->
+                        val newSelected = if (state.selectedExercise == null) topExercises.firstOrNull() else state.selectedExercise
+                        if (newSelected != null && _selectedExerciseId.value == null) {
+                            _selectedExerciseId.value = newSelected.exerciseId
+                        }
+
+                        state.copy(
+                            isLoading = false,
+                            muscleVolumeDistribution = volumeByMuscle,
+                            weeklyTonnage = tonnage,
+                            topExercises = topExercises,
+                            recentWorkouts = groupedHistory,
+                            muscleFatigue = finalFatigueMap
+                        )
+                    }
+                }
         }
 
         viewModelScope.launch {
-            executionRepository.getLifetimeMuscleVolume().collect { aggregations ->
-                val lifetimeMap = aggregations.associate { it.muscleGroup to it.totalVolume }
-                _uiState.update { it.copy(lifetimeMuscleVolume = lifetimeMap) }
-            }
+            executionRepository.getLifetimeMuscleVolume()
+                .flowOn(Dispatchers.Default)
+                .collect { aggregations ->
+                    val lifetimeMap = aggregations.associate { it.muscleGroup to it.totalVolume }
+                    _uiState.update { it.copy(lifetimeMuscleVolume = lifetimeMap) }
+                }
         }
     }
 
@@ -266,6 +275,7 @@ class InsightsViewModel @Inject constructor(
             subscriptions
                 .map { it.map { s -> s.tagName }.toSet() }
                 .distinctUntilChanged()
+                .flowOn(Dispatchers.Default)
                 .collectLatest { tagSet ->
                     val names = tagSet.toList()
                     val suggestions = bedrockClient.getInterestRecommendations(names)
@@ -288,24 +298,26 @@ class InsightsViewModel @Inject constructor(
                 _rawSubscribedContent.map { it.size }.distinctUntilChanged()
             ) { interestTags, workoutTitle, contentSize ->
                 Triple(interestTags, workoutTitle, contentSize)
-            }.collectLatest { (interestTags, workoutTitle, contentSize) ->
-                if (interestTags.isEmpty()) {
-                    _uiState.update { it.copy(knowledgeBriefing = "Follow your favorite sports or athletes to get a daily intelligence briefing.") }
-                    return@collectLatest
-                }
+            }
+                .flowOn(Dispatchers.Default)
+                .collectLatest { (interestTags, workoutTitle, contentSize) ->
+                    if (interestTags.isEmpty()) {
+                        _uiState.update { it.copy(knowledgeBriefing = "Follow your favorite sports or athletes to get a daily intelligence briefing.") }
+                        return@collectLatest
+                    }
 
-                val interestList = interestTags.toList()
-                val cached = contentRepository.getCachedBriefing(interestList, workoutTitle)
-                
-                if (cached != null) {
-                    _uiState.update { it.copy(knowledgeBriefing = cached) }
-                } else {
-                    val currentContent = _rawSubscribedContent.first()
-                    if (currentContent.isNotEmpty()) {
-                        generateKnowledgeBriefing(currentContent, interestList, workoutTitle)
+                    val interestList = interestTags.toList()
+                    val cached = contentRepository.getCachedBriefing(interestList, workoutTitle)
+
+                    if (cached != null) {
+                        _uiState.update { it.copy(knowledgeBriefing = cached) }
+                    } else {
+                        val currentContent = _rawSubscribedContent.first()
+                        if (currentContent.isNotEmpty()) {
+                            generateKnowledgeBriefing(currentContent, interestList, workoutTitle)
+                        }
                     }
                 }
-            }
         }
     }
 
@@ -315,7 +327,7 @@ class InsightsViewModel @Inject constructor(
         workoutTitle: String?
     ) {
         if (_uiState.value.isBriefingLoading) return
-        
+
         viewModelScope.launch {
             _uiState.update { it.copy(isBriefingLoading = true) }
             val briefing = bedrockClient.generateKnowledgeBriefing(content.take(10), workoutTitle)
@@ -326,8 +338,8 @@ class InsightsViewModel @Inject constructor(
 
     fun forceRefreshBriefing() {
         viewModelScope.launch {
-             val content = _rawSubscribedContent.first()
-             generateKnowledgeBriefing(content, subscriptions.value.map { it.tagName }, dailyWorkout.value?.title)
+            val content = _rawSubscribedContent.first()
+            generateKnowledgeBriefing(content, subscriptions.value.map { it.tagName }, dailyWorkout.value?.title)
         }
     }
 

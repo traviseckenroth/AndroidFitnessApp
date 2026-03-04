@@ -124,7 +124,7 @@ class UserPreferencesRepository @Inject constructor(
             }
         }
     }
-    suspend fun saveProfile(h: Double, w: Double, a: Int, g: String, act: String, bf: Double?, d: String, p: String) {
+    suspend fun saveProfile(h: Double, w: Double, a: Int, g: String, bf: Double?, d: String, p: String) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.USER_HEIGHT] = h
             preferences[PreferencesKeys.USER_WEIGHT] = w

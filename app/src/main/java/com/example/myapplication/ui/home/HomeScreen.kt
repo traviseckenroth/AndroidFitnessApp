@@ -343,7 +343,7 @@ fun FormaScoreSection(formaScore: FormaScore?) {
         ) {
             Box(contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(
-                    progress = formaScore.score / 100f,
+                    progress = { formaScore.score / 100f },
                     modifier = Modifier.size(64.dp),
                     color = formaScore.color,
                     strokeWidth = 6.dp,
@@ -368,7 +368,7 @@ fun FormaScoreSection(formaScore: FormaScore?) {
                         tint = formaScore.color,
                         modifier = Modifier.size(16.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(6.6.dp))
                     Text(
                         text = "FORMA READINESS: ${formaScore.title.uppercase()}",
                         style = MaterialTheme.typography.labelMedium,
@@ -734,7 +734,7 @@ fun RestDayRecoveryCard(
             Spacer(modifier = Modifier.height(24.dp))
 
             if (isGenerating) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = FormaBlue)
+                LinearProgressIndicator(progress = { 0f }, modifier = Modifier.fillMaxWidth(), color = FormaBlue)
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(
@@ -930,7 +930,7 @@ fun WorkoutCard(
             progress?.let {
                 Spacer(modifier = Modifier.height(20.dp))
                 LinearProgressIndicator(
-                    progress = it.percentage,
+                    progress = { it.percentage },
                     modifier = Modifier.fillMaxWidth().height(6.dp),
                     color = accentColor,
                     trackColor = accentColor.copy(alpha = 0.1f),

@@ -58,7 +58,6 @@ class AutoCoachEngine @Inject constructor(
         onSetCompleted: (WorkoutSetEntity) -> Unit,
         onStartTimer: (Long, Boolean) -> Unit,
         onExtendTimer: ((Long) -> Unit)? = null,
-        historicalData: Map<Long, String> = emptyMap(),
         onWorkoutCompleted: (() -> Unit)? = null
     ) {
         if (_state.value != AutoCoachState.OFF) return
@@ -148,7 +147,7 @@ class AutoCoachEngine @Inject constructor(
                             pushContextAndSpeak(successPrompt)
                         }
 
-                        listenAndRespond(set, exercise, weight, onUpdateReps, onUpdateWeight, onExtendTimer)
+                        listenAndRespond(set, exercise, weight, onUpdateWeight, onExtendTimer)
                         onSetCompleted(set)
 
                         if (index < sets.lastIndex) {
@@ -158,7 +157,8 @@ class AutoCoachEngine @Inject constructor(
                 }
 
                 pushContextAndSpeak("The workout is officially complete! Give a very quick, warm congratulations and ask how the session felt overall.")
-                listenAndRespond(exercises.last().second.last(), exercises.last().first, 0f, onUpdateReps, onUpdateWeight, onExtendTimer)
+                listenAndRespond(exercises.last().second.last(), exercises.last().first, 0f,
+                    onUpdateWeight, onExtendTimer)
 
                 pushContextAndSpeak("Awesome work today. Take care and I'll see you at our next session!")
                 _state.value = AutoCoachState.OFF
@@ -182,7 +182,6 @@ class AutoCoachEngine @Inject constructor(
         set: WorkoutSetEntity,
         exercise: ExerciseEntity,
         weight: Float,
-        onUpdateReps: (WorkoutSetEntity, String) -> Unit,
         onUpdateWeight: (WorkoutSetEntity, String) -> Unit,
         onExtendTimer: ((Long) -> Unit)?
     ) {

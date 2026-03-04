@@ -15,7 +15,6 @@ import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.remote.BedrockClient
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.local.MemoryDao
-import com.example.myapplication.data.local.UserMemoryEntity
 import com.example.myapplication.data.repository.HealthConnectManager
 import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import com.example.myapplication.data.repository.WorkoutSummaryResult
@@ -576,7 +575,6 @@ class ActiveSessionViewModel @Inject constructor(
                     onSetCompleted = { set -> updateSetCompletion(set, true) },
                     onStartTimer = { exerciseId, isRest -> startSetTimer(exerciseId, isRest) },
                     onExtendTimer = { extraTimeMs -> extendSetTimer(extraTimeMs) },
-                    historicalData = historyMap,
                     onWorkoutCompleted = { finishWorkout(_workoutId.value) }
                 )
             }

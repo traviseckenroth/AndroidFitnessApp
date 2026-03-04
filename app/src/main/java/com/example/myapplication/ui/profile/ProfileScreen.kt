@@ -19,7 +19,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import com.example.myapplication.ui.navigation.Settings
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -33,7 +32,6 @@ import kotlinx.coroutines.delay
 @Composable
 fun ProfileScreen(
     viewModel: ProfileViewModel = hiltViewModel(),
-    onBack: () -> Unit,
     onNavigate: (Any) -> Unit // CHANGED from specific lambda to generic Any handler
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -138,7 +136,7 @@ fun ProfileScreen(
 
                         val progress = uiState.aiRequestsToday.toFloat() / uiState.aiDailyLimit.toFloat()
                         LinearProgressIndicator(
-                            progress = progress.coerceIn(0f, 1f),
+                            progress = { progress.coerceIn(0f, 1f) },
                             modifier = Modifier.fillMaxWidth().height(8.dp),
                             color = if (progress > 0.8f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                             trackColor = MaterialTheme.colorScheme.surfaceVariant

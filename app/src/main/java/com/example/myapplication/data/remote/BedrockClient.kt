@@ -13,7 +13,6 @@ import com.example.myapplication.BuildConfig
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
 import kotlinx.serialization.json.decodeFromJsonElement
 import org.json.JSONObject
-import okhttp3.internal.http2.StreamResetException
 import kotlinx.coroutines.CancellationException
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.UserMemoryEntity
@@ -28,11 +27,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.EncodeDefault
 import java.util.Date
 import kotlinx.coroutines.flow.first
-import java.io.IOException
-import javax.net.ssl.SSLException
+import kotlinx.serialization.ExperimentalSerializationApi
 
 // --- AI RESPONSE DATA MODELS ---
 @Serializable
@@ -211,6 +208,7 @@ data class StreamUsage(
 )
 
 // --- CONFIGURATION ---
+@OptIn(ExperimentalSerializationApi::class)
 private val jsonConfig = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
@@ -334,13 +332,11 @@ class BedrockClient @Inject constructor(
         workoutHistory: List<CompletedWorkoutWithExercise>,
         allExercises: List<ExerciseEntity>, // <-- Pass ALL exercises, not filtered
         excludedEquipment: Set<String>,
-        availableExercises: List<ExerciseEntity>, // Kept for signature compatibility
+        // Kept for signature compatibility
         userAge: Int,
         userHeight: Double,
         userWeight: Double,
-        block: Int = 1,
-        sleepHours: Double = 8.0,
-        onThoughtReceived: (String) -> Unit = {}
+        block: Int = 1
     ): GeneratedPlanResponse = withContext(Dispatchers.Default) {
 
         try {
@@ -521,8 +517,7 @@ class BedrockClient @Inject constructor(
 
     suspend fun generateCoachingCue(
         exerciseName: String,
-        issue: String,
-        repCount: Int
+        issue: String
     ): String {
         val response = coachInteraction(
             currentWorkout = "- $exerciseName",
@@ -537,7 +532,6 @@ class BedrockClient @Inject constructor(
         userHeight: Double,
         userWeight: Double,
         gender: String,
-        dietType: String,
         goalPace: String,
         weeklyWorkoutDays: Int,
         avgWorkoutDurationMins: Int
@@ -591,7 +585,6 @@ class BedrockClient @Inject constructor(
 
     suspend fun generateStretchingFlow(
         currentGoal: String,
-        history: List<CompletedWorkoutWithExercise>,
         availableExercises: List<ExerciseEntity>
     ): GeneratedPlanResponse = withContext(Dispatchers.Default) {
         val exerciseList = availableExercises.joinToString("\n") { "- ${it.name}" }
@@ -710,7 +703,6 @@ class BedrockClient @Inject constructor(
 
     suspend fun generateAccessoryWorkout(
         currentGoal: String,
-        history: List<CompletedWorkoutWithExercise>,
         availableExercises: List<ExerciseEntity>
     ): GeneratedPlanResponse = withContext(Dispatchers.Default) {
         val exerciseList = availableExercises.joinToString("\n") { "- ${it.name} (Muscle: ${it.muscleGroup})" }
@@ -1168,9 +1160,7 @@ class BedrockClient @Inject constructor(
     private suspend fun doInvokeClaudeStreaming(
         systemPrompt: String,
         userPrompt: String,
-        modelId: String,
-        thinkingBudget: Int = 0,
-        onThoughtReceived: (String) -> Unit = {}
+        modelId: String
     ): String {
         Log.d("BedrockClient", "InvokeClaudeStreaming System Instruction: $systemPrompt")
         enforceLimit()

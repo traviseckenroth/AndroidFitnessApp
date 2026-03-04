@@ -34,7 +34,7 @@ object AppModule {
         // Initial database check, passphrase retrieval, and verification involve disk I/O 
         // which can happen on the main thread during DI.
         val oldPolicy = StrictMode.allowThreadDiskReads()
-        val oldWritePolicy = StrictMode.allowThreadDiskWrites()
+
         try {
             val passphrase = passphraseManager.getPassphrase()
             
@@ -74,7 +74,7 @@ object AppModule {
                 dbName
             )
                 .openHelperFactory(factory)
-                .fallbackToDestructiveMigration()
+                .fallbackToDestructiveMigration(true)
                 .build()
         } finally {
             StrictMode.setThreadPolicy(oldPolicy)

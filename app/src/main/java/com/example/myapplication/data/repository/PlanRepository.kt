@@ -3,7 +3,6 @@ package com.example.myapplication.data.repository
 
 import android.util.Log
 import com.example.myapplication.data.Exercise
-import com.example.myapplication.data.NutritionPlan
 import com.example.myapplication.data.WeeklyPlan
 import com.example.myapplication.data.WorkoutPlan
 import com.example.myapplication.data.local.DailyWorkoutEntity
@@ -16,10 +15,8 @@ import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.remote.BedrockClient
 import com.example.myapplication.data.remote.GeneratedDay
 import com.example.myapplication.data.remote.GeneratedExercise
-import com.example.myapplication.data.remote.RemoteNutritionPlan
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
-import kotlinx.serialization.json.Json
 import java.util.Calendar
 import java.util.Locale
 import javax.inject.Inject
@@ -90,13 +87,10 @@ class PlanRepository @Inject constructor(
             workoutHistory = workoutHistory,
             allExercises = allExercises,             // <-- ADDED THIS
             excludedEquipment = excludedEquipment,
-            availableExercises = availableExercises,
             userAge = age,
             userHeight = finalHeight,
             userWeight = finalWeight,
-            block = block,
-            sleepHours = if (sleepHours > 0) sleepHours else 8.0,
-            onThoughtReceived = onThoughtReceived
+            block = block
         )
 
         val startDate = if (block > 1 && previousPlan != null) {

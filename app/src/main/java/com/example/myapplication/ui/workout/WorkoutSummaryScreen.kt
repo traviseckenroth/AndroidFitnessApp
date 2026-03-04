@@ -1,4 +1,4 @@
-package com.example.myapplication.ui.summary
+package com.example.myapplication.ui.workout
 
 import android.content.Context
 import android.content.Intent
@@ -38,7 +38,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.repository.WorkoutSummaryResult
 import com.example.myapplication.ui.theme.FormaBlue
 import com.example.myapplication.ui.theme.FormaTeal
-import com.example.myapplication.ui.workout.ActiveSessionViewModel
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream

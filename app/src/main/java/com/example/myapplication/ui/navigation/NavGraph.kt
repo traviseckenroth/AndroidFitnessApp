@@ -8,7 +8,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -31,7 +30,7 @@ import com.example.myapplication.ui.plan.ManualPlanScreen
 import com.example.myapplication.ui.plan.PlanViewModel
 import com.example.myapplication.ui.profile.ProfileScreen
 import com.example.myapplication.ui.settings.SettingsScreen
-import com.example.myapplication.ui.summary.WorkoutSummaryScreen
+import com.example.myapplication.ui.workout.WorkoutSummaryScreen
 import com.example.myapplication.ui.warmup.WarmUpScreen
 import com.example.myapplication.ui.workout.ActiveSessionViewModel
 import com.example.myapplication.ui.workout.ActiveWorkoutScreen
@@ -105,7 +104,6 @@ fun NavGraph(
 
         composable<Profile> {
             ProfileScreen(
-                onBack = { navController.popBackStack() },
                 onNavigate = { route -> navController.navigate(route) }
             )
         }
@@ -125,8 +123,7 @@ fun NavGraph(
         composable<GeneratePlan> {
             GeneratePlanScreen(
                 viewModel = planViewModel,
-                onManualCreateClick = { navController.navigate(ManualPlan) },
-                onPlanGenerated = { navController.navigate(Home) { popUpTo(Home) { inclusive = true } } }
+                onManualCreateClick = { navController.navigate(ManualPlan) }
             )
         }
 

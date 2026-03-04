@@ -88,7 +88,6 @@ class NutritionRepository @Inject constructor(
             userHeight = height,
             userWeight = weight,
             gender = gender,
-            dietType = diet,
             goalPace = pace,
             weeklyWorkoutDays = weeklyWorkoutDays,
             avgWorkoutDurationMins = 60

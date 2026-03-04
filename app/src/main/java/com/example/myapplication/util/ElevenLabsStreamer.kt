@@ -32,14 +32,14 @@ class ElevenLabsStreamer @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val client = OkHttpClient()
-    
+
     @Volatile
     private var webSocket: WebSocket? = null
     private val apiKey = BuildConfig.ELEVENLABS_API_KEY
-    
+
     // Eric Voice ID
-    private val voiceId = "xctasy8XvGp2cVO9HL9k" 
-    
+    private val voiceId = "xctasy8XvGp2cVO9HL9k"
+
     @Volatile
     private var audioTrack: AudioTrack? = null
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -60,7 +60,7 @@ class ElevenLabsStreamer @Inject constructor(
                     delay(50)
                     track = audioTrack
                 }
-                
+
                 try {
                     if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
                         track.play()
@@ -129,12 +129,14 @@ class ElevenLabsStreamer @Inject constructor(
             .build()
 
         _lastConnectionError = null
+
+        // FIX: Removed the leading underscores from the listener parameters
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(_webSocket: WebSocket, _response: Response) {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.d("AutoCoach", "ElevenLabs WS Opened")
             }
 
-            override fun onMessage(_webSocket: WebSocket, text: String) {
+            override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
                     val json = JSONObject(text)
                     if (json.has("audio") && !json.isNull("audio")) {
@@ -149,14 +151,14 @@ class ElevenLabsStreamer @Inject constructor(
                 }
             }
 
-            override fun onFailure(_webSocket: WebSocket, t: Throwable, _response: Response?) {
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 val errorMsg = t.message ?: "Unknown WS Error"
                 Log.e("AutoCoach", "ElevenLabs WS Failed: $errorMsg")
                 _lastConnectionError = errorMsg
                 this@ElevenLabsStreamer.webSocket = null
             }
 
-            override fun onClosed(_webSocket: WebSocket, _code: Int, _reason: String) {
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.d("AutoCoach", "ElevenLabs WS Closed")
                 this@ElevenLabsStreamer.webSocket = null
             }
@@ -208,9 +210,9 @@ class ElevenLabsStreamer @Inject constructor(
     fun flush() {
         Log.d("AutoCoach", "ElevenLabs: Flushing text buffer")
         webSocket?.send(JSONObject().apply { put("text", "") }.toString())
-        
+
         scope.launch {
-            delay(2000) 
+            delay(2000)
             webSocket?.close(1000, "Generation complete")
             webSocket = null
         }
