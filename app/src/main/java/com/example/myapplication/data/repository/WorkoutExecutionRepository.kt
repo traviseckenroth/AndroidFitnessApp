@@ -71,7 +71,9 @@ class WorkoutExecutionRepository @Inject constructor(
     suspend fun getWorkoutById(workoutId: Long): DailyWorkoutEntity? {
         return workoutDao.getWorkoutById(workoutId)
     }
-
+    suspend fun swapExerciseInFutureWorkouts(oldExerciseId: Long, newExerciseId: Long) {
+        workoutDao.swapExerciseInFutureWorkouts(oldExerciseId, newExerciseId)
+    }
     // --- WRITES ---
     suspend fun updateSet(set: WorkoutSetEntity) = workoutDao.updateSet(set)
 

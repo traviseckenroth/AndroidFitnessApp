@@ -1,6 +1,8 @@
+// app/src/main/java/com/example/myapplication/ui/profile/ProfileScreen.kt
 package com.example.myapplication.ui.profile
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +23,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bed
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Settings
@@ -53,9 +56,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.PermissionController
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.myapplication.data.local.UserMemoryEntity
 import com.example.myapplication.ui.navigation.Settings
 import com.example.myapplication.ui.theme.SuccessGreen
 import kotlinx.coroutines.delay
@@ -64,10 +69,10 @@ import kotlinx.coroutines.delay
 @Composable
 fun ProfileScreen(
     viewModel: ProfileViewModel = hiltViewModel(),
-    onNavigate: (Any) -> Unit // CHANGED from specific lambda to generic Any handler
+    onNavigate: (Any) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
-
+    val limitations by viewModel.activeLimitations.collectAsState()
     var height by remember(uiState.height) { mutableStateOf(uiState.height) }
     var weight by remember(uiState.weight) { mutableStateOf(uiState.weight) }
     var age by remember(uiState.age) { mutableStateOf(uiState.age) }
@@ -104,7 +109,7 @@ fun ProfileScreen(
                     )
                 },
                 actions = {
-                    IconButton(onClick = { onNavigate(Settings) }) { // CHANGED TO OBJECT
+                    IconButton(onClick = { onNavigate(Settings) }) {
                         Icon(
                             imageVector = Icons.Default.Settings,
                             contentDescription = "Settings"
@@ -262,6 +267,14 @@ fun ProfileScreen(
                 }
             }
 
+            // FIX: Wrapped in an item { } block
+            item {
+                LimitationsSection(
+                    limitations = limitations,
+                    onRemove = { viewModel.removeLimitation(it) }
+                )
+            }
+
             item {
                 Text(
                     text = "Biometrics",
@@ -316,6 +329,78 @@ fun ProfileScreen(
                     selected = gender,
                     onSelected = { gender = it }
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun LimitationsSection(
+    limitations: List<UserMemoryEntity>,
+    onRemove: (UserMemoryEntity) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)) {
+        Text(
+            text = "Active Limitations & Exclusions",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = "Exercises the AI is actively avoiding due to injury.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (limitations.isEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            ) {
+                Text(
+                    text = "No active limitations. You are cleared for all exercises.",
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                limitations.forEach { limitation ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = limitation.exerciseName ?: "Unknown Exercise",
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = limitation.note,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            IconButton(onClick = { onRemove(limitation) }) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Clear Limitation",
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }

@@ -15,6 +15,7 @@ import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.remote.BedrockClient
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.local.MemoryDao
+import com.example.myapplication.data.local.UserMemoryEntity
 import com.example.myapplication.data.repository.HealthConnectManager
 import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import com.example.myapplication.data.repository.WorkoutSummaryResult
@@ -379,13 +380,12 @@ class ActiveSessionViewModel @Inject constructor(
         }
     }
 
-    // NEW: Handle a user swiping the set to mark it as not attempted
     fun markSetNotAttempted(set: WorkoutSetEntity) {
         val freshSet = _sets.value.find { it.setId == set.setId } ?: set
 
         val skippedSet = freshSet.copy(
             isCompleted = true,
-            actualReps = 0, // 0 reps denotes not attempted / skipped
+            actualReps = 0,
             actualLbs = freshSet.actualLbs ?: freshSet.suggestedLbs.toFloat(),
             actualRpe = freshSet.actualRpe ?: freshSet.suggestedRpe.toFloat()
         )
@@ -395,7 +395,6 @@ class ActiveSessionViewModel @Inject constructor(
         viewModelScope.launch {
             repository.updateSet(skippedSet)
 
-            // Allow the autoregulation engine to drop weight for subsequent sets
             val isDynamicEnabled = userPrefs.isDynamicAutoregEnabled.first()
             if (isDynamicEnabled) {
                 val exercise = _exerciseStates.value.find { it.exercise.exerciseId == skippedSet.exerciseId }?.exercise
@@ -485,8 +484,37 @@ class ActiveSessionViewModel @Inject constructor(
         }
     }
 
-    fun swapExercise(oldExerciseId: Long, newExerciseId: Long) {
-        viewModelScope.launch { repository.swapExercise(_workoutId.value, oldExerciseId, newExerciseId) }
+    // UPDATED: Swap Exercise with Permanent/Limitation flag
+    fun swapExercise(oldExerciseId: Long, newExerciseId: Long, isPermanent: Boolean = false, oldExerciseName: String = "", newExerciseName: String = "") {
+        viewModelScope.launch {
+            // 1. Always swap for today's active session
+            repository.swapExercise(_workoutId.value, oldExerciseId, newExerciseId)
+
+            if (isPermanent) {
+                // 2. Save limitation to RAG Memory so the AI avoids it in future Block generations
+                try {
+                    val memory = UserMemoryEntity(
+                        timestamp = System.currentTimeMillis(),
+                        category = "Pain",
+                        exerciseName = oldExerciseName,
+                        note = "User cannot perform $oldExerciseName due to an injury or limitation. Substituted with $newExerciseName."
+                    )
+                    memoryDao.insertMemory(memory)
+                    Log.d("ActiveSession", "Saved permanent limitation memory for $oldExerciseName")
+                } catch (e: Exception) {
+                    Log.e("ActiveSession", "Failed to save limitation memory", e)
+                }
+
+                // 3. Update future weeks in the current block
+                try {
+                    // NOTE: If this method does not exist in your repository yet,
+                    // you must add it to your WorkoutExecutionRepository to update future scheduled workouts.
+                    repository.swapExerciseInFutureWorkouts(oldExerciseId, newExerciseId)
+                } catch (e: Exception) {
+                    Log.e("ActiveSession", "swapExerciseInFutureWorkouts needs to be implemented in Repository", e)
+                }
+            }
+        }
     }
 
     fun addSet(exerciseId: Long) {
@@ -743,9 +771,18 @@ class ActiveSessionViewModel @Inject constructor(
                 val alternatives = repository.getBestAlternatives(exerciseToSwap.exercise)
                 if (alternatives.isNotEmpty()) {
                     val bestAlt = alternatives.first()
-                    val coachMsg = "Swapping ${exerciseToSwap.exercise.name} for ${bestAlt.name}. It targets the same muscle groups and fits your plan's tier."
+
+                    // If done via voice, check if they mentioned an injury
+                    val isPermanent = lowerText.contains("pain") || lowerText.contains("hurt") || lowerText.contains("injury") || lowerText.contains("bother")
+
+                    val coachMsg = if (isPermanent) {
+                        "Got it. I've noted the limitation. Swapping ${exerciseToSwap.exercise.name} for ${bestAlt.name} for today and future weeks."
+                    } else {
+                        "Swapping ${exerciseToSwap.exercise.name} for ${bestAlt.name}. It targets the same muscle groups."
+                    }
+
                     addCoachResponse(coachMsg)
-                    swapExercise(exerciseToSwap.exercise.exerciseId, bestAlt.exerciseId)
+                    swapExercise(exerciseToSwap.exercise.exerciseId, bestAlt.exerciseId, isPermanent, exerciseToSwap.exercise.name, bestAlt.name)
                     return true
                 }
             }

@@ -40,7 +40,6 @@ interface WorkoutDao {
     @Query("SELECT * FROM exercises")
     fun getAllExercises(): Flow<List<ExerciseEntity>>
 
-    // Instead of pulling all sets and grouping in Kotlin, do this:
     @Query("""
     SELECT muscleGroup, SUM(weight * reps) as totalVolume 
     FROM completed_workouts 
@@ -262,4 +261,16 @@ interface WorkoutDao {
 
     @Update
     suspend fun updatePlan(plan: WorkoutPlanEntity): Int
+
+    // FIX: Added ': Int' to prevent the JVM Signature V crash
+    @Query("""
+        UPDATE workout_sets 
+        SET exerciseId = :newExerciseId 
+        WHERE exerciseId = :oldExerciseId 
+        AND isCompleted = 0 
+        AND workoutId IN (
+            SELECT workoutId FROM daily_workouts WHERE isCompleted = 0
+        )
+    """)
+    suspend fun swapExerciseInFutureWorkouts(oldExerciseId: Long, newExerciseId: Long): Int
 }

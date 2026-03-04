@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import kotlinx.coroutines.flow.Flow // FIX: Added missing Flow import
 
 @Dao
 interface MemoryDao {
@@ -20,6 +21,10 @@ interface MemoryDao {
     @Query("DELETE FROM user_memories")
     suspend fun deleteAllMemories(): Int
 
+    @Query("SELECT * FROM user_memories WHERE category = 'Pain' ORDER BY timestamp DESC")
+    fun getLimitationsFlow(): Flow<List<UserMemoryEntity>>
+
+    // FIX: Removed the duplicate version of this function
     @Delete
     suspend fun deleteMemory(memory: UserMemoryEntity): Int
 }

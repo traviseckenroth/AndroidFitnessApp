@@ -589,8 +589,8 @@ fun ExerciseCard(
             originalExercise = exercise,
             viewModel = viewModel,
             onDismiss = { setShowSwapDialog(false) },
-            onSwap = { newExerciseId ->
-                viewModel.swapExercise(exercise.exerciseId, newExerciseId)
+            onSwap = { newExerciseId, isPermanent, newName ->
+                viewModel.swapExercise(exercise.exerciseId, newExerciseId, isPermanent, exercise.name, newName)
                 setShowSwapDialog(false)
             }
         )
@@ -679,7 +679,6 @@ fun SetRow(
         )
     }
 
-    // A set is considered skipped/not attempted if it is marked as completed but has 0 reps.
     val isSkipped = set.isCompleted && set.actualReps == 0
 
     val dismissState = rememberSwipeToDismissBoxState(
@@ -687,7 +686,7 @@ fun SetRow(
             if (dismissValue == SwipeToDismissBoxValue.EndToStart) {
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 viewModel.markSetNotAttempted(set)
-                false // Snap back gracefully so the row remains visible but updated
+                false // Snap back gracefully so the row remains visible but visually updated
             } else {
                 false
             }
@@ -697,8 +696,8 @@ fun SetRow(
 
     SwipeToDismissBox(
         state = dismissState,
-        enableDismissFromStartToEnd = false, // Only swipe right-to-left
-        enableDismissFromEndToStart = !set.isCompleted, // Only allow skipping if not already completed
+        enableDismissFromStartToEnd = false,
+        enableDismissFromEndToStart = !set.isCompleted,
         backgroundContent = {
             Box(
                 modifier = Modifier
@@ -722,7 +721,7 @@ fun SetRow(
                 .clip(RoundedCornerShape(8.dp))
                 .background(MaterialTheme.colorScheme.surface)
                 .padding(vertical = 4.dp)
-                .alpha(if (isSkipped) 0.4f else 1f), // Fade out the row if skipped
+                .alpha(if (isSkipped) 0.4f else 1f),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // SET NUMBER
@@ -1031,9 +1030,12 @@ fun BleDeviceDialog(foundDevices: List<BluetoothDevice>, onDismiss: () -> Unit, 
 }
 
 @Composable
-fun SwapExerciseDialog(originalExercise: ExerciseEntity, viewModel: ActiveSessionViewModel, onDismiss: () -> Unit, onSwap: (Long) -> Unit) {
+fun SwapExerciseDialog(originalExercise: ExerciseEntity, viewModel: ActiveSessionViewModel, onDismiss: () -> Unit, onSwap: (Long, Boolean, String) -> Unit) {
     var alternatives by remember { mutableStateOf<List<ExerciseEntity>>(emptyList()) }
     LaunchedEffect(originalExercise) { alternatives = viewModel.getTopAlternatives(originalExercise) }
+
+    var isPermanent by remember { mutableStateOf(false) }
+    var selectedAlt by remember { mutableStateOf<ExerciseEntity?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1046,22 +1048,75 @@ fun SwapExerciseDialog(originalExercise: ExerciseEntity, viewModel: ActiveSessio
             )
         },
         text = {
-            LazyColumn {
-                items(alternatives) { alt ->
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSwap(alt.exerciseId) }
-                            .padding(vertical = 12.dp)
-                    ) {
-                        Text(text = alt.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
-                        Text(text = alt.muscleGroup ?: "", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column {
+                Text("Why are you swapping?", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Reason: Just for today
+                Row(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { isPermanent = false }.padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(selected = !isPermanent, onClick = { isPermanent = false })
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text("Just for today", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                        Text("Equipment unavailable, crowded, etc.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp)
+                }
+
+                // Reason: Permanent / Injury
+                Row(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { isPermanent = true }.padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(selected = isPermanent, onClick = { isPermanent = true })
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text("Injury / Limitation", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                        Text("Save to Profile & update future weeks", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text("Select Alternative:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                LazyColumn(modifier = Modifier.heightIn(max = 250.dp)) {
+                    items(alternatives) { alt ->
+                        val isSelected = selectedAlt?.exerciseId == alt.exerciseId
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                                .clickable { selectedAlt = alt }
+                                .padding(vertical = 12.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(text = alt.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = if(isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
+                                Text(text = alt.muscleGroup ?: "", style = MaterialTheme.typography.labelSmall, color = if(isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (isSelected) {
+                                Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp)
+                    }
                 }
             }
         },
         confirmButton = {
+            Button(
+                onClick = { selectedAlt?.let { alt -> onSwap(alt.exerciseId, isPermanent, alt.name) } },
+                enabled = selectedAlt != null
+            ) { Text("Confirm Swap") }
+        },
+        dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         },
         containerColor = MaterialTheme.colorScheme.surface,

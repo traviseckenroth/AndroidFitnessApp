@@ -1,3 +1,4 @@
+// app/src/main/java/com/example/myapplication/ui/profile/ProfileViewModel.kt
 package com.example.myapplication.ui.profile
 
 import android.app.Application
@@ -5,22 +6,25 @@ import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.local.CompletedWorkoutWithExercise
+import com.example.myapplication.data.local.MemoryDao
+import com.example.myapplication.data.local.UserMemoryEntity
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.repository.HealthConnectManager
 import com.example.myapplication.data.repository.WorkoutExecutionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
-// Helper data classes (Defined strictly in this file)
 private data class Biometrics(
     val userName: String,
     val height: Double,
@@ -44,12 +48,23 @@ class ProfileViewModel @Inject constructor(
     private val executionRepository: WorkoutExecutionRepository,
     private val userPrefs: UserPreferencesRepository,
     private val healthConnectManager: HealthConnectManager,
+    private val memoryDao: MemoryDao,
     private val application: Application
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ProfileUIState())
     val uiState: StateFlow<ProfileUIState> = _uiState.asStateFlow()
     val requiredPermissions = healthConnectManager.permissions
+
+    // FIX: Moved these INSIDE the class
+    val activeLimitations: StateFlow<List<UserMemoryEntity>> = memoryDao.getLimitationsFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun removeLimitation(memory: UserMemoryEntity) {
+        viewModelScope.launch {
+            memoryDao.deleteMemory(memory)
+        }
+    }
 
     init {
         checkHealthConnectStatus()
@@ -128,7 +143,6 @@ class ProfileViewModel @Inject constructor(
         d: String
     ) {
         viewModelScope.launch {
-            // We pass empty strings for the removed activity/pace variables to satisfy the repo signature
             userPrefs.saveProfile(h, w, a, g, bf, d, "")
         }
     }
