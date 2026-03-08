@@ -1,8 +1,10 @@
 package com.example.myapplication.data.remote
 
+import android.util.Log
 import aws.sdk.kotlin.services.cognitoidentity.CognitoIdentityClient
 import aws.sdk.kotlin.services.cognitoidentity.model.GetCredentialsForIdentityRequest
 import aws.sdk.kotlin.services.cognitoidentity.model.GetIdRequest
+import aws.sdk.kotlin.services.cognitoidentity.model.InvalidIdentityPoolConfigurationException
 import aws.smithy.kotlin.runtime.auth.awscredentials.Credentials
 import aws.smithy.kotlin.runtime.auth.awscredentials.CredentialsProvider
 import aws.smithy.kotlin.runtime.collections.Attributes
@@ -18,33 +20,39 @@ class CognitoCredentialsProvider(
     private val region: String
 ) : CredentialsProvider {
 
-    override suspend fun resolve(attributes: Attributes): Credentials {
-        val idToken = authRepository.getIdToken()
-            ?: throw IllegalStateException("User not logged in! Cannot access AWS services.")
-
-        val providerKey = "cognito-idp.${region}.amazonaws.com/${BuildConfig.COGNITO_USER_POOL_ID}"
-        val loginsMap = mapOf(providerKey to idToken)
-
-        // Use a configured engine with explicit timeouts to prevent launch hangs
-        val engine = OkHttpEngine {
-            connectTimeout = 20.seconds
-            socketReadTimeout = 20.seconds
+    private val cognitoClient by lazy {
+        CognitoIdentityClient {
+            region = this@CognitoCredentialsProvider.region
+            httpClient = OkHttpEngine {
+                connectTimeout = 20.seconds
+                socketReadTimeout = 20.seconds
+            }
         }
+    }
 
-        CognitoIdentityClient { 
-            region = this@CognitoCredentialsProvider.region 
-            httpClient = engine
-        }.use { cognito ->
+    override suspend fun resolve(attributes: Attributes): Credentials {
+        return try {
+            val idToken = authRepository.getIdToken()
+            val userPoolId = BuildConfig.COGNITO_USER_POOL_ID
+            
+            val loginsMap = if (!idToken.isNullOrBlank() && !userPoolId.isNullOrBlank() && userPoolId != "null") {
+                val providerKey = "cognito-idp.${region}.amazonaws.com/$userPoolId"
+                mapOf(providerKey to idToken)
+            } else {
+                Log.d("CognitoProvider", "No ID Token found, attempting unauthenticated access.")
+                null
+            }
 
-            // 1. Get Identity ID (Authenticated)
-            val idResponse = cognito.getId(GetIdRequest {
+            // 1. Get Identity ID
+            val idResponse = cognitoClient.getId(GetIdRequest {
                 identityPoolId = this@CognitoCredentialsProvider.identityPoolId
                 logins = loginsMap
             })
-            val myIdentityId = idResponse.identityId
+            val myIdentityId = idResponse.identityId 
+                ?: throw IllegalStateException("Identity ID was null")
 
-            // 2. Get AWS Credentials (Authenticated)
-            val credsResponse = cognito.getCredentialsForIdentity(GetCredentialsForIdentityRequest {
+            // 2. Get AWS Credentials
+            val credsResponse = cognitoClient.getCredentialsForIdentity(GetCredentialsForIdentityRequest {
                 identityId = myIdentityId
                 logins = loginsMap
             })
@@ -52,12 +60,20 @@ class CognitoCredentialsProvider(
             val rawCreds = credsResponse.credentials
                 ?: throw IllegalStateException("No credentials returned from Cognito")
 
-            return Credentials(
+            Credentials(
                 accessKeyId = rawCreds.accessKeyId ?: "",
                 secretAccessKey = rawCreds.secretKey ?: "",
                 sessionToken = rawCreds.sessionToken,
                 expiration = rawCreds.expiration ?: Instant.now()
             )
+        } catch (e: InvalidIdentityPoolConfigurationException) {
+            Log.e("CognitoProvider", "CRITICAL: Identity Pool Configuration Error!")
+            Log.e("CognitoProvider", "Please check AWS Console: Cognito -> Identity Pools -> ${identityPoolId} -> Edit.")
+            Log.e("CognitoProvider", "Ensure both 'Authenticated role' and 'Unauthenticated role' are assigned and have valid Trust Relationships.")
+            throw e
+        } catch (e: Exception) {
+            Log.e("CognitoProvider", "Failed to resolve credentials: ${e.message}", e)
+            throw e
         }
     }
 }

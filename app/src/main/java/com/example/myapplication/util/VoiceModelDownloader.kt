@@ -35,8 +35,7 @@ class VoiceModelDownloader @Inject constructor(
         "encoder-epoch-99-avg-1.onnx",
         "joiner-epoch-99-avg-1.onnx",
         "tokens", 
-        "kokoro-model.onnx", 
-        "kokoro-voices.bin"
+        "kokoro-model/"
     )
 
     private val bucketName = "aicoach-voice-models"
