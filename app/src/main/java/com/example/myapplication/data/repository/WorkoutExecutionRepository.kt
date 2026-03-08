@@ -68,6 +68,49 @@ class WorkoutExecutionRepository @Inject constructor(
         return "Recent $days-day muscle volume: $resultString."
     }
 
+    suspend fun getBestBodyweightAlternative(currentExercise: ExerciseEntity): ExerciseEntity? {
+        val candidates = workoutDao.getBodyweightAlternatives(currentExercise.majorMuscle, currentExercise.exerciseId)
+        return candidates.sortedBy { it.tier }.firstOrNull() // Pick the closest matching tier
+    }
+
+    suspend fun swapToBodyweightAlternative(workoutId: Long, oldExerciseId: Long, newExerciseId: Long) {
+        // 1. Swap the ID in the sets
+        workoutDao.swapExerciseInSets(workoutId, oldExerciseId, newExerciseId)
+
+        // 2. Adjust sets for bodyweight (0 lbs, higher reps baseline)
+        val sets = workoutDao.getSetsForWorkoutList(workoutId).filter { it.exerciseId == newExerciseId }
+        val updatedSets = sets.map {
+            it.copy(
+                suggestedLbs = 0,
+                actualLbs = 0f,
+                suggestedReps = maxOf(15, it.suggestedReps) // Boost reps for Bodyweight
+            )
+        }
+        if (updatedSets.isNotEmpty()) {
+            workoutDao.insertSets(updatedSets)
+        }
+    }
+
+    // Add inside WorkoutExecutionRepository.kt
+    suspend fun swapToHomeAlternative(workoutId: Long, oldExerciseId: Long, newExerciseId: Long, isBodyweight: Boolean) {
+        // Swap the ID in the sets
+        workoutDao.swapExerciseInSets(workoutId, oldExerciseId, newExerciseId)
+
+        if (isBodyweight) {
+            val sets = workoutDao.getSetsForWorkoutList(workoutId).filter { it.exerciseId == newExerciseId }
+            val updatedSets = sets.map {
+                it.copy(
+                    suggestedLbs = 0,
+                    actualLbs = 0f,
+                    suggestedReps = maxOf(15, it.suggestedReps) // Boost reps for Bodyweight
+                )
+            }
+            if (updatedSets.isNotEmpty()) {
+                workoutDao.insertSets(updatedSets)
+            }
+        }
+    }
+
     suspend fun getWorkoutById(workoutId: Long): DailyWorkoutEntity? {
         return workoutDao.getWorkoutById(workoutId)
     }

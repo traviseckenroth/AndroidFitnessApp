@@ -6,7 +6,7 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.ksp)
-    alias(libs.plugins.kotlin.serialization) version "2.0.0"
+    alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.hilt.android)
 
@@ -53,7 +53,8 @@ android {
     }
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true // Removes unused code
+            isShrinkResources = true // Removes unused images/layouts
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -98,43 +99,49 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.compose.material.icons)
-    implementation("org.jsoup:jsoup:1.17.2")
+    implementation("org.jsoup:jsoup:1.22.1")
 
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
+
+    // --- AWS SDK for Kotlin ---
+    implementation(platform(libs.aws.sdk.kotlin.bom))
+    implementation("aws.sdk.kotlin:s3") // <-- Add this new line
+    implementation(libs.aws.bedrock.runtime)
 
     // --- Architecture & Navigation ---
     implementation(libs.androidx.lifecycle.viewmodel)
     implementation(libs.androidx.navigation.compose)
-    implementation("androidx.navigation:navigation-compose:2.8.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+    implementation("androidx.navigation:navigation-compose:2.9.7")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
     implementation("com.google.firebase:firebase-firestore")
 
     // --- Room Database ---
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
-    
+
     // --- Database Security ---
     implementation(libs.android.database.sqlcipher)
     implementation(libs.androidx.security.crypto)
 
     // --- Biometric Authentication ---
     implementation(libs.androidx.biometric)
+    implementation(libs.androidx.concurrent.futures)
 
     // --- Hilt (Dependency Injection) ---
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.androidx.hilt.navigation.compose)
-    implementation("androidx.hilt:hilt-work:1.2.0")
-    ksp("androidx.hilt:hilt-compiler:1.2.0")
+    implementation("androidx.hilt:hilt-work:1.3.0")
+    ksp("androidx.hilt:hilt-compiler:1.3.0")
 
     // --- WorkManager ---
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation("androidx.work:work-runtime-ktx:2.11.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation(files("libs/sherpa-onnx-1.12.26.aar"))
     // --- Health Connect ---
-    implementation("androidx.health.connect:connect-client:1.1.0-alpha07")
+    implementation("androidx.health.connect:connect-client:1.1.0")
 
     // --- AWS SDK for Kotlin ---
     implementation(platform(libs.aws.sdk.kotlin.bom))
@@ -148,7 +155,7 @@ dependencies {
 
     // --- Preferences ---
     implementation(libs.androidx.datastore.preferences)
-    implementation("com.google.guava:guava:31.1-android")
+    implementation("com.google.guava:guava:33.5.0-android")
 
     // --- Firebase ---
     implementation(platform(libs.firebase.bom))

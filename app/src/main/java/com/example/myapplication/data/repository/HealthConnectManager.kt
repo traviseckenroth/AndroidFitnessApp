@@ -1,10 +1,9 @@
 package com.example.myapplication.data.repository
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.util.Log
+import androidx.core.net.toUri // <-- Added KTX import
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
@@ -71,7 +70,8 @@ class HealthConnectManager @Inject constructor(
     fun promptInstall() {
         if (availability == HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) {
             val intent = Intent(Intent.ACTION_VIEW).apply {
-                data = Uri.parse("market://details?id=com.google.android.apps.healthdata")
+                // FIX: Using the .toUri() KTX extension
+                data = "market://details?id=com.google.android.apps.healthdata".toUri()
                 setPackage("com.android.vending")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
@@ -100,7 +100,6 @@ class HealthConnectManager @Inject constructor(
     suspend fun getLatestHeight(): Double? {
         val client = healthConnectClient ?: return null
         return try {
-            // Using a broader time range and logging all records found
             val request = ReadRecordsRequest(
                 recordType = HeightRecord::class,
                 timeRangeFilter = TimeRangeFilter.after(Instant.EPOCH),
@@ -126,7 +125,6 @@ class HealthConnectManager @Inject constructor(
         }
 
         return try {
-            // 1. Explicitly check permission for Weight
             val granted = client.permissionController.getGrantedPermissions()
             val weightReadPermission = HealthPermission.getReadPermission(WeightRecord::class)
             Log.d("HealthConnect", "getLatestWeight: Checking permission $weightReadPermission. Granted: ${granted.contains(weightReadPermission)}")
@@ -136,7 +134,6 @@ class HealthConnectManager @Inject constructor(
                 return null
             }
 
-            // 2. Query with after(EPOCH) which is standard for "all data"
             val request = ReadRecordsRequest(
                 recordType = WeightRecord::class,
                 timeRangeFilter = TimeRangeFilter.after(Instant.EPOCH),
@@ -159,16 +156,12 @@ class HealthConnectManager @Inject constructor(
         }
     }
 
-    /**
-     * Gets the sleep duration for the last 24 hours.
-     */
     suspend fun getLastNightSleepDuration(): Duration {
         val endTime = Instant.now()
         val startTime = endTime.minus(24, ChronoUnit.HOURS)
         return getDailySleepDuration(startTime, endTime)
     }
 
-    @SuppressLint("RestrictedApi")
     suspend fun writeWorkout(
         workoutId: Long,
         startTime: Instant,
@@ -182,7 +175,6 @@ class HealthConnectManager @Inject constructor(
         }
 
         try {
-            // 1. Create the Session Record (The main wrapper)
             val sessionRecord = ExerciseSessionRecord(
                 startTime = startTime,
                 startZoneOffset = ZoneOffset.UTC,
@@ -190,20 +182,18 @@ class HealthConnectManager @Inject constructor(
                 endZoneOffset = ZoneOffset.UTC,
                 exerciseType = ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING,
                 title = title,
-                metadata = Metadata(clientRecordId = "workout_$workoutId")
+                metadata = Metadata.manualEntry(clientRecordId = "workout_$workoutId")
             )
 
-            // 2. Create Calorie Record (Associated with the session)
             val calorieRecord = ActiveCaloriesBurnedRecord(
                 startTime = startTime,
                 startZoneOffset = ZoneOffset.UTC,
                 endTime = endTime,
                 endZoneOffset = ZoneOffset.UTC,
                 energy = Energy.kilocalories(calories),
-                metadata = Metadata(clientRecordId = "cals_$workoutId")
+                metadata = Metadata.manualEntry(clientRecordId = "cals_$workoutId")
             )
 
-            // 3. Write data
             healthConnectClient?.insertRecords(listOf<Record>(sessionRecord, calorieRecord))
             Log.d("HealthConnect", "Successfully wrote workout: $title")
 

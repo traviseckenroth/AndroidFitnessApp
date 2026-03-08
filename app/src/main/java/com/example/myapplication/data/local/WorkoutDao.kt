@@ -258,7 +258,8 @@ interface WorkoutDao {
 
     @Query("SELECT COUNT(*) FROM daily_workouts WHERE planId = :planId AND isCompleted = 1")
     suspend fun getCompletedWorkoutsCount(planId: Long): Int
-
+    @Query("SELECT * FROM exercises WHERE majorMuscle = :majorMuscle AND equipment LIKE '%Bodyweight%' AND exerciseId != :currentId")
+    suspend fun getBodyweightAlternatives(majorMuscle: String, currentId: Long): List<ExerciseEntity>
     @Update
     suspend fun updatePlan(plan: WorkoutPlanEntity): Int
 

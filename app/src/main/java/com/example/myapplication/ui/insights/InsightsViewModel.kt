@@ -300,7 +300,7 @@ class InsightsViewModel @Inject constructor(
                 Triple(interestTags, workoutTitle, contentSize)
             }
                 .flowOn(Dispatchers.Default)
-                .collectLatest { (interestTags, workoutTitle, contentSize) ->
+                .collectLatest { (interestTags, workoutTitle, _) ->
                     if (interestTags.isEmpty()) {
                         _uiState.update { it.copy(knowledgeBriefing = "Follow your favorite sports or athletes to get a daily intelligence briefing.") }
                         return@collectLatest

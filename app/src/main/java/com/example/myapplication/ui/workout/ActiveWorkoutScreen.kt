@@ -93,10 +93,14 @@ fun ActiveWorkoutScreen(
     val (showBleDialog, setShowBleDialog) = remember { mutableStateOf(false) }
     val (isPocketModeActive, setIsPocketModeActive) = remember { mutableStateOf(false) }
 
+    // NEW: Menu states for At-Home feature
+    val (showTopMenu, setShowTopMenu) = remember { mutableStateOf(false) }
+    val (showHomeWorkoutDialog, setShowHomeWorkoutDialog) = remember { mutableStateOf(false) }
+
     val workoutListState = rememberLazyListState()
     val progress by viewModel.workoutProgress.collectAsState()
 
-    var permissionsGranted by remember {
+    val (permissionsGranted, setPermissionsGranted) = remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED &&
                     (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -109,7 +113,7 @@ fun ActiveWorkoutScreen(
     }
 
     val launcher = rememberLauncherForActivityResult(RequestMultiplePermissions()) { permissions ->
-        permissionsGranted = permissions.values.all { it }
+        setPermissionsGranted(permissions.values.all { it })
     }
 
     LaunchedEffect(Unit) {
@@ -159,13 +163,36 @@ fun ActiveWorkoutScreen(
         )
     }
 
+    // NEW: Home Workout Confirmation Dialog
+    if (showHomeWorkoutDialog) {
+        AlertDialog(
+            onDismissRequest = { setShowHomeWorkoutDialog(false) },
+            title = { Text("Switch to Home Workout?", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface) },
+            text = { Text("This will convert your current routine to bodyweight alternatives that target the same muscles so you can work out without gym equipment.", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.convertToHomeWorkout()
+                    setShowHomeWorkoutDialog(false)
+                }) {
+                    Text("Convert")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { setShowHomeWorkoutDialog(false) }) {
+                    Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
+
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val savedStateHandle = navBackStackEntry?.savedStateHandle
     val selectedExerciseId by savedStateHandle
         ?.getStateFlow<Long?>("selected_exercise_id", null)
         ?.collectAsState() ?: remember { mutableStateOf(null) }
 
-    // REACT TO THE SELECTION
     LaunchedEffect(selectedExerciseId) {
         selectedExerciseId?.let { id ->
             viewModel.addExercise(id)
@@ -231,6 +258,30 @@ fun ActiveWorkoutScreen(
                                     contentDescription = "Open Auto-Coach",
                                     tint = if (autoCoachState != AutoCoachState.OFF) SuccessGreen else MaterialTheme.colorScheme.onSurface
                                 )
+                            }
+
+                            // NEW: More Options Dropdown
+                            Box {
+                                IconButton(onClick = { setShowTopMenu(true) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = "More Options",
+                                        tint = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = showTopMenu,
+                                    onDismissRequest = { setShowTopMenu(false) }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("At-Home Alternative") },
+                                        leadingIcon = { Icon(Icons.Default.Home, contentDescription = null) },
+                                        onClick = {
+                                            setShowTopMenu(false)
+                                            setShowHomeWorkoutDialog(true)
+                                        }
+                                    )
+                                }
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
@@ -1031,8 +1082,8 @@ fun BleDeviceDialog(foundDevices: List<BluetoothDevice>, onDismiss: () -> Unit, 
 
 @Composable
 fun SwapExerciseDialog(originalExercise: ExerciseEntity, viewModel: ActiveSessionViewModel, onDismiss: () -> Unit, onSwap: (Long, Boolean, String) -> Unit) {
-    var alternatives by remember { mutableStateOf<List<ExerciseEntity>>(emptyList()) }
-    LaunchedEffect(originalExercise) { alternatives = viewModel.getTopAlternatives(originalExercise) }
+    val (alternatives, setAlternatives) = remember { mutableStateOf<List<ExerciseEntity>>(emptyList()) }
+    LaunchedEffect(originalExercise) { setAlternatives(viewModel.getTopAlternatives(originalExercise)) }
 
     var isPermanent by remember { mutableStateOf(false) }
     var selectedAlt by remember { mutableStateOf<ExerciseEntity?>(null) }

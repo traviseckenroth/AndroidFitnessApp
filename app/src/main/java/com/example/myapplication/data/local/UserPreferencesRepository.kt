@@ -1,3 +1,4 @@
+// app/src/main/java/com/example/myapplication/data/local/UserPreferencesRepository.kt
 package com.example.myapplication.data.local
 
 import android.content.Context
@@ -33,6 +34,7 @@ data class UserProfile(
     val recoveryScore: Int = 100,
     val gymType: String = "Commercial",
     val excludedEquipment: Set<String> = emptySet(),
+    val homeEquipment: Set<String> = setOf("None (Bodyweight Only)"), // Added to master profile
     val isDynamicAutoregEnabled: Boolean = true,
     val healthConnectOnboardingShown: Boolean = false,
     val userVoiceSid: Int = 0,
@@ -64,6 +66,7 @@ class UserPreferencesRepository @Inject constructor(
         val LAST_AI_REQUEST_DATE = stringPreferencesKey("last_ai_request_date")
         val USER_VOICE_SID = intPreferencesKey("user_voice_sid")
         val DYNAMIC_AUTOREG = booleanPreferencesKey("dynamic_autoregulation_enabled")
+        val HOME_EQUIPMENT = stringSetPreferencesKey("home_equipment") // FIX: Removed 'private'
     }
 
     // --- 2. SINGLE MASTER FLOW ---
@@ -84,12 +87,24 @@ class UserPreferencesRepository @Inject constructor(
             recoveryScore = prefs[PreferencesKeys.RECOVERY_SCORE] ?: 100,
             gymType = prefs[PreferencesKeys.GYM_TYPE] ?: "Commercial",
             excludedEquipment = prefs[PreferencesKeys.EXCLUDED_EQUIPMENT] ?: emptySet(),
+            homeEquipment = prefs[PreferencesKeys.HOME_EQUIPMENT] ?: setOf("None (Bodyweight Only)"),
             isDynamicAutoregEnabled = prefs[PreferencesKeys.DYNAMIC_AUTOREG] ?: true,
             healthConnectOnboardingShown = prefs[PreferencesKeys.HEALTH_CONNECT_ONBOARDING_SHOWN] ?: false,
             userVoiceSid = prefs[PreferencesKeys.USER_VOICE_SID] ?: 0,
             aiDailyLimit = prefs[PreferencesKeys.AI_DAILY_LIMIT] ?: 50,
             aiRequestsToday = requestsToday
         )
+    }
+
+    val userHomeEquipment: Flow<Set<String>> = dataStore.data
+        .map { preferences ->
+            preferences[PreferencesKeys.HOME_EQUIPMENT] ?: setOf("None (Bodyweight Only)") // FIX: Added PreferencesKeys
+        }
+
+    suspend fun updateHomeEquipment(equipment: Set<String>) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.HOME_EQUIPMENT] = equipment // FIX: Added PreferencesKeys
+        }
     }
 
     // --- KEEP INDIVIDUAL FLOWS TEMPORARILY FOR COMPATIBILITY ---

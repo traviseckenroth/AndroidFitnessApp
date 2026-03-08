@@ -27,6 +27,7 @@ import com.example.myapplication.util.SpeechToTextManager
 import com.example.myapplication.util.VoiceManager
 import com.example.myapplication.util.AutoCoachEngine
 import com.example.myapplication.util.AutoCoachState
+import com.example.myapplication.util.MicrophoneManager
 import com.example.myapplication.util.BleHeartRateManager
 import com.example.myapplication.util.ContinuousAudioStreamer
 import com.example.myapplication.util.NativeAutoCoachVoice
@@ -72,7 +73,8 @@ class ActiveSessionViewModel @Inject constructor(
     private val bleHeartRateManager: BleHeartRateManager,
     private val memoryDao: MemoryDao,
     private val audioStreamer: ContinuousAudioStreamer,
-    private val nativeAutoCoachVoice: NativeAutoCoachVoice
+    private val nativeAutoCoachVoice: NativeAutoCoachVoice,
+    private val microphoneManager: MicrophoneManager // Added this!
 ) : ViewModel() {
 
     // --- 1. STATE PROPERTIES ---
@@ -105,7 +107,12 @@ class ActiveSessionViewModel @Inject constructor(
     )
     val chatHistory: StateFlow<List<ChatMessage>> = _chatHistory
 
-    val isListening: StateFlow<Boolean> = sttManager.isListening
+    private val _isListening = MutableStateFlow(false) // Added this!
+    val isListening: StateFlow<Boolean> = combine(
+        sttManager.isListening,
+        _isListening
+    ) { auto, manual -> auto || manual }.stateIn(viewModelScope, SharingStarted.Lazily, false)
+
     val partialTranscript: StateFlow<String> = sttManager.partialTranscript
 
     val autoCoachState: StateFlow<AutoCoachState> = autoCoachEngine.state
@@ -416,6 +423,7 @@ class ActiveSessionViewModel @Inject constructor(
         val suggestedLbsFloat = completedSet.suggestedLbs.toFloat()
         if (isBodyweight || isCircuit || suggestedLbsFloat <= 0f) return
 
+        // 1. Establish the truth of what was actually lifted
         val actualReps = completedSet.actualReps ?: completedSet.suggestedReps
         val actualLbs = completedSet.actualLbs?.toFloat() ?: suggestedLbsFloat
         val actualRpe = completedSet.actualRpe?.toFloat() ?: completedSet.suggestedRpe.toFloat()
@@ -423,35 +431,40 @@ class ActiveSessionViewModel @Inject constructor(
 
         var loadMultiplier = 1.0f
 
-        // RULE 1: Underperformance or Skipped
+        // 2. Evaluate performance against the target suggestion
         if (actualReps < completedSet.suggestedReps) {
-            loadMultiplier = 0.90f
+            loadMultiplier = 0.90f // Underperformance or Missed completely
         } else if (actualReps == completedSet.suggestedReps && actualRpe > targetRpe) {
-            loadMultiplier = 0.95f
-        }
-        // RULE 2: Overperformance
-        else if (actualReps > completedSet.suggestedReps) {
-            loadMultiplier = 1.05f
+            loadMultiplier = 0.95f // Barely got it, RPE was harder than expected
+        } else if (actualReps > completedSet.suggestedReps) {
+            loadMultiplier = 1.05f // Overperformance (more reps)
         } else if (actualRpe <= targetRpe - 2f) {
-            loadMultiplier = 1.05f
+            loadMultiplier = 1.05f // Overperformance (much easier than expected)
         }
 
-        if (loadMultiplier == 1.0f) return
-
+        // 3. Calculate new base line.
+        // FIX: We apply the multiplier to the actual weight lifted, allowing future sets
+        // to sync to the user's manual override even if the multiplier is 1.0.
         val newSuggestedLbs = (Math.round((actualLbs * loadMultiplier) / 5.0) * 5).toInt().coerceAtLeast(0)
 
+        // 4. Safely pull future sets
         val currentState = _exerciseStates.value.find { it.exercise.exerciseId == exercise.exerciseId }
         currentState?.let { state ->
             val uncompletedSets = state.sets.filter { !it.isCompleted && it.setNumber > completedSet.setNumber }
 
             uncompletedSets.forEach { futureSet ->
                 if (futureSet.suggestedLbs != newSuggestedLbs) {
-                    repository.updateSet(
-                        futureSet.copy(
-                            suggestedLbs = newSuggestedLbs,
-                            isAutoAdjusted = true
-                        )
+                    val updatedFutureSet = futureSet.copy(
+                        suggestedLbs = newSuggestedLbs,
+                        isAutoAdjusted = true
                     )
+
+                    // FIX: Instantly apply optimistic update so the UI re-renders immediately
+                    // with the new weight and the AutoAwesome icon.
+                    optimisticUpdate(futureSet.setId) { updatedFutureSet }
+
+                    // Persist the synced routine to the database.
+                    repository.updateSet(updatedFutureSet)
                 }
             }
         }
@@ -484,14 +497,11 @@ class ActiveSessionViewModel @Inject constructor(
         }
     }
 
-    // UPDATED: Swap Exercise with Permanent/Limitation flag
     fun swapExercise(oldExerciseId: Long, newExerciseId: Long, isPermanent: Boolean = false, oldExerciseName: String = "", newExerciseName: String = "") {
         viewModelScope.launch {
-            // 1. Always swap for today's active session
             repository.swapExercise(_workoutId.value, oldExerciseId, newExerciseId)
 
             if (isPermanent) {
-                // 2. Save limitation to RAG Memory so the AI avoids it in future Block generations
                 try {
                     val memory = UserMemoryEntity(
                         timestamp = System.currentTimeMillis(),
@@ -505,13 +515,10 @@ class ActiveSessionViewModel @Inject constructor(
                     Log.e("ActiveSession", "Failed to save limitation memory", e)
                 }
 
-                // 3. Update future weeks in the current block
                 try {
-                    // NOTE: If this method does not exist in your repository yet,
-                    // you must add it to your WorkoutExecutionRepository to update future scheduled workouts.
                     repository.swapExerciseInFutureWorkouts(oldExerciseId, newExerciseId)
                 } catch (e: Exception) {
-                    Log.e("ActiveSession", "swapExerciseInFutureWorkouts needs to be implemented in Repository", e)
+                    Log.e("ActiveSession", "swapExerciseInFutureWorkouts failed", e)
                 }
             }
         }
@@ -614,7 +621,7 @@ class ActiveSessionViewModel @Inject constructor(
             }
 
             if (exercisesToCoach.isNotEmpty()) {
-                val historyMap = exercisesToCoach.associate { (exercise, sets) ->
+                exercisesToCoach.associate { (exercise, sets) ->
                     val lastWeight = sets.firstOrNull()?.suggestedLbs ?: 0
                     val lastReps = sets.firstOrNull()?.suggestedReps ?: 0
                     exercise.exerciseId to "Last time: $lastWeight lbs for $lastReps reps"
@@ -772,7 +779,6 @@ class ActiveSessionViewModel @Inject constructor(
                 if (alternatives.isNotEmpty()) {
                     val bestAlt = alternatives.first()
 
-                    // If done via voice, check if they mentioned an injury
                     val isPermanent = lowerText.contains("pain") || lowerText.contains("hurt") || lowerText.contains("injury") || lowerText.contains("bother")
 
                     val coachMsg = if (isPermanent) {
@@ -891,4 +897,75 @@ class ActiveSessionViewModel @Inject constructor(
         autoCoachEngine.stop()
         bleHeartRateManager.cleanup()
     }
+    fun convertToHomeWorkout() {
+        viewModelScope.launch {
+            val workoutId = _workoutId.value
+            val equipment = userPrefs.userHomeEquipment.first()
+            val currentStates = _exerciseStates.value
+            val originalExercises = currentStates.map { it.exercise }
+
+            // Instantly tell the user the AI is working
+            addCoachResponse("Got it. Let me look at your home equipment and rewrite this workout for you...")
+
+            try {
+                val availableAll = repository.getAllExercises().first()
+
+                // Call Bedrock AI
+                val newExercises = bedrockClient.convertWorkoutForHome(
+                    originalExercises = originalExercises.map { it.name },
+                    homeEquipment = equipment,
+                    allExercises = availableAll
+                )
+
+                var swappedCount = 0
+
+                // Map the original exercises to the AI's suggestions
+                originalExercises.forEachIndexed { index, originalEx ->
+                    val newEx = newExercises.getOrNull(index)
+                    if (newEx != null && newEx.exerciseId != originalEx.exerciseId) {
+                        val isBodyweight = newEx.equipment?.contains("Bodyweight", true) == true
+
+                        repository.swapToHomeAlternative(
+                            workoutId = workoutId,
+                            oldExerciseId = originalEx.exerciseId,
+                            newExerciseId = newEx.exerciseId,
+                            isBodyweight = isBodyweight
+                        )
+                        swappedCount++
+                    }
+                }
+
+                if (swappedCount > 0) {
+                    addCoachResponse("All set. I swapped $swappedCount exercises to match the equipment you have at home. Let's get to work!")
+                } else {
+                    addCoachResponse("Your workout is actually already perfectly suited for the equipment you have at home!")
+                }
+
+            } catch(e: Exception) {
+                Log.e("HomeWorkout", "AI Conversion Failed", e)
+                addCoachResponse("Sorry, I had trouble converting the workout. Try manually swapping exercises for today.")
+            }
+        }
+    }
+    // When the user taps/holds the mic button:
+    fun onMicButtonPressed() {
+        microphoneManager.startRecording()
+        _isListening.value = true
+    }
+
+    // When the user releases the mic button (or after a few seconds of silence):
+    fun onMicButtonReleased() {
+        viewModelScope.launch {
+            _isListening.value = false
+
+            // This will return the text the user just said!
+            val transcribedText = microphoneManager.stopRecordingAndTranscribe()
+
+            if (transcribedText.isNotBlank()) {
+                // Send the text to Claude / Bedrock to process the fitness command!
+                interactWithCoach(transcribedText)
+            }
+        }
+    }
+
 }

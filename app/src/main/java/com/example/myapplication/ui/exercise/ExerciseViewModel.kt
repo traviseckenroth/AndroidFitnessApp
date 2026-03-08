@@ -12,7 +12,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ExerciseViewModel @Inject constructor(
-    private val repository: PlanRepository
+    repository: PlanRepository // FIX: Removed 'private val'
 ) : ViewModel() {
 
     val exercises: StateFlow<List<ExerciseEntity>> = repository.getAllExercises()

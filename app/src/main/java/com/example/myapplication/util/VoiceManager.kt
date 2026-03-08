@@ -2,30 +2,50 @@ package com.example.myapplication.util
 
 import android.content.Context
 import android.media.AudioAttributes
-import android.media.AudioFocusRequest
+import android.media.AudioFormat
 import android.media.AudioManager
+import android.media.AudioTrack
+import android.media.AudioFocusRequest
 import android.os.Build
-import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
-import android.speech.tts.Voice
 import android.util.Log
+import com.example.myapplication.data.remote.VoiceModelDownloader
+import com.k2fsa.sherpa.onnx.OfflineModelConfig
+import com.k2fsa.sherpa.onnx.OfflineRecognizer
+import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
+import com.k2fsa.sherpa.onnx.OfflineTransducerModelConfig
+import com.k2fsa.sherpa.onnx.OfflineTts
+import com.k2fsa.sherpa.onnx.OfflineTtsConfig
+import com.k2fsa.sherpa.onnx.OfflineTtsKokoroModelConfig
+import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.util.Locale
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class VoiceManager @Inject constructor(@ApplicationContext private val context: Context) {
-    private var tts: TextToSpeech? = null
+class VoiceManager @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val modelDownloader: VoiceModelDownloader
+) {
+    // Sherpa-ONNX Engines
+    private var ttsEngine: OfflineTts? = null
+    private var asrEngine: OfflineRecognizer? = null
     private var isInitialized = false
-    private var onSpeechDone: (() -> Unit)? = null
+
+    // Coroutines & AudioTrack for background playback
+    private val audioScope = CoroutineScope(Dispatchers.IO)
+    private var speechJob: Job? = null
+    private var audioTrack: AudioTrack? = null
+
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
-    // We keep the Android S (API 31) check since your minSdk is likely 26, not 31.
     private val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
     } else {
@@ -33,104 +53,156 @@ class VoiceManager @Inject constructor(@ApplicationContext private val context: 
         context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
     }
 
-    init {
-        tts = TextToSpeech(context) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                // 1. Basic Setup
-                val result = tts?.setLanguage(Locale.US)
-
-                if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    Log.e("VoiceManager", "Language not supported")
-                } else {
-                    // 2. APPLY NATURAL VOICE SETTINGS
-                    setupNaturalVoice()
-
-                    // 3. Set Listener with Audio Focus handling
-                    tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                        override fun onStart(utteranceId: String?) {
-                            requestAudioFocus()
-                        }
-
-                        override fun onDone(utteranceId: String?) {
-                            abandonAudioFocus()
-                            onSpeechDone?.invoke()
-                            onSpeechDone = null
-                        }
-
-                        @Suppress("Deprecated")
-                        override fun onError(utteranceId: String?) {
-                            abandonAudioFocus()
-                            onSpeechDone?.invoke() // Resume even on error to avoid hanging
-                            onSpeechDone = null
-                        }
-                    })
-
-                    isInitialized = true
-                }
-            } else {
-                Log.e("VoiceManager", "TTS Initialization failed")
-            }
-        }
-    }
-
-    private fun setupNaturalVoice() {
-        val ttsInstance = tts ?: return
-
-        // TUNING: Slightly slower and lower pitch sounds more "conversational" and less "assistant-like"
-        ttsInstance.setSpeechRate(0.9f)
-        ttsInstance.setPitch(0.95f)
+    /**
+     * Call this ONLY AFTER VoiceModelDownloader confirms files are downloaded!
+     * Made suspend and moved to IO to prevent main thread timeouts/ANRs.
+     */
+    suspend fun initializeVoiceEngines() = withContext(Dispatchers.IO) {
+        if (isInitialized) return@withContext
 
         try {
-            val voices = ttsInstance.voices
-            if (voices.isNullOrEmpty()) return
+            val modelsPath = modelDownloader.getModelDirectoryPath()
 
-            // LOGIC: Find a voice that is "Network" (High Quality) and "US English"
-            // We prioritize "Network" voices because they use server-side generation (WaveNet)
-            val bestVoice = voices.firstOrNull {
-                it.name.contains("network", ignoreCase = true) &&
-                        it.locale == Locale.US
-            } ?: voices.firstOrNull {
-                // Fallback: Just get any high quality US voice
-                it.quality == Voice.QUALITY_VERY_HIGH &&
-                        it.locale == Locale.US
-            } ?: voices.firstOrNull {
-                it.locale == Locale.US
-            }
+            // 1. Initialize Kokoro Text-To-Speech (Coach Voice)
+            val ttsConfig = OfflineTtsConfig(
+                model = OfflineTtsModelConfig(
+                    kokoro = OfflineTtsKokoroModelConfig(
+                        model = "$modelsPath/kokoro-model.onnx", 
+                        voices = "$modelsPath/kokoro-voices.bin", 
+                        tokens = "$modelsPath/tokens" 
+                    ),
+                    numThreads = 2,
+                    debug = false
+                ),
+                maxNumSentences = 1
+            )
+            ttsEngine = OfflineTts(null, ttsConfig)
 
-            if (bestVoice != null) {
-                Log.d("VoiceManager", "Using Voice: ${bestVoice.name}")
-                ttsInstance.voice = bestVoice
-            }
+            // 2. Initialize Transducer Speech-To-Text (Listening to User)
+            // Updated filenames to match exactly what VoiceModelDownloader fetches
+            val asrConfig = OfflineRecognizerConfig(
+                modelConfig = OfflineModelConfig(
+                    transducer = OfflineTransducerModelConfig(
+                        encoder = "$modelsPath/encoder-epoch-99-avg-1.onnx",
+                        decoder = "$modelsPath/decoder-epoch-99-avg-1.onnx",
+                        joiner = "$modelsPath/joiner-epoch-99-avg-1.onnx"
+                    ),
+                    tokens = "$modelsPath/tokens",
+                    numThreads = 2,
+                    debug = false
+                )
+            )
+            asrEngine = OfflineRecognizer(null, asrConfig)
+
+            isInitialized = true
+            Log.d("VoiceManager", "Sherpa-ONNX TTS & ASR Engines Booted Successfully!")
         } catch (e: Exception) {
-            Log.e("VoiceManager", "Failed to set natural voice", e)
+            Log.e("VoiceManager", "Failed to boot Sherpa-ONNX. Are the files downloaded?", e)
         }
     }
 
+    // --- TEXT TO SPEECH (Coach Talking) ---
     fun speak(text: String, onComplete: (() -> Unit)? = null) {
-        if (isInitialized) {
-            onSpeechDone = onComplete
-
-            val params = Bundle()
-            params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "AI_RESPONSE")
-            // Use AUDIO_STREAM_MUSIC so it ducks correctly
-            params.putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC)
-
-            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "AI_RESPONSE")
-        } else {
-            Log.w("VoiceManager", "TTS not initialized yet. Skipping speech.")
+        if (!isInitialized || ttsEngine == null) {
+            Log.w("VoiceManager", "Sherpa TTS not initialized. Skipping speech.")
             onComplete?.invoke()
+            return
+        }
+
+        stop()
+
+        speechJob = audioScope.launch {
+            try {
+                requestAudioFocus()
+
+                // Generate audio array using Sherpa's Kokoro model
+                val generatedAudio = ttsEngine!!.generate(text)
+                val samples = generatedAudio.samples
+                val sampleRate = generatedAudio.sampleRate
+
+                val bufferSize = AudioTrack.getMinBufferSize(
+                    sampleRate,
+                    AudioFormat.CHANNEL_OUT_MONO,
+                    AudioFormat.ENCODING_PCM_FLOAT
+                )
+
+                audioTrack = AudioTrack.Builder()
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build()
+                    )
+                    .setAudioFormat(
+                        AudioFormat.Builder()
+                            .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
+                            .setSampleRate(sampleRate)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                            .build()
+                    )
+                    .setBufferSizeInBytes(bufferSize)
+                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .build()
+
+                audioTrack?.play()
+                audioTrack?.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
+
+            } catch (e: Exception) {
+                Log.e("VoiceManager", "Error generating or playing speech", e)
+            } finally {
+                cleanupAudioTrack()
+                abandonAudioFocus()
+                onComplete?.invoke()
+            }
+        }
+    }
+
+    // --- SPEECH TO TEXT (Listening to User) ---
+    /**
+     * Pass raw audio FloatArray (PCM, 16kHz, Mono) from the device microphone to transcribe it.
+     */
+    fun transcribeAudio(samples: FloatArray, sampleRate: Int = 16000): String {
+        if (!isInitialized || asrEngine == null) {
+            Log.w("VoiceManager", "Sherpa ASR not initialized.")
+            return ""
+        }
+
+        return try {
+            val stream = asrEngine!!.createStream()
+            stream.acceptWaveform(samples, sampleRate)
+            asrEngine!!.decode(stream)
+
+            val result = asrEngine!!.getResult(stream).text
+            stream.release()
+            result
+        } catch (e: Exception) {
+            Log.e("VoiceManager", "Error transcribing audio", e)
+            ""
         }
     }
 
     fun stop() {
-        tts?.stop()
+        speechJob?.cancel()
+        cleanupAudioTrack()
         abandonAudioFocus()
-        onSpeechDone = null
     }
 
-    // --- AUDIO DUCKING LOGIC ---
+    private fun cleanupAudioTrack() {
+        try {
+            audioTrack?.apply {
+                if (state == AudioTrack.STATE_INITIALIZED) {
+                    stop()
+                }
+                release()
+            }
+        } catch (e: Exception) {
+            Log.e("VoiceManager", "Error releasing AudioTrack", e)
+        } finally {
+            audioTrack = null
+        }
+    }
+
     private fun requestAudioFocus() {
-        // FIX: Removed SDK 26 check
         val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -143,24 +215,18 @@ class VoiceManager @Inject constructor(@ApplicationContext private val context: 
     }
 
     private fun abandonAudioFocus() {
-        // FIX: Removed SDK 26 check
         val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).build()
         audioManager.abandonAudioFocusRequest(focusRequest)
     }
 
-    // --- HAPTIC FEEDBACK ---
     fun vibrateSuccess() {
         if (vibrator.hasVibrator()) {
-            // Double tap pattern (Set Complete)
-            // FIX: Removed SDK 26 check
             vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 50, 50, 100), -1))
         }
     }
 
     fun vibrateTimerEnd() {
         if (vibrator.hasVibrator()) {
-            // Long buzz pattern (Timer End)
-            // FIX: Removed SDK 26 check
             vibrator.vibrate(VibrationEffect.createOneShot(1000, VibrationEffect.DEFAULT_AMPLITUDE))
         }
     }

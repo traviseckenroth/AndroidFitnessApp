@@ -2,6 +2,7 @@ package com.example.myapplication.util
 
 import android.content.Context
 import android.util.Log
+import androidx.core.content.edit
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -42,10 +43,11 @@ class CredentialManager @Inject constructor(
     }
 
     fun saveCredentials(username: String, password: String) {
-        sharedPreferences.edit()
-            .putString("saved_username", username)
-            .putString("saved_password", password)
-            .apply()
+        // FIX: Using the KTX edit block (automatically applies changes)
+        sharedPreferences.edit {
+            putString("saved_username", username)
+            putString("saved_password", password)
+        }
     }
 
     fun getCredentials(): Pair<String?, String?> {
@@ -55,7 +57,10 @@ class CredentialManager @Inject constructor(
     }
 
     fun clearCredentials() {
-        sharedPreferences.edit().clear().apply()
+        // FIX: Using the KTX edit block
+        sharedPreferences.edit {
+            clear()
+        }
     }
 
     fun hasCredentials(): Boolean = try { sharedPreferences.contains("saved_username") } catch (e: Exception) { false }

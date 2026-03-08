@@ -1,8 +1,15 @@
 package com.example.myapplication.data.local
 
-suspend fun populateDatabase(dao: WorkoutDao) {
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-    if (dao.getAllExercisesOneShot().isNotEmpty()) return
+/**
+ * Populates the local database with the master exercise list.
+ * Wrapped in Dispatchers.IO to prevent blocking the main thread during app launch.
+ */
+suspend fun populateDatabase(dao: WorkoutDao) = withContext(Dispatchers.IO) {
+
+    if (dao.getAllExercisesOneShot().isNotEmpty()) return@withContext
 
     dao.deleteAllExercises()
 
@@ -17,7 +24,7 @@ suspend fun populateDatabase(dao: WorkoutDao) {
             else -> 3
         }
         val timeVal = when (tierString) {
-            "Compound" -> 3.0 // CHANGED FROM 4.0
+            "Compound" -> 3.0
             "Secondary" -> 2.5
             else -> 2.0
         }
@@ -157,7 +164,7 @@ suspend fun populateDatabase(dao: WorkoutDao) {
     ex("Cable Pushdown (Straight Bar)", "Arms", "Triceps", null, "Cable", "Secondary", "High", "Low", "Elbow Extension", 24, "Mid", "Allows for heavier loading than rope. Biases the lateral (outer) head.", "Attach straight bar or V-bar. Overhand grip. Lean forward slightly. Push bar down until elbows lock out. Keep wrists neutral.")
     ex("Cable Pushdown (Reverse Grip)", "Arms", "Triceps", "Forearms", "Cable", "Isolation", "Low", "Low", "Elbow Extension", 24, "Shortened", "Underhand grip biases the medial (inner) head. Lighter weight, stricter form.", "Attach straight bar. Supinated (palms up) grip. Keep elbows pinned to sides. Extend downwards. Great for elbow health.")
     ex("Single Arm Gold Pushdown", "Arms", "Triceps", null, "Cable", "Isolation", "Low", "Low", "Elbow Extension", 24, "Shortened", "Isolates one arm to fix strength imbalances. Usage of D-handle or no attachment.", "Grip cable directly or use D-handle. Palm facing body. Extend arm fully. Focus on squeezing the tricep without shoulder movement.")
-    ex("Bayesian Curl", "Arms", "Biceps", null, "Cable", "Isolation", "Low", "Low", "Elbow Flexion", 24, "Lengthened", "Constant tension throughout full ROM. Matches strength curve of biceps perfectly.", "Face away from cable stack. Hand behind body. Curl handle forward. Allow arm to be pulled back behind body on eccentric.")
+    ex("Bayesian Curl", "Arms", "Biceps", null, "Cable", "Isolation", "Low", "Low", "Elbow Flexion", 24, "Lengthened", "Constant tension throughout full ROM. Matches strength curve of biceps perfectly.", "Face away from machine. Hand behind body. Curl handle forward. Allow arm to be pulled back behind body on eccentric.")
     ex("EZ-Bar Curl", "Arms", "Biceps", "Forearms", "EZ_Bar", "Secondary", "Med", "Low", "Elbow Flexion", 24, "Mid", "Hypertrophy staple that significantly reduces wrist and elbow strain compared to a straight barbell.", "Stand tall. Grip the angled bends of the bar. Curl weight up while keeping elbows pinned to your sides. Lower under control.")
     ex("Concentration Curl", "Arms", "Biceps", null, "Dumbbell", "Isolation", "Low", "Low", "Elbow Flexion", 24, "Shortened", "Strict isolation that removes momentum to focus heavily on the short head and peak contraction.", "Sit on a bench. Rest elbow against the inside of your thigh. Curl the dumbbell towards your chest. Squeeze hard at the top.")
     ex("Reverse Curl", "Arms", "Brachioradialis", "Biceps", "Barbell", "Secondary", "Med", "Low", "Elbow Flexion", 24, "Mid", "Pronated grip shifts focus heavily to the forearms and brachialis to build thick, strong arms.", "Stand tall. Grip barbell with an overhand (pronated) grip. Curl the weight up while keeping wrists straight. Lower slowly.")

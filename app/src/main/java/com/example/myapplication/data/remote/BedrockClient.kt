@@ -1035,7 +1035,7 @@ class BedrockClient @Inject constructor(
     private suspend fun invokeClaude(
         systemPrompt: String,
         userPrompt: String,
-        modelId: String
+        modelId: String = CLAUDE_HAIKU // <-- Added default value
     ): String {
         if (userPrompt.isBlank()) return "{}"
 
@@ -1188,7 +1188,54 @@ class BedrockClient @Inject constructor(
         val toolUseBlock = outerResponse.content.firstOrNull { it.type == "tool_use" }
         return toolUseBlock?.input ?: throw Exception("Claude failed to invoke the requested tool.")
     }
+    suspend fun convertWorkoutForHome(
+        originalExercises: List<String>,
+        homeEquipment: Set<String>,
+        allExercises: List<ExerciseEntity>
+    ): List<ExerciseEntity> {
 
+        val equipmentStr = homeEquipment.joinToString(", ")
+        val originalStr = originalExercises.joinToString(", ")
+        val catalog = allExercises.joinToString(", ") { it.name }
+
+        // FIX 1: We explicitly ask for a JSON object instead of a comma-separated list
+        val prompt = """
+            You are an elite fitness AI. The user cannot go to the gym. 
+            Their active workout contains: [$originalStr].
+            Their home equipment is EXACTLY: [$equipmentStr]. 
+            
+            Task: Replace each exercise with the best equivalent from the provided catalog that targets the same muscles but STRICTLY uses ONLY the available equipment. If an exercise is already compliant, keep it. If they have 'None', use pure floor bodyweight.
+            
+            Catalog: [$catalog]
+            
+            Return ONLY a JSON object with a single key "exercises" containing an array of the new exercise names as strings. Do not include extra text.
+            Example: {"exercises": ["Push-ups", "Jump Squats"]}
+        """.trimIndent()
+
+        return try {
+            val responseText = invokeClaude(
+                systemPrompt = prompt,
+                userPrompt = "Convert this workout based on my home equipment.",
+                modelId = CLAUDE_HAIKU
+            )
+
+            // FIX 2: We parse the JSON array returned by the AI
+            val json = JSONObject(responseText)
+            val jsonArray = json.getJSONArray("exercises")
+
+            val returnedNames = mutableListOf<String>()
+            for (i in 0 until jsonArray.length()) {
+                returnedNames.add(jsonArray.getString(i).trim().lowercase())
+            }
+
+            returnedNames.mapNotNull { name ->
+                allExercises.find { it.name.lowercase() == name }
+            }
+        } catch (e: Exception) {
+            Log.e("BedrockClient", "Failed to convert or parse home workout", e)
+            emptyList()
+        }
+    }
     private suspend fun doInvokeClaudeStreaming(
         systemPrompt: String,
         userPrompt: String,

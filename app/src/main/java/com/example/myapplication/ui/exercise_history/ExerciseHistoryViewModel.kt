@@ -13,7 +13,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ExerciseHistoryViewModel @Inject constructor(
-    private val repository: WorkoutExecutionRepository,
+    repository: WorkoutExecutionRepository, // FIX: Removed 'private val'
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 

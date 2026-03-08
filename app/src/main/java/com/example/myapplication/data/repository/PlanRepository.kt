@@ -74,7 +74,7 @@ class PlanRepository @Inject constructor(
         val hcHeight = healthConnectManager.getLatestHeight()
         val hcWeight = healthConnectManager.getLatestWeight()
         val lastNightSleep = healthConnectManager.getLastNightSleepDuration()
-        val sleepHours = lastNightSleep.toMinutes() / 60.0
+        lastNightSleep.toMinutes() / 60.0
 
         val prefHeight = userPrefs.userHeight.first()
         val prefWeight = userPrefs.userWeight.first()

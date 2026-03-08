@@ -159,18 +159,28 @@ class BleHeartRateManager @Inject constructor(
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray
         ) {
-             if (HEART_RATE_MEASUREMENT_CHAR_UUID == characteristic.uuid) {
+            if (HEART_RATE_MEASUREMENT_CHAR_UUID == characteristic.uuid) {
                 val hrValue = parseHeartRate(value)
                 _heartRate.value = hrValue
             }
         }
 
-        @Deprecated("Deprecated in Java")
-        override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
-            @Suppress("DEPRECATION")
-            onCharacteristicChanged(gatt, characteristic, characteristic.value)
+        // For Android 12 and below (API < 33)
+        @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic
+        ) {
+            // Only execute if we are on an older Android version.
+            // Android 13+ will automatically call the new method above instead.
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                if (HEART_RATE_MEASUREMENT_CHAR_UUID == characteristic.uuid) {
+                    val hrValue = parseHeartRate(characteristic.value)
+                    _heartRate.value = hrValue
+                }
+            }
         }
-    }
+    } // End of gattCallb
 
     private fun parseHeartRate(data: ByteArray): Int {
         if (data.isEmpty()) return 0

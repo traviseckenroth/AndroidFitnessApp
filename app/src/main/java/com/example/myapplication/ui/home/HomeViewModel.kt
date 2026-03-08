@@ -268,7 +268,7 @@ class HomeViewModel @Inject constructor(
                 _rawSubscribedContent.map { it.size }.distinctUntilChanged()
             ) { interestTags, workoutTitle, contentSize ->
                 Triple(interestTags, workoutTitle, contentSize)
-            }.collectLatest { (interestTags, workoutTitle, contentSize) ->
+            }.collectLatest { (interestTags, workoutTitle, _) ->
                 if (interestTags.isEmpty()) {
                     _knowledgeBriefing.value = ""
                     return@collectLatest
@@ -357,7 +357,7 @@ class HomeViewModel @Inject constructor(
                     return@launch
                 }
 
-                val history = repository.getWorkoutHistory().take(1).first()
+                repository.getWorkoutHistory().take(1).first()
                 val availableExercises = repository.getAllExercises().take(1).first()
                 val dateMillis = _selectedDate.value.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 

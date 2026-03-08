@@ -1,11 +1,12 @@
 // app/src/main/java/com/example/myapplication/ui/profile/ProfileScreen.kt
 package com.example.myapplication.ui.profile
 
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,19 +22,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Bed
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -58,11 +55,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.health.connect.client.PermissionController
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.myapplication.data.local.UserMemoryEntity
 import com.example.myapplication.ui.navigation.Settings
-import com.example.myapplication.ui.theme.SuccessGreen
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -73,18 +68,13 @@ fun ProfileScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val limitations by viewModel.activeLimitations.collectAsState()
+
     var height by remember(uiState.height) { mutableStateOf(uiState.height) }
     var weight by remember(uiState.weight) { mutableStateOf(uiState.weight) }
     var age by remember(uiState.age) { mutableStateOf(uiState.age) }
     var gender by remember(uiState.gender) { mutableStateOf(uiState.gender) }
     var bodyFat by remember(uiState.bodyFat) { mutableStateOf(uiState.bodyFat) }
     var dietType by remember(uiState.dietType) { mutableStateOf(uiState.dietType) }
-
-    val permissionsLauncher = rememberLauncherForActivityResult(
-        contract = PermissionController.createRequestPermissionResultContract()
-    ) {
-        viewModel.syncHealthConnect()
-    }
 
     LaunchedEffect(height, weight, age, gender, bodyFat, dietType) {
         delay(1000)
@@ -204,70 +194,12 @@ fun ProfileScreen(
             }
 
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (uiState.isHealthConnectLinked)
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
-                        else MaterialTheme.colorScheme.surfaceVariant
-                    )
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Health Connect",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Bed, "Sleep", Modifier.size(16.dp), MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(" Sleep  ", style = MaterialTheme.typography.bodySmall)
-                                    Icon(Icons.Default.Favorite, "Heart Rate", Modifier.size(16.dp), MaterialTheme.colorScheme.error.copy(alpha = 0.7f))
-                                    Text(" Heart  ", style = MaterialTheme.typography.bodySmall)
-                                    Icon(Icons.Default.FitnessCenter, "Workouts", Modifier.size(16.dp), MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(" Workouts", style = MaterialTheme.typography.bodySmall)
-                                }
-
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                if (uiState.isHealthConnectLinked) {
-                                    Text(text = "Status: Active & Connected", style = MaterialTheme.typography.labelSmall, color = SuccessGreen)
-                                    if (uiState.lastSyncTime != null) {
-                                        Text(text = "Last synced: ${uiState.lastSyncTime}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                } else {
-                                    Text(text = "Tap sync to enable bio-tracking", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-                                }
-                            }
-
-                            if (uiState.isHealthConnectSyncing) {
-                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                            } else {
-                                IconButton(onClick = {
-                                    viewModel.onSyncClicked { permissions ->
-                                        permissionsLauncher.launch(permissions)
-                                    }
-                                }) {
-                                    if (uiState.isHealthConnectLinked) {
-                                        Icon(imageVector = Icons.Default.CheckCircle, contentDescription = "Connected", tint = SuccessGreen, modifier = Modifier.size(32.dp))
-                                    } else {
-                                        Icon(imageVector = Icons.Default.Sync, contentDescription = "Connect", tint = MaterialTheme.colorScheme.primary)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                HomeEquipmentSection(
+                    selectedEquipment = uiState.homeEquipment,
+                    onToggle = { viewModel.toggleHomeEquipment(it) }
+                )
             }
 
-            // FIX: Wrapped in an item { } block
             item {
                 LimitationsSection(
                     limitations = limitations,
@@ -401,6 +333,48 @@ fun LimitationsSection(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+fun HomeEquipmentSection(
+    selectedEquipment: Set<String>,
+    onToggle: (String) -> Unit
+) {
+    val options = listOf("None (Bodyweight Only)", "Dumbbells", "Kettlebells", "Resistance Bands", "Pull-up Bar", "Bench/Box")
+
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)) {
+        Text(
+            text = "My Home Gym",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = "Equipment available when you use the 'At-Home' feature.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            options.forEach { item ->
+                FilterChip(
+                    selected = selectedEquipment.contains(item),
+                    onClick = { onToggle(item) },
+                    label = { Text(item) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                )
             }
         }
     }

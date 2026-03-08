@@ -1,7 +1,5 @@
 package com.example.myapplication
 
-// --- IMPORT NEW TYPE-SAFE ROUTE ---
-// ----------------------------------
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
@@ -21,6 +19,7 @@ import com.example.myapplication.ui.navigation.Nutrition
 import com.example.myapplication.ui.nutrition.NutritionViewModel
 import com.example.myapplication.ui.theme.MyApplicationTheme
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -33,7 +32,8 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        lifecycleScope.launch {
+        // Database population moved to a non-blocking background task
+        lifecycleScope.launch(Dispatchers.IO) {
             populateDatabase(workoutDao)
         }
 
@@ -48,7 +48,6 @@ class MainActivity : FragmentActivity() {
                         val foodText = data.getQueryParameter("text")
                         if (!foodText.isNullOrBlank()) {
                             nutritionViewModel.logFood(foodText)
-                            // CHANGED TO TYPE-SAFE OBJECT
                             navController.navigate(Nutrition)
                         }
                     }

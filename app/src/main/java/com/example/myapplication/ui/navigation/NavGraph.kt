@@ -29,6 +29,7 @@ import com.example.myapplication.ui.plan.PlanViewModel
 import com.example.myapplication.ui.profile.ProfileScreen
 import com.example.myapplication.ui.settings.GymSettingsScreen
 import com.example.myapplication.ui.settings.SettingsScreen
+import com.example.myapplication.ui.splash.SplashScreen // <-- ADDED SPLASH IMPORT
 import com.example.myapplication.ui.warmup.WarmUpScreen
 import com.example.myapplication.ui.workout.ActiveSessionViewModel
 import com.example.myapplication.ui.workout.ActiveWorkoutScreen
@@ -57,7 +58,7 @@ fun NavGraph(
 
     NavHost(
         navController = navController,
-        startDestination = Login,
+        startDestination = Splash, // <-- CHANGED: App now boots into the Splash screen first
         modifier = modifier,
         enterTransition = {
             val initialIndex = getNavIndex(initialState.destination)
@@ -84,6 +85,20 @@ fun NavGraph(
             }
         }
     ) {
+
+        // --- ADDED SPLASH SCREEN ---
+        composable<Splash> {
+            SplashScreen(
+                onNavigateToHome = {
+                    // Navigate to Login to preserve your existing auth flow.
+                    // (If already logged in, LoginScreen will auto-forward to Home)
+                    navController.navigate(Login) {
+                        popUpTo(Splash) { inclusive = true } // Prevents hitting "Back" to return to loading
+                    }
+                }
+            )
+        }
+
         composable<Login> {
             LoginScreen(
                 onLoginSuccess = { navController.navigate(Home) { popUpTo(Login) { inclusive = true } } },
@@ -142,7 +157,6 @@ fun NavGraph(
         composable<Nutrition> { NutritionScreen() }
         composable<WarmUp> { WarmUpScreen(onBack = { navController.popBackStack() }) }
 
-        // --- FIXED: Passing navController and isPickerMode correctly ---
         composable<ExerciseList> { backStackEntry ->
             val args = backStackEntry.toRoute<ExerciseList>()
             ExerciseListScreen(
@@ -168,7 +182,7 @@ fun NavGraph(
 
         composable<ExerciseHistory> {
             ExerciseHistoryScreen(
-                onBack = { navController.popBackStack() } // FIXED: Passes the required lambda instead of the controller
+                onBack = { navController.popBackStack() }
             )
         }
 
@@ -176,7 +190,7 @@ fun NavGraph(
             val args = backStackEntry.toRoute<ActiveWorkout>()
             ActiveWorkoutScreen(
                 workoutId = args.workoutId,
-                onBack = { navController.popBackStack() }, // FIXED: Parameter was previously missing or named incorrectly
+                onBack = { navController.popBackStack() },
                 navController = navController,
                 onWorkoutComplete = { id ->
                     navController.navigate(WorkoutSummary(id)) { popUpTo(Home) { inclusive = false } }

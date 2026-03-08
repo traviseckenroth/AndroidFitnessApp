@@ -4,6 +4,7 @@ package com.example.myapplication.ui.navigation
 import kotlinx.serialization.Serializable
 
 // --- AUTH ROUTES ---
+@Serializable data object Splash
 @Serializable data object Login
 @Serializable data object SignUp
 

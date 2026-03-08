@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import androidx.core.content.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.security.SecureRandom
 import java.util.Base64
@@ -59,9 +60,9 @@ class DatabasePassphraseManager @Inject constructor(
         } else {
             val newPassphrase = generatePassphrase()
             val encoded = Base64.getEncoder().encodeToString(newPassphrase)
-            sharedPreferences.edit()
-                .putString("db_passphrase", encoded)
-                .apply()
+            sharedPreferences.edit {
+                putString("db_passphrase", encoded)
+            }
             encoded
         }
     }

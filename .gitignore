@@ -16,3 +16,10 @@ local.properties
 build/
 app/build/
 .idea/
+*.aar
+*.onnx
+*.apk
+*.ap_
+*.aab
+app/release/
+app/build/

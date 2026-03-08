@@ -23,12 +23,9 @@ data class ProfileUIState(
     val bodyFat: String = "",
     val dietType: String = "",
 
-    // Integration States
-    val isHealthConnectSyncing: Boolean = false,
-    val isHealthConnectLinked: Boolean = false,
-    val lastSyncTime: String? = null,
-
     // AI Usage
     val aiRequestsToday: Int = 0,
-    val aiDailyLimit: Int = 50
+    val aiDailyLimit: Int = 50,
+
+    val homeEquipment: Set<String> = setOf("None (Bodyweight Only)")
 )

@@ -6,11 +6,12 @@ import aws.sdk.kotlin.services.cognitoidentity.model.GetIdRequest
 import aws.smithy.kotlin.runtime.auth.awscredentials.Credentials
 import aws.smithy.kotlin.runtime.auth.awscredentials.CredentialsProvider
 import aws.smithy.kotlin.runtime.collections.Attributes
+import aws.smithy.kotlin.runtime.http.engine.okhttp.OkHttpEngine
 import aws.smithy.kotlin.runtime.time.Instant
-import com.example.myapplication.BuildConfig // Make sure to import this
-import com.example.myapplication.data.repository.AuthRepository // Import your Repo
+import com.example.myapplication.BuildConfig
+import com.example.myapplication.data.repository.AuthRepository
+import kotlin.time.Duration.Companion.seconds
 
-// Update constructor to take AuthRepository
 class CognitoCredentialsProvider(
     private val authRepository: AuthRepository,
     private val identityPoolId: String,
@@ -19,30 +20,37 @@ class CognitoCredentialsProvider(
 
     override suspend fun resolve(attributes: Attributes): Credentials {
         val idToken = authRepository.getIdToken()
-            ?: throw IllegalStateException("User not logged in! Cannot access Bedrock.")
+            ?: throw IllegalStateException("User not logged in! Cannot access AWS services.")
 
-        // THE KEY CHANGE: Map the User Pool to the Identity Pool
-        // Format: cognito-idp.<region>.amazonaws.com/<user_pool_id>
         val providerKey = "cognito-idp.${region}.amazonaws.com/${BuildConfig.COGNITO_USER_POOL_ID}"
         val loginsMap = mapOf(providerKey to idToken)
 
-        CognitoIdentityClient { region = this@CognitoCredentialsProvider.region }.use { cognito ->
+        // Use a configured engine with explicit timeouts to prevent launch hangs
+        val engine = OkHttpEngine {
+            connectTimeout = 20.seconds
+            socketReadTimeout = 20.seconds
+        }
+
+        CognitoIdentityClient { 
+            region = this@CognitoCredentialsProvider.region 
+            httpClient = engine
+        }.use { cognito ->
 
             // 1. Get Identity ID (Authenticated)
             val idResponse = cognito.getId(GetIdRequest {
                 identityPoolId = this@CognitoCredentialsProvider.identityPoolId
-                logins = loginsMap // <--- PASS TOKEN HERE
+                logins = loginsMap
             })
             val myIdentityId = idResponse.identityId
 
             // 2. Get AWS Credentials (Authenticated)
             val credsResponse = cognito.getCredentialsForIdentity(GetCredentialsForIdentityRequest {
                 identityId = myIdentityId
-                logins = loginsMap // <--- PASS TOKEN HERE
+                logins = loginsMap
             })
 
             val rawCreds = credsResponse.credentials
-                ?: throw IllegalStateException("No credentials returned")
+                ?: throw IllegalStateException("No credentials returned from Cognito")
 
             return Credentials(
                 accessKeyId = rawCreds.accessKeyId ?: "",

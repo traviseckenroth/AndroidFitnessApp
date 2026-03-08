@@ -72,7 +72,7 @@ class NutritionRepository @Inject constructor(
         val weight = userPrefs.userWeight.first()
         val age = userPrefs.userAge.first()
         val gender = userPrefs.userGender.first()
-        val diet = userPrefs.userDiet.first()
+        userPrefs.userDiet.first()
         val pace = userPrefs.userGoalPace.first()
 
         val currentPlan = workoutDao.getLatestPlan() ?: throw Exception("No active workout plan found")

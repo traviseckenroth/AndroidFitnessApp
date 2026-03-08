@@ -116,10 +116,11 @@ fun AboutFormaScreen(onBack: () -> Unit) {
         )
     )
 
-    // Feature Detail Dialog
-    selectedFeature?.let { feature ->
+// Feature Detail Dialog
+    val currentFeature = selectedFeature
+    if (currentFeature != null) {
         FeatureDetailDialog(
-            feature = feature,
+            feature = currentFeature,
             onDismiss = { selectedFeature = null }
         )
     }

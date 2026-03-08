@@ -163,7 +163,7 @@ class WorkoutTimerService : Service() {
     }
 
     private fun updateNotification(timeLeft: Int, isRest: Boolean) {
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(NOTIFICATION_ID, buildNotification(timeLeft, isRest))
     }
 

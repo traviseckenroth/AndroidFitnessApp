@@ -438,7 +438,7 @@ fun GeminiLiveOrb(primaryColor: Color, secondaryColor: Color, state: AutoCoachSt
 }
 
 @Composable
-fun ControlIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit, containerColor: Color, iconColor: Color) {
+fun ControlIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit, containerColor: Color, iconColor: Color = Color.White) {
     Surface(onClick = onClick, shape = CircleShape, color = containerColor, modifier = Modifier.size(56.dp)) {
         Box(contentAlignment = Alignment.Center) {
             Icon(imageVector = icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(24.dp))
@@ -447,7 +447,7 @@ fun ControlIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, onC
 }
 
 @Composable
-fun LargeControlIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit, containerColor: Color, iconColor: Color, isPulsing: Boolean = false) {
+fun LargeControlIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit, containerColor: Color, iconColor: Color = Color.White, isPulsing: Boolean = false) {
     val infiniteTransition = rememberInfiniteTransition(label = "Pulse")
     val scale by infiniteTransition.animateFloat(initialValue = 1f, targetValue = if (isPulsing) 1.15f else 1f, animationSpec = infiniteRepeatable(tween(800, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "ButtonPulse")
 
