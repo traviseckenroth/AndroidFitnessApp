@@ -24,21 +24,39 @@ class VoiceModelDownloader @Inject constructor(
     @ApplicationContext private val context: Context,
     private val authRepository: AuthRepository
 ) {
-    private val _downloadStatus = MutableStateFlow("Initializing...")
+    private val _downloadStatus = MutableStateFlow("Required for offline coaching.")
     val downloadStatus: StateFlow<String> = _downloadStatus.asStateFlow()
 
     private val _isReady = MutableStateFlow(false)
     val isReady: StateFlow<Boolean> = _isReady.asStateFlow()
 
+    private val _isDownloading = MutableStateFlow(false)
+    val isDownloading: StateFlow<Boolean> = _isDownloading.asStateFlow()
+
+    // ⚠️ UPDATE THE KOKORO FILES BELOW ⚠️
     private val requiredModels = listOf(
         "decoder-epoch-99-avg-1.onnx",
         "encoder-epoch-99-avg-1.onnx",
         "joiner-epoch-99-avg-1.onnx",
-        "tokens", 
-        "kokoro-model/"
+        "tokens.txt", // Fixed to match your exact S3 extension
+
+        // Put the exact names of the files inside your Kokoro folder here:
+        "kokoro_model/model.onnx", // Example: change to actual name
+        "kokoro_model/voices.bin"        // Example: change to actual name
     )
 
     private val bucketName = "aicoach-voice-models"
+
+    fun checkLocalFiles() {
+        val modelsDir = File(context.filesDir, "voice_models")
+        val allFilesExist = requiredModels.all { fileName ->
+            File(modelsDir, fileName).exists()
+        }
+        if (allFilesExist) {
+            _downloadStatus.value = "Models ready."
+            _isReady.value = true
+        }
+    }
 
     private fun getS3Client(): S3Client {
         val cognitoProvider = CognitoCredentialsProvider(
@@ -70,6 +88,7 @@ class VoiceModelDownloader @Inject constructor(
             return@withContext
         }
 
+        _isDownloading.value = true
         _downloadStatus.value = "Connecting to secure server..."
 
         try {
@@ -77,13 +96,16 @@ class VoiceModelDownloader @Inject constructor(
                 for ((index, fileName) in requiredModels.withIndex()) {
                     val targetFile = File(modelsDir, fileName)
 
+                    // CRUCIAL FIX: Create subfolders locally if the S3 key has a slash!
+                    targetFile.parentFile?.mkdirs()
+
                     if (!targetFile.exists()) {
                         _downloadStatus.value = "Downloading model files (${index + 1}/${requiredModels.size})..."
                         Log.d("ModelDownloader", "Fetching $fileName from S3...")
 
                         val request = GetObjectRequest {
                             bucket = bucketName
-                            key = fileName 
+                            key = fileName
                         }
 
                         s3.getObject(request) { response ->
@@ -98,6 +120,8 @@ class VoiceModelDownloader @Inject constructor(
         } catch (e: Exception) {
             Log.e("ModelDownloader", "Failed to download models", e)
             _downloadStatus.value = "Error: Check connection and try again."
+        } finally {
+            _isDownloading.value = false
         }
     }
 

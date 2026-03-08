@@ -90,7 +90,6 @@ fun SettingsScreen(
         "Onyx (Gritty Male)" to 17
     )
 
-    // Reverse map to find name from ID
     val currentVoiceName = kokoroVoices.entries.find { it.value == userVoiceSid }?.key ?: "Bella (Warm Female)"
 
     LaunchedEffect(Unit) {
@@ -114,7 +113,7 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState()), // FIX: Added scrollability so the bottom isn't cut off!
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             Spacer(modifier = Modifier.height(8.dp))
@@ -141,6 +140,9 @@ fun SettingsScreen(
                 options = kokoroVoices,
                 onOptionSelected = { sid -> viewModel.setCoachVoice(sid) }
             )
+
+            // WE CALL THE DOWNLOADER UI RIGHT HERE!
+            VoiceModelSettingsSection()
 
             HorizontalDivider()
 
@@ -237,12 +239,11 @@ fun SettingsScreen(
                 fontWeight = FontWeight.Bold
             )
 
-            // FIX: Upgraded to a highly-visible Button instead of a Card
             Button(
                 onClick = { viewModel.logout(onLogoutSuccess) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp), // Force a chunky, clickable height
+                    .height(56.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.error,
                     contentColor = MaterialTheme.colorScheme.onError
@@ -261,7 +262,7 @@ fun SettingsScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(48.dp)) // Extra bottom padding for comfortable scrolling
+            Spacer(modifier = Modifier.height(48.dp))
         }
     }
 }
@@ -334,6 +335,52 @@ fun SettingsDropdownTile(
                         expanded = false
                     }
                 )
+            }
+        }
+    }
+}
+
+// THIS WAS PULLED OUT SO IT ACTUALLY WORKS!
+@Composable
+fun VoiceModelSettingsSection(
+    viewModel: VoiceModelViewModel = hiltViewModel()
+) {
+    val isReady by viewModel.isReady.collectAsState()
+    val statusText by viewModel.downloadStatus.collectAsState()
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Offline AI Voice Engine",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (isReady) {
+                Text(
+                    text = "Models Downloaded and Ready!",
+                    color = SuccessGreen,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            } else {
+                Text(
+                    text = statusText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = { viewModel.startDownload() },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !statusText.contains("...")
+                ) {
+                    Text("Download Voice Models (~500MB)")
+                }
             }
         }
     }

@@ -90,10 +90,13 @@ fun NavGraph(
         composable<Splash> {
             SplashScreen(
                 onNavigateToHome = {
-                    // Navigate to Login to preserve your existing auth flow.
-                    // (If already logged in, LoginScreen will auto-forward to Home)
                     navController.navigate(Home) {
-                        popUpTo(Splash) { inclusive = true } // Prevents hitting "Back" to return to loading
+                        popUpTo(Splash) { inclusive = true }
+                    }
+                },
+                onNavigateToLogin = {
+                    navController.navigate(Login) {
+                        popUpTo(Splash) { inclusive = true }
                     }
                 }
             )
@@ -101,7 +104,7 @@ fun NavGraph(
 
         composable<Login> {
             LoginScreen(
-                onLoginSuccess = { navController.navigate(Splash) { popUpTo(Login) { inclusive = true } } },
+                onLoginSuccess = { navController.navigate(Home) { popUpTo(Login) { inclusive = true } } },
                 onNavigateToSignUp = { navController.navigate(SignUp) }
             )
         }

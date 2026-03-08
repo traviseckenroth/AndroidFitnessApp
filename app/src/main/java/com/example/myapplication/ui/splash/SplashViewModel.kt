@@ -2,36 +2,33 @@ package com.example.myapplication.ui.splash
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.myapplication.data.remote.VoiceModelDownloader
 import com.example.myapplication.data.repository.AuthRepository
-import com.example.myapplication.util.VoiceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class SplashViewModel @Inject constructor(
-    private val modelDownloader: VoiceModelDownloader,
-    private val voiceManager: VoiceManager,
     private val authRepository: AuthRepository
 ) : ViewModel() {
 
-    // Pass the state directly to the UI
-    val downloadStatus = modelDownloader.downloadStatus
-    val isReady = modelDownloader.isReady
+    private val _isAuthCheckComplete = MutableStateFlow(false)
+    val isAuthCheckComplete = _isAuthCheckComplete.asStateFlow()
+
+    private val _isLoggedIn = MutableStateFlow(false)
+    val isLoggedIn = _isLoggedIn.asStateFlow()
 
     init {
         viewModelScope.launch {
-            // 1. Try to refresh existing session so we have authenticated credentials if possible
-            authRepository.autoLogin()
+            // Check if we have a valid saved session
+            _isLoggedIn.value = authRepository.autoLogin()
 
-            // 2. Start the secure S3 download (or verification)
-            modelDownloader.ensureModelsDownloaded()
-
-            // 3. ONLY once the files exist, safely boot Sherpa-ONNX
-            if (modelDownloader.isReady.value) {
-                voiceManager.initializeVoiceEngines()
-            }
+            // Add a brief 1.5 second delay so the Splash logo doesn't instantly flash and disappear
+            delay(1500)
+            _isAuthCheckComplete.value = true
         }
     }
 }
