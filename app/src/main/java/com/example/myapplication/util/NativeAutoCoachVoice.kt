@@ -50,15 +50,25 @@ class NativeAutoCoachVoice @Inject constructor(
         }
     }
 
-    // UPDATED: Bulletproof recursive asset copier
-    private fun copyDirectoryFromAssets(assetPath: String, targetFileOrDir: File) {
-        val files = context.assets.list(assetPath) ?: emptyArray()
-        if (files.isEmpty()) {
-            copyFile(assetPath, targetFileOrDir) // It's a file
-        } else {
-            if (!targetFileOrDir.exists()) targetFileOrDir.mkdirs() // It's a directory
-            for (file in files) {
-                copyDirectoryFromAssets("$assetPath/$file", File(targetFileOrDir, file))
+    private fun copyDirectoryFromAssets(assetPath: String, targetDir: File) {
+        val files = context.assets.list(assetPath) ?: return
+        if (files.isEmpty()) return
+
+        for (file in files) {
+            val fullAssetPath = "$assetPath/$file"
+            var isDirectory = false
+            try {
+                context.assets.open(fullAssetPath).close()
+            } catch (e: Exception) {
+                isDirectory = true
+            }
+
+            if (!isDirectory) {
+                copyFile(fullAssetPath, File(targetDir, file))
+            } else {
+                val subDir = File(targetDir, file)
+                if (!subDir.exists()) subDir.mkdirs()
+                copyDirectoryFromAssets(fullAssetPath, subDir)
             }
         }
     }
@@ -68,50 +78,47 @@ class NativeAutoCoachVoice @Inject constructor(
         hasAttemptedInit = true
 
         try {
+            // 1. Point to the massive ML files downloaded from S3
             val s3ModelsDir = File(context.filesDir, "voice_models")
             val kokoroModelFile = File(s3ModelsDir, "kokoro_model/model.onnx")
             val kokoroVoicesFile = File(s3ModelsDir, "kokoro_model/voices.bin")
-            val tokensFile = File(s3ModelsDir, "tokens.txt")
 
-            // --- THE FIREWALL ---
-            // If AWS sent us a fake XML error file, do NOT pass it to C++!
-            if (kokoroVoicesFile.length() < 5000) {
-                Log.e("NativeAutoCoachVoice", "CRITICAL FIREWALL: voices.bin is corrupt (${kokoroVoicesFile.length()} bytes). This is likely an AWS XML error file. Fix S3!")
-                return@withLock
-            }
-            if (kokoroModelFile.length() < 50_000_000) {
-                Log.e("NativeAutoCoachVoice", "CRITICAL FIREWALL: model.onnx is corrupt (${kokoroModelFile.length()} bytes). This is likely an AWS XML error file. Fix S3!")
-                return@withLock
-            }
-            if (tokensFile.length() < 100) {
-                Log.e("NativeAutoCoachVoice", "CRITICAL FIREWALL: tokens.txt is missing or corrupt.")
+            // FIREWALL
+            if (kokoroVoicesFile.length() < 5000 || kokoroModelFile.length() < 50_000_000) {
+                Log.e("NativeAutoCoachVoice", "CRITICAL FIREWALL: S3 models are corrupt or missing.")
                 return@withLock
             }
 
-            // Extract lightweight assets
+            // 2. Extract lightweight assets (including Kokoro's exclusive tokens.txt!)
             val localAssetsDir = File(context.filesDir, "kokoro_assets")
             val lexiconFile = File(localAssetsDir, "lexicon-us-en.txt")
+            val kokoroTokensFile = File(localAssetsDir, "tokens.txt")
             val phontabFile = File(localAssetsDir, "espeak-ng-data/phontab")
 
-            if (!lexiconFile.exists() || !phontabFile.exists()) {
-                Log.d("NativeAutoCoachVoice", "Missing lightweight espeak assets. Copying now...")
+            if (!lexiconFile.exists() || !kokoroTokensFile.exists() || !phontabFile.exists()) {
+                Log.d("NativeAutoCoachVoice", "Extracting Kokoro dictionaries and tokens...")
                 if (localAssetsDir.exists()) localAssetsDir.deleteRecursively()
                 localAssetsDir.mkdirs()
 
                 copyFile("kokoro_model/lexicon-us-en.txt", lexiconFile)
-                copyDirectoryFromAssets("kokoro_model/espeak-ng-data", File(localAssetsDir, "espeak-ng-data"))
+                copyFile("kokoro_model/tokens.txt", kokoroTokensFile) // NEW: Copy Kokoro's tokens
 
-                if (!lexiconFile.exists() || !phontabFile.exists()) {
-                    Log.e("NativeAutoCoachVoice", "CRITICAL: Asset copy failed! Ensure 'kokoro_model' is in your assets folder.")
+                val espeakDir = File(localAssetsDir, "espeak-ng-data")
+                if (!espeakDir.exists()) espeakDir.mkdirs()
+                copyDirectoryFromAssets("kokoro_model/espeak-ng-data", espeakDir)
+
+                if (!lexiconFile.exists() || !kokoroTokensFile.exists() || !phontabFile.exists()) {
+                    Log.e("NativeAutoCoachVoice", "CRITICAL: Asset copy failed! Check your assets folder.")
                     return@withLock
                 }
                 Log.d("NativeAutoCoachVoice", "Asset copy complete.")
             }
 
+            // 3. Combine both paths into the Sherpa-ONNX Config
             val modelConfig = OfflineTtsKokoroModelConfig(
                 model = kokoroModelFile.absolutePath,
                 voices = kokoroVoicesFile.absolutePath,
-                tokens = tokensFile.absolutePath,
+                tokens = kokoroTokensFile.absolutePath, // USE THE NATIVE KOKORO TOKENS!
                 dataDir = File(localAssetsDir, "espeak-ng-data").absolutePath,
                 dictDir = "",
                 lexicon = lexiconFile.absolutePath
