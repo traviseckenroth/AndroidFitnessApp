@@ -9,7 +9,9 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.util.Log
 import com.k2fsa.sherpa.onnx.OfflineTts
+import com.k2fsa.sherpa.onnx.OfflineTtsConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsKokoroModelConfig
+import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -48,30 +50,15 @@ class NativeAutoCoachVoice @Inject constructor(
         }
     }
 
-    private fun copyDirectoryFromAssets(assetPath: String, targetDir: File) {
-        val files = context.assets.list(assetPath) ?: return
-        if (files.isEmpty()) return // Empty directory or file not found
-
-        for (file in files) {
-            val fullAssetPath = "$assetPath/$file"
-            // Simple heuristic: if it has an extension, it's likely a file.
-            // But espeak-ng-data has files without extensions (e.g. phontab).
-            // We try to open it as a stream. If it works, it's a file.
-            // If it throws, it might be a directory.
-            
-            var isDirectory = false
-            try {
-                context.assets.open(fullAssetPath).close()
-            } catch (e: Exception) {
-                isDirectory = true
-            }
-
-            if (!isDirectory) {
-                copyFile(fullAssetPath, File(targetDir, file))
-            } else {
-                val subDir = File(targetDir, file)
-                if (!subDir.exists()) subDir.mkdirs()
-                copyDirectoryFromAssets(fullAssetPath, subDir)
+    // UPDATED: Bulletproof recursive asset copier
+    private fun copyDirectoryFromAssets(assetPath: String, targetFileOrDir: File) {
+        val files = context.assets.list(assetPath) ?: emptyArray()
+        if (files.isEmpty()) {
+            copyFile(assetPath, targetFileOrDir) // It's a file
+        } else {
+            if (!targetFileOrDir.exists()) targetFileOrDir.mkdirs() // It's a directory
+            for (file in files) {
+                copyDirectoryFromAssets("$assetPath/$file", File(targetFileOrDir, file))
             }
         }
     }
@@ -81,67 +68,72 @@ class NativeAutoCoachVoice @Inject constructor(
         hasAttemptedInit = true
 
         try {
-            val modelDir = File(context.filesDir, "kokoro_model")
-            val completionFlag = File(modelDir, "copy_complete_v2.flag") // Bump version to force recopy if needed
+            val s3ModelsDir = File(context.filesDir, "voice_models")
+            val kokoroModelFile = File(s3ModelsDir, "kokoro_model/model.onnx")
+            val kokoroVoicesFile = File(s3ModelsDir, "kokoro_model/voices.bin")
+            val tokensFile = File(s3ModelsDir, "tokens.txt")
 
-            if (!completionFlag.exists()) {
-                Log.d("NativeAutoCoachVoice", "Model files missing or update required. Copying assets...")
-                if (modelDir.exists()) modelDir.deleteRecursively()
-                modelDir.mkdirs()
+            // --- THE FIREWALL ---
+            // If AWS sent us a fake XML error file, do NOT pass it to C++!
+            if (kokoroVoicesFile.length() < 5000) {
+                Log.e("NativeAutoCoachVoice", "CRITICAL FIREWALL: voices.bin is corrupt (${kokoroVoicesFile.length()} bytes). This is likely an AWS XML error file. Fix S3!")
+                return@withLock
+            }
+            if (kokoroModelFile.length() < 50_000_000) {
+                Log.e("NativeAutoCoachVoice", "CRITICAL FIREWALL: model.onnx is corrupt (${kokoroModelFile.length()} bytes). This is likely an AWS XML error file. Fix S3!")
+                return@withLock
+            }
+            if (tokensFile.length() < 100) {
+                Log.e("NativeAutoCoachVoice", "CRITICAL FIREWALL: tokens.txt is missing or corrupt.")
+                return@withLock
+            }
 
-                val rootAssets = listOf("model.onnx", "voices.bin", "tokens.txt", "lexicon-us-en.txt")
-                for (asset in rootAssets) {
-                    copyFile("kokoro_model/$asset", File(modelDir, asset))
+            // Extract lightweight assets
+            val localAssetsDir = File(context.filesDir, "kokoro_assets")
+            val lexiconFile = File(localAssetsDir, "lexicon-us-en.txt")
+            val phontabFile = File(localAssetsDir, "espeak-ng-data/phontab")
+
+            if (!lexiconFile.exists() || !phontabFile.exists()) {
+                Log.d("NativeAutoCoachVoice", "Missing lightweight espeak assets. Copying now...")
+                if (localAssetsDir.exists()) localAssetsDir.deleteRecursively()
+                localAssetsDir.mkdirs()
+
+                copyFile("kokoro_model/lexicon-us-en.txt", lexiconFile)
+                copyDirectoryFromAssets("kokoro_model/espeak-ng-data", File(localAssetsDir, "espeak-ng-data"))
+
+                if (!lexiconFile.exists() || !phontabFile.exists()) {
+                    Log.e("NativeAutoCoachVoice", "CRITICAL: Asset copy failed! Ensure 'kokoro_model' is in your assets folder.")
+                    return@withLock
                 }
-
-                val espeakDir = File(modelDir, "espeak-ng-data")
-                if (!espeakDir.exists()) espeakDir.mkdirs()
-                copyDirectoryFromAssets("kokoro_model/espeak-ng-data", espeakDir)
-
-                // Verify critical files
-                val phontab = File(espeakDir, "phontab")
-                if (!phontab.exists()) {
-                    Log.e("NativeAutoCoachVoice", "CRITICAL: espeak-ng-data/phontab is missing!")
-                }
-
-                completionFlag.createNewFile()
-                Log.d("NativeAutoCoachVoice", "Copy complete.")
+                Log.d("NativeAutoCoachVoice", "Asset copy complete.")
             }
 
             val modelConfig = OfflineTtsKokoroModelConfig(
-                model = File(modelDir, "model.onnx").absolutePath,
-                voices = File(modelDir, "voices.bin").absolutePath,
-                tokens = File(modelDir, "tokens.txt").absolutePath,
-                dataDir = File(modelDir, "espeak-ng-data").absolutePath,
+                model = kokoroModelFile.absolutePath,
+                voices = kokoroVoicesFile.absolutePath,
+                tokens = tokensFile.absolutePath,
+                dataDir = File(localAssetsDir, "espeak-ng-data").absolutePath,
                 dictDir = "",
-                lexicon = File(modelDir, "lexicon-us-en.txt").absolutePath
+                lexicon = lexiconFile.absolutePath
             )
-            val config = com.k2fsa.sherpa.onnx.OfflineTtsConfig(
-                model = com.k2fsa.sherpa.onnx.OfflineTtsModelConfig(kokoro = modelConfig),
+
+            val config = OfflineTtsConfig(
+                model = OfflineTtsModelConfig(
+                    kokoro = modelConfig,
+                    numThreads = 2,
+                    debug = false
+                ),
                 maxNumSentences = 1
             )
 
             ttsEngine = OfflineTts(null, config)
 
             val minBufferSize = AudioTrack.getMinBufferSize(
-                sampleRate,
-                AudioFormat.CHANNEL_OUT_MONO,
-                AudioFormat.ENCODING_PCM_16BIT
+                sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT
             )
             audioTrack = AudioTrack.Builder()
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build()
-                )
-                .setAudioFormat(
-                    AudioFormat.Builder()
-                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .setSampleRate(sampleRate)
-                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                        .build()
-                )
+                .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(sampleRate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
                 .setBufferSizeInBytes(minBufferSize)
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
@@ -163,14 +155,8 @@ class NativeAutoCoachVoice @Inject constructor(
 
             isInterrupted = false
 
-            // FIX: Removed the SDK_INT >= 26 check and made focusRequest a direct val
             val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build()
-                )
+                .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
                 .build()
 
             audioManager.requestAudioFocus(focusRequest)
@@ -197,9 +183,7 @@ class NativeAutoCoachVoice @Inject constructor(
             } catch (e: Exception) {
                 Log.e("NativeAutoCoachVoice", "Playback error", e)
             } finally {
-                // FIX: Removed the SDK_INT >= 26 and null checks
                 audioManager.abandonAudioFocusRequest(focusRequest)
-
                 try {
                     track.pause()
                     track.flush()
@@ -209,7 +193,6 @@ class NativeAutoCoachVoice @Inject constructor(
     }
 
     fun interrupt() {
-        // Sets the flag so any currently running loop in speakAndWait exits immediately
         isInterrupted = true
         try {
             if (audioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING) {
@@ -225,7 +208,6 @@ class NativeAutoCoachVoice @Inject constructor(
             engineMutex.withLock {
                 val trackToRelease = audioTrack
                 audioTrack = null
-
                 val engineToRelease = ttsEngine
                 ttsEngine = null
                 hasAttemptedInit = false

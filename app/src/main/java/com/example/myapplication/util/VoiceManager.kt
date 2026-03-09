@@ -25,7 +25,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -55,49 +55,58 @@ class VoiceManager @Inject constructor(
 
     /**
      * Call this ONLY AFTER VoiceModelDownloader confirms files are downloaded!
-     * Made suspend and moved to IO to prevent main thread timeouts/ANRs.
      */
-    suspend fun initializeVoiceEngines() = withContext(Dispatchers.IO) {
-        if (isInitialized) return@withContext
+    fun initializeVoiceEngines() {
+        if (isInitialized) return
 
         try {
             val modelsPath = modelDownloader.getModelDirectoryPath()
+
+            // Safe Path Constructors
+            val kokoroModelPath = File(modelsPath, "kokoro_model/model.onnx").absolutePath
+            val kokoroVoicesPath = File(modelsPath, "kokoro_model/voices.bin").absolutePath
+            val tokensPath = File(modelsPath, "tokens.txt").absolutePath
+
+            val decoderPath = File(modelsPath, "decoder-epoch-99-avg-1.onnx").absolutePath
+            val encoderPath = File(modelsPath, "encoder-epoch-99-avg-1.onnx").absolutePath
+            val joinerPath = File(modelsPath, "joiner-epoch-99-avg-1.onnx").absolutePath
 
             // 1. Initialize Kokoro Text-To-Speech (Coach Voice)
             val ttsConfig = OfflineTtsConfig(
                 model = OfflineTtsModelConfig(
                     kokoro = OfflineTtsKokoroModelConfig(
-                        model = "$modelsPath/kokoro-model.onnx", 
-                        voices = "$modelsPath/kokoro-voices.bin", 
-                        tokens = "$modelsPath/tokens" 
+                        model = kokoroModelPath,
+                        voices = kokoroVoicesPath,
+                        tokens = tokensPath
                     ),
                     numThreads = 2,
                     debug = false
                 ),
                 maxNumSentences = 1
             )
+            // Fix: Pass null for AssetManager when using file paths
             ttsEngine = OfflineTts(null, ttsConfig)
 
             // 2. Initialize Transducer Speech-To-Text (Listening to User)
-            // Updated filenames to match exactly what VoiceModelDownloader fetches
             val asrConfig = OfflineRecognizerConfig(
                 modelConfig = OfflineModelConfig(
                     transducer = OfflineTransducerModelConfig(
-                        encoder = "$modelsPath/encoder-epoch-99-avg-1.onnx",
-                        decoder = "$modelsPath/decoder-epoch-99-avg-1.onnx",
-                        joiner = "$modelsPath/joiner-epoch-99-avg-1.onnx"
+                        encoder = encoderPath,
+                        decoder = decoderPath,
+                        joiner = joinerPath
                     ),
-                    tokens = "$modelsPath/tokens",
+                    tokens = tokensPath,
                     numThreads = 2,
                     debug = false
                 )
             )
+            // Fix: Pass null for AssetManager when using file paths
             asrEngine = OfflineRecognizer(null, asrConfig)
 
             isInitialized = true
-            Log.d("VoiceManager", "Sherpa-ONNX TTS & ASR Engines Booted Successfully!")
+            Log.d("VoiceManager", "Sherpa-ONNX TTS \u0026 ASR Engines Booted Successfully!")
         } catch (e: Exception) {
-            Log.e("VoiceManager", "Failed to boot Sherpa-ONNX. Are the files downloaded?", e)
+            Log.e("VoiceManager", "Failed to boot Sherpa-ONNX. Check file paths!", e)
         }
     }
 
@@ -116,7 +125,8 @@ class VoiceManager @Inject constructor(
                 requestAudioFocus()
 
                 // Generate audio array using Sherpa's Kokoro model
-                val generatedAudio = ttsEngine!!.generate(text)
+                // Fix: Added speaker ID and speed parameters
+                val generatedAudio = ttsEngine!!.generate(text, 0, 1.0f)
                 val samples = generatedAudio.samples
                 val sampleRate = generatedAudio.sampleRate
 
@@ -158,9 +168,6 @@ class VoiceManager @Inject constructor(
     }
 
     // --- SPEECH TO TEXT (Listening to User) ---
-    /**
-     * Pass raw audio FloatArray (PCM, 16kHz, Mono) from the device microphone to transcribe it.
-     */
     fun transcribeAudio(samples: FloatArray, sampleRate: Int = 16000): String {
         if (!isInitialized || asrEngine == null) {
             Log.w("VoiceManager", "Sherpa ASR not initialized.")
@@ -170,6 +177,7 @@ class VoiceManager @Inject constructor(
         return try {
             val stream = asrEngine!!.createStream()
             stream.acceptWaveform(samples, sampleRate)
+            // OfflineStream does not have inputFinished(); acceptWaveform is sufficient before decode
             asrEngine!!.decode(stream)
 
             val result = asrEngine!!.getResult(stream).text

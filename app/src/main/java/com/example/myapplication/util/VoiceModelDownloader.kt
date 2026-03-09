@@ -33,24 +33,34 @@ class VoiceModelDownloader @Inject constructor(
     private val _isDownloading = MutableStateFlow(false)
     val isDownloading: StateFlow<Boolean> = _isDownloading.asStateFlow()
 
-    // ⚠️ UPDATE THE KOKORO FILES BELOW ⚠️
     private val requiredModels = listOf(
         "decoder-epoch-99-avg-1.onnx",
         "encoder-epoch-99-avg-1.onnx",
         "joiner-epoch-99-avg-1.onnx",
-        "tokens.txt", // Fixed to match your exact S3 extension
-
-        // Put the exact names of the files inside your Kokoro folder here:
-        "kokoro_model/model.onnx", // Example: change to actual name
-        "kokoro_model/voices.bin"        // Example: change to actual name
+        "tokens.txt",
+        "kokoro_model/model.onnx",
+        "kokoro_model/voices.bin"
     )
 
     private val bucketName = "aicoach-voice-models"
 
+    // STRICT FILE VALIDATOR: Catches fake AWS XML error files
+    private fun isValidFile(file: File, fileName: String): Boolean {
+        if (!file.exists()) return false
+        val size = file.length()
+
+        return when {
+            fileName.contains("encoder") -> size > 50_000_000 // Must be > 50MB
+            fileName.contains("model.onnx") -> size > 50_000_000 // Must be > 50MB
+            fileName.contains("decoder") || fileName.contains("joiner") -> size > 500_000 // > 500KB
+            else -> size > 100 // tokens.txt, voices.bin
+        }
+    }
+
     fun checkLocalFiles() {
         val modelsDir = File(context.filesDir, "voice_models")
         val allFilesExist = requiredModels.all { fileName ->
-            File(modelsDir, fileName).exists()
+            isValidFile(File(modelsDir, fileName), fileName)
         }
         if (allFilesExist) {
             _downloadStatus.value = "Models ready."
@@ -78,11 +88,21 @@ class VoiceModelDownloader @Inject constructor(
         val modelsDir = File(context.filesDir, "voice_models")
         if (!modelsDir.exists()) modelsDir.mkdirs()
 
-        val allFilesExist = requiredModels.all { fileName ->
-            File(modelsDir, fileName).exists()
+        // 1. First Pass: Delete any corrupted files
+        requiredModels.forEach { fileName ->
+            val targetFile = File(modelsDir, fileName)
+            if (targetFile.exists() && !isValidFile(targetFile, fileName)) {
+                Log.w("ModelDownloader", "Trashing corrupted file: $fileName")
+                targetFile.delete()
+            }
         }
 
-        if (allFilesExist) {
+        // 2. Check if we still need to download anything
+        val needsDownload = requiredModels.any { fileName ->
+            !isValidFile(File(modelsDir, fileName), fileName)
+        }
+
+        if (!needsDownload) {
             _downloadStatus.value = "Models ready."
             _isReady.value = true
             return@withContext
@@ -95,8 +115,6 @@ class VoiceModelDownloader @Inject constructor(
             getS3Client().use { s3 ->
                 for ((index, fileName) in requiredModels.withIndex()) {
                     val targetFile = File(modelsDir, fileName)
-
-                    // CRUCIAL FIX: Create subfolders locally if the S3 key has a slash!
                     targetFile.parentFile?.mkdirs()
 
                     if (!targetFile.exists()) {
@@ -114,8 +132,14 @@ class VoiceModelDownloader @Inject constructor(
                     }
                 }
             }
-            _downloadStatus.value = "Download complete!"
-            _isReady.value = true
+
+            // Final check to make sure the download actually worked
+            checkLocalFiles()
+            if (!_isReady.value) {
+                _downloadStatus.value = "Download incomplete. Please try again."
+            } else {
+                _downloadStatus.value = "Download complete!"
+            }
 
         } catch (e: Exception) {
             Log.e("ModelDownloader", "Failed to download models", e)

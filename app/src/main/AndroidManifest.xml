@@ -32,9 +32,10 @@
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
-    <!-- Required for Instagram Story Sharing on Android 11+ -->
+    <!-- Required for Instagram Story Sharing and Google Play Services on Android 11+ -->
     <queries>
         <package android:name="com.instagram.android" />
+        <package android:name="com.google.android.gms" />
         <intent>
             <action android:name="com.instagram.share.ADD_TO_STORY" />
         </intent>
