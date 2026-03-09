@@ -100,6 +100,7 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.compose.material.icons)
     implementation("org.jsoup:jsoup:1.22.1")
+    implementation(libs.re2j) // Fix for Missing class com.google.re2j.Matcher
 
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
 

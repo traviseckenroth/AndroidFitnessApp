@@ -657,6 +657,11 @@ class ActiveSessionViewModel @Inject constructor(
     }
 
     fun setCoachVoice(sid: Int) {
+        // 1. Save it permanently so the Settings screen and AutoCoachEngine see it!
+        viewModelScope.launch {
+            userPrefs.saveUserVoiceSid(sid)
+        }
+        // 2. Update the live engine instantly
         nativeAutoCoachVoice.currentVoiceSid = sid
         _selectedVoiceSid.value = sid
     }

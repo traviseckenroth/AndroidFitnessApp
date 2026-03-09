@@ -1,27 +1,22 @@
 package com.example.myapplication.ui.splash
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FitnessCenter
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.scale // IMPORT FOR SCALING
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale // IMPORT FOR SCALING BEHAVIOR
+import androidx.compose.ui.res.painterResource
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.myapplication.R
 
 @Composable
 fun SplashScreen(
@@ -41,26 +36,17 @@ fun SplashScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(32.dp),
+            .background(Color.White),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(
-            imageVector = Icons.Default.FitnessCenter,
-            contentDescription = "Forma Logo",
-            modifier = Modifier.size(100.dp),
-            tint = MaterialTheme.colorScheme.primary
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Text(
-            text = "FORMA AI",
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.Black,
-            color = MaterialTheme.colorScheme.onBackground,
-            letterSpacing = MaterialTheme.typography.headlineLarge.letterSpacing * 1.5
+        Image(
+            painter = painterResource(id = R.drawable.forma_logo),
+            contentDescription = "Forma AI Fitness Logo",
+            // This is the magic line!
+            // 1.0f = 100%, 1.5f = 150%, 2.0f = 200%
+            modifier = Modifier.scale(1.8f),
+            contentScale = ContentScale.Fit
         )
     }
 }

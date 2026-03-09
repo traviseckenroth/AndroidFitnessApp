@@ -25,50 +25,50 @@ private val AppShapes = Shapes(
     large = RoundedCornerShape(24.dp)
 )
 
-// Energetic Light Scheme
+// Energetic Light Scheme based on Logo
 private val CustomLightColorScheme = lightColorScheme(
     primary = FormaBlue,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFDBEAFE),     // Very soft blue background for chips/containers
+    primaryContainer = Color(0xFFE0E7FF),
     onPrimaryContainer = FormaBlueDark,
     secondary = FormaTeal,
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFCCFBF1),   // Very soft teal
-    onSecondaryContainer = Color(0xFF115E59),
+    secondaryContainer = Color(0xFFCCFBF1),
+    onSecondaryContainer = Color(0xFF00827B), // FormaCyanDark
     background = BackgroundLight,
     surface = SurfaceLight,
     onSurface = TextPrimaryLight,
-    surfaceVariant = Color(0xFFF1F5F9),       // Slightly darker than background for secondary cards
+    surfaceVariant = Color(0xFFF1F5F9),
     onSurfaceVariant = TextSecondaryLight,
     outline = OutlineLight,
     error = ErrorRed,
     onError = Color.White
 )
 
-// Rich Dark Scheme (Slate-based, not pure black)
+// Rich Dark Scheme based on Logo
 private val CustomDarkColorScheme = darkColorScheme(
-    primary = Color(0xFF60A5FA),              // Lighter, brighter blue for dark mode visibility
-    onPrimary = Color(0xFF1E3A8A),
+    primary = FormaAccentBlue,
+    onPrimary = Color(0xFF04153B),
     primaryContainer = FormaBlueDark,
     onPrimaryContainer = Color(0xFFDBEAFE),
-    secondary = Color(0xFF2DD4BF),            // Brighter teal for dark mode
-    onSecondary = Color(0xFF042F2E),
-    secondaryContainer = FormaTeal,
+    secondary = FormaTealLight,
+    onSecondary = Color(0xFF00302D),
+    secondaryContainer = Color(0xFF00827B), // FormaCyanDark
     onSecondaryContainer = Color(0xFFCCFBF1),
     background = BackgroundDark,
     surface = SurfaceDark,
     onSurface = TextPrimaryDark,
-    surfaceVariant = Color(0xFF334155),
+    surfaceVariant = Color(0xFF1E2E4A),
     onSurfaceVariant = TextSecondaryDark,
     outline = OutlineDark,
-    error = Color(0xFFF87171),
+    error = ErrorRedLight,
     onError = Color(0xFF450A0A)
 )
 
 @Composable
 fun MyApplicationTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false, // Keep false to enforce your brand colors
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {

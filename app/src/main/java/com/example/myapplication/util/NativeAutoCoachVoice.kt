@@ -78,18 +78,15 @@ class NativeAutoCoachVoice @Inject constructor(
         hasAttemptedInit = true
 
         try {
-            // 1. Point to the massive ML files downloaded from S3
             val s3ModelsDir = File(context.filesDir, "voice_models")
             val kokoroModelFile = File(s3ModelsDir, "kokoro_model/model.onnx")
             val kokoroVoicesFile = File(s3ModelsDir, "kokoro_model/voices.bin")
 
-            // FIREWALL
             if (kokoroVoicesFile.length() < 5000 || kokoroModelFile.length() < 50_000_000) {
                 Log.e("NativeAutoCoachVoice", "CRITICAL FIREWALL: S3 models are corrupt or missing.")
                 return@withLock
             }
 
-            // 2. Extract lightweight assets (including Kokoro's exclusive tokens.txt!)
             val localAssetsDir = File(context.filesDir, "kokoro_assets")
             val lexiconFile = File(localAssetsDir, "lexicon-us-en.txt")
             val kokoroTokensFile = File(localAssetsDir, "tokens.txt")
@@ -101,7 +98,7 @@ class NativeAutoCoachVoice @Inject constructor(
                 localAssetsDir.mkdirs()
 
                 copyFile("kokoro_model/lexicon-us-en.txt", lexiconFile)
-                copyFile("kokoro_model/tokens.txt", kokoroTokensFile) // NEW: Copy Kokoro's tokens
+                copyFile("kokoro_model/tokens.txt", kokoroTokensFile)
 
                 val espeakDir = File(localAssetsDir, "espeak-ng-data")
                 if (!espeakDir.exists()) espeakDir.mkdirs()
@@ -111,14 +108,12 @@ class NativeAutoCoachVoice @Inject constructor(
                     Log.e("NativeAutoCoachVoice", "CRITICAL: Asset copy failed! Check your assets folder.")
                     return@withLock
                 }
-                Log.d("NativeAutoCoachVoice", "Asset copy complete.")
             }
 
-            // 3. Combine both paths into the Sherpa-ONNX Config
             val modelConfig = OfflineTtsKokoroModelConfig(
                 model = kokoroModelFile.absolutePath,
                 voices = kokoroVoicesFile.absolutePath,
-                tokens = kokoroTokensFile.absolutePath, // USE THE NATIVE KOKORO TOKENS!
+                tokens = kokoroTokensFile.absolutePath,
                 dataDir = File(localAssetsDir, "espeak-ng-data").absolutePath,
                 dictDir = "",
                 lexicon = lexiconFile.absolutePath
@@ -144,7 +139,6 @@ class NativeAutoCoachVoice @Inject constructor(
                 .setBufferSizeInBytes(minBufferSize)
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
-            Log.d("NativeAutoCoachVoice", "Engine and AudioTrack ready.")
 
         } catch (e: Exception) {
             Log.e("NativeAutoCoachVoice", "Failed to initialize TTS", e)
@@ -170,7 +164,10 @@ class NativeAutoCoachVoice @Inject constructor(
 
             try {
                 track.play()
+
+                // FIXED: Removed the 0..9 clamp. It will now successfully use your high SIDs!
                 val generatedAudio = engine.generate(text, currentVoiceSid, 1.0f)
+
                 val samples = generatedAudio.samples
                 val chunkSize = 4096
                 val shortArray = ShortArray(chunkSize)

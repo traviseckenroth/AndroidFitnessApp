@@ -71,6 +71,7 @@ import com.example.myapplication.data.NutritionPlan
 import com.example.myapplication.data.local.FoodLogEntity
 import com.example.myapplication.data.remote.MacroSummary
 import com.example.myapplication.ui.theme.CarbColor
+import com.example.myapplication.ui.theme.FormaBlue
 import com.example.myapplication.ui.theme.FatColor
 import com.example.myapplication.ui.theme.ProteinColor
 import java.util.Locale
@@ -216,7 +217,7 @@ fun NutritionScreen(viewModel: NutritionViewModel = hiltViewModel()) {
                 Button(
                     onClick = { setShowVoiceDialog(true) },
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                 ) {
                     Icon(Icons.Default.Mic, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
