@@ -22,3 +22,29 @@
 
 # Jsoup optional dependency on re2j
 -dontwarn com.google.re2j.**
+
+# --- AI COACH PROTECTION ---
+# Keep all Sherpa-ONNX C++ bindings completely intact
+-keep class com.k2fsa.sherpa.onnx.** { *; }
+-keepclassmembers class com.k2fsa.sherpa.onnx.** { *; }
+
+# --- AWS & CLOUD PROTECTION ---
+# Keep AWS SDK classes from being stripped so downloads don't crash
+-keep class aws.sdk.kotlin.** { *; }
+-keep class aws.smithy.kotlin.** { *; }
+
+# --- DATA & JSON PROTECTION ---
+# Prevent R8 from breaking your database models
+-keepattributes *Annotation*
+-keepattributes Signature
+
+# --- ONNX RUNTIME PROTECTION (CRITICAL) ---
+# Prevents the C++ ML engine from crashing on startup
+-keep class ai.onnxruntime.** { *; }
+-keepclassmembers class ai.onnxruntime.** { *; }
+
+# --- JNI SAFETIES ---
+# Ensure any native C++ methods are never renamed
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
