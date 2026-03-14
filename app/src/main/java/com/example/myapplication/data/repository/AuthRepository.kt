@@ -1,6 +1,8 @@
 package com.example.myapplication.data.repository
 
 import android.content.Context
+import android.util.Base64
+import android.util.Log
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -20,6 +22,7 @@ import com.example.myapplication.data.local.UserPreferencesRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -232,7 +235,31 @@ class AuthRepository @Inject constructor(
         }
     }
 
-    suspend fun getIdToken(): String? = context.authDataStore.data.map { it[ID_TOKEN_KEY] }.first()
+    suspend fun getIdToken(): String? {
+        val idToken = context.authDataStore.data.map { it[ID_TOKEN_KEY] }.first()
+        if (idToken != null && isTokenExpired(idToken)) {
+            Log.d("AuthRepository", "ID Token expired, attempting refresh...")
+            val success = autoLogin()
+            if (success) {
+                return context.authDataStore.data.map { it[ID_TOKEN_KEY] }.first()
+            }
+        }
+        return idToken
+    }
+
+    private fun isTokenExpired(token: String): Boolean {
+        return try {
+            val parts = token.split(".")
+            if (parts.size < 2) return true
+            val payload = String(Base64.decode(parts[1], Base64.URL_SAFE or Base64.NO_WRAP))
+            val json = JSONObject(payload)
+            val exp = json.getLong("exp")
+            val currentTime = System.currentTimeMillis() / 1000
+            currentTime >= (exp - 60) // Refresh if within 60 seconds of expiry
+        } catch (e: Exception) {
+            true
+        }
+    }
 
     suspend fun logout() {
         context.authDataStore.edit { prefs ->
