@@ -360,6 +360,8 @@ class BedrockClient @Inject constructor(
                 Schedule: ${days.joinToString()}
                 Excluded Equipment: ${if (excludedEquipment.isEmpty()) "None" else excludedEquipment.joinToString()}
                 History: ${historySummary.ifBlank { "No previous history." }}
+                
+                CRITICAL SCHEDULE RULE: You MUST ONLY generate workouts for the exact days listed in the Schedule above. DO NOT create workouts for any other days.
             """.trimIndent()
 
             // 2. STATIC DATA (Identical for EVERY user - CACHED!)
