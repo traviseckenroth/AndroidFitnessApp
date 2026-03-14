@@ -8,7 +8,10 @@ import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.MuscleVolumeAggregation
 import com.example.myapplication.data.local.WorkoutDao
 import com.example.myapplication.data.local.WorkoutEntity
+import com.example.myapplication.data.local.WorkoutPlanEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
+import com.example.myapplication.data.remote.BedrockClient
+import com.example.myapplication.data.remote.GeneratedPlanResponse
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
@@ -32,7 +35,8 @@ data class WorkoutSummaryResult(
 @Singleton
 class WorkoutExecutionRepository @Inject constructor(
     private val workoutDao: WorkoutDao,
-    private val healthConnectManager: HealthConnectManager
+    private val healthConnectManager: HealthConnectManager,
+    private val bedrockClient: BedrockClient
 ) {
     // --- READS ---
     fun getSetsForSession(workoutId: Long): Flow<List<WorkoutSetEntity>> = workoutDao.getSetsForWorkout(workoutId)
@@ -178,6 +182,90 @@ class WorkoutExecutionRepository @Inject constructor(
         workoutDao.insertSets(finalSets)
     }
 
+    // app/src/main/java/com/example/myapplication/data/repository/WorkoutRepository.kt
+
+    suspend fun generateStandaloneStretchingFlow(goal: String): Long {
+        Log.d("WorkoutRepo", "Generating Standalone Stretching Flow")
+        val availableExercises = workoutDao.getAllExercises().first()
+
+        // 1. Fetch AI Response
+        val aiResponse = bedrockClient.generateStretchingFlow(goal, availableExercises)
+
+        // 2. Create Single-Day "Micro-Plan"
+        val startDate = System.currentTimeMillis()
+        val planEntity = WorkoutPlanEntity(
+            name = "Mobility Flow for $goal",
+            startDate = startDate,
+            goal = goal,
+            programType = "Mobility"
+        )
+
+        return saveStandaloneWorkout(planEntity, aiResponse, startDate, availableExercises)
+    }
+
+    suspend fun generateStandaloneAccessoryWorkout(goal: String): Long {
+        Log.d("WorkoutRepo", "Generating Standalone Accessory Workout")
+        val availableExercises = workoutDao.getAllExercises().first()
+
+        val aiResponse = bedrockClient.generateAccessoryWorkout(goal, availableExercises)
+
+        val startDate = System.currentTimeMillis()
+        val planEntity = WorkoutPlanEntity(
+            name = "Accessory Session for $goal",
+            startDate = startDate,
+            goal = goal,
+            programType = "Accessory"
+        )
+
+        return saveStandaloneWorkout(planEntity, aiResponse, startDate, availableExercises)
+    }
+
+    private suspend fun saveStandaloneWorkout(
+        planEntity: WorkoutPlanEntity,
+        aiResponse: GeneratedPlanResponse,
+        startDate: Long,
+        availableExercises: List<ExerciseEntity>
+    ): Long {
+        val fullPlanData = mutableMapOf<DailyWorkoutEntity, List<WorkoutSetEntity>>()
+
+        // Fallback if AI fails to generate a valid day
+        val templateDay = aiResponse.schedule.firstOrNull() ?: return -1L
+
+        val workoutEntity = DailyWorkoutEntity(
+            planId = 0, // Handled automatically by saveFullWorkoutPlan transaction
+            scheduledDate = startDate,
+            title = templateDay.title,
+            isCompleted = false
+        )
+        val setsForThisWorkout = mutableListOf<WorkoutSetEntity>()
+        templateDay.exercises.forEach { aiEx ->
+            val realEx = availableExercises.find { it.name.equals(aiEx.name, ignoreCase = true) }
+
+            realEx?.let { validExercise ->
+                val finalSets = aiEx.sets.coerceAtLeast(1)
+                for (setNum in 1..finalSets) {
+                    setsForThisWorkout.add(
+                        WorkoutSetEntity(
+                            workoutId = 0,
+                            exerciseId = validExercise.exerciseId,
+                            setNumber = setNum,
+                            suggestedReps = aiEx.suggestedReps,
+                            suggestedRpe = aiEx.suggestedRpe,
+                            suggestedLbs = aiEx.suggestedLbs.toInt(),
+                            isCompleted = false
+                        )
+                    )
+                }
+            }
+        }
+
+        fullPlanData[workoutEntity] = setsForThisWorkout
+
+        // Delete any uncompleted workouts for today so this new session takes priority
+        workoutDao.deleteFutureUncompletedWorkouts(startDate)
+
+        return workoutDao.saveFullWorkoutPlan(planEntity, fullPlanData)
+    }
     suspend fun getWorkoutSummary(workoutId: Long): WorkoutSummaryResult {
         val workout = workoutDao.getWorkoutById(workoutId)
             ?: return WorkoutSummaryResult("Workout Complete", "Good job!", 0, 0)

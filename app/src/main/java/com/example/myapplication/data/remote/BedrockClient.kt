@@ -629,8 +629,8 @@ class BedrockClient @Inject constructor(
             input_schema = ToolInputSchema(
                 properties = mapOf(
                     "explanation" to PropertySchema(type = "string", description = "Coach's reasoning for the mobility flow."),
-                    "mesocycleLengthWeeks" to PropertySchema(type = "integer", description = "Default to 1"),
-                    "schedule" to PropertySchema(type = "array", items = daySchema)
+                    "mesocycleLengthWeeks" to PropertySchema(type = "integer", description = "Set to 1"),
+                    "schedule" to PropertySchema(type = "array", items = daySchema, description = "Exactly ONE day representing this single session.")
                 ),
                 required = listOf("explanation", "mesocycleLengthWeeks", "schedule")
             )
@@ -641,14 +641,14 @@ class BedrockClient @Inject constructor(
             val systemBlocks = listOf(SystemBlock(text = systemPrompt))
             val jsonObjectOutput = doInvokeClaudeWithTool(
                 systemBlocks = systemBlocks,
-                userPrompt = "Generate Stretching Flow",
+                userPrompt = "Generate a single-day Stretching Flow. You MUST use the save_workout_plan tool to save it.",
                 modelId = CLAUDE_HAIKU,
                 tool = planTool
             )
 
             // 3. MAP DIRECTLY TO DATA CLASS
             jsonConfig.decodeFromJsonElement<GeneratedPlanResponse>(jsonObjectOutput)
-
+// ...
         } catch (e: Exception) {
             Log.e("Bedrock", "Stretching parse failed", e)
             GeneratedPlanResponse(explanation = "Failed to generate mobility flow.")
@@ -747,8 +747,8 @@ class BedrockClient @Inject constructor(
             input_schema = ToolInputSchema(
                 properties = mapOf(
                     "explanation" to PropertySchema(type = "string", description = "Coach's reasoning for the selection."),
-                    "mesocycleLengthWeeks" to PropertySchema(type = "integer", description = "Default to 1"),
-                    "schedule" to PropertySchema(type = "array", items = daySchema)
+                    "mesocycleLengthWeeks" to PropertySchema(type = "integer", description = "Set to 1"),
+                    "schedule" to PropertySchema(type = "array", items = daySchema, description = "Exactly ONE day representing this single session.")
                 ),
                 required = listOf("explanation", "mesocycleLengthWeeks", "schedule")
             )
@@ -759,14 +759,14 @@ class BedrockClient @Inject constructor(
             val systemBlocks = listOf(SystemBlock(text = systemPrompt))
             val jsonObjectOutput = doInvokeClaudeWithTool(
                 systemBlocks = systemBlocks,
-                userPrompt = "Generate Accessory Work",
+                userPrompt = "Generate a single-day Accessory Work session. You MUST use the save_workout_plan tool to save it.",
                 modelId = CLAUDE_HAIKU,
                 tool = planTool
             )
 
             // 3. MAP DIRECTLY TO DATA CLASS
             jsonConfig.decodeFromJsonElement<GeneratedPlanResponse>(jsonObjectOutput)
-
+// ...
         } catch (e: Exception) {
             Log.e("Bedrock", "Accessory parse failed", e)
             GeneratedPlanResponse(explanation = "Failed to generate accessory work.")
