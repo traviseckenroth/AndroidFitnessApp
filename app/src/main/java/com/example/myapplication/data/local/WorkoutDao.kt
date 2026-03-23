@@ -10,6 +10,8 @@ import androidx.room.Transaction
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
+import kotlinx.serialization.Serializable
+
 data class MuscleVolumeAggregation(
     val muscleGroup: String,
     val totalVolume: Double
@@ -18,6 +20,25 @@ data class MuscleVolumeAggregation(
 data class MuscleVolumeTuple(
     val muscleGroup: String?, // Nullable just in case an exercise lacks a muscle group
     val totalVolume: Double   // Double matches the InsightsUiState map
+)
+
+// Flattened POJO for Machine Learning Export
+@Serializable
+data class MLTrainingData(
+    val date: Long,
+    val workoutId: Long,
+    val exerciseId: Long,
+    val exerciseName: String,
+    val majorMuscle: String,
+    val equipment: String?,
+    val tier: Int,
+    val setNumber: Int,
+    val suggestedReps: Int,
+    val suggestedLbs: Int,
+    val suggestedRpe: Int,
+    val actualReps: Int?,
+    val actualLbs: Float?,
+    val actualRpe: Float?
 )
 
 @Dao
@@ -54,6 +75,29 @@ interface WorkoutDao {
 
     @Query("SELECT * FROM exercises WHERE exerciseId = :exerciseId")
     suspend fun getExerciseById(exerciseId: Long): ExerciseEntity?
+
+    @Query("""
+    SELECT 
+        w.scheduledDate AS date,
+        s.workoutId,
+        s.exerciseId,
+        e.name AS exerciseName,
+        e.majorMuscle,
+        e.equipment,
+        e.tier,
+        s.setNumber,
+        s.suggestedReps,
+        s.suggestedLbs,
+        s.suggestedRpe,
+        s.actualReps,
+        s.actualLbs,
+        s.actualRpe
+    FROM workout_sets s
+    INNER JOIN daily_workouts w ON s.workoutId = w.workoutId
+    INNER JOIN exercises e ON s.exerciseId = e.exerciseId
+    WHERE s.isCompleted = 1 AND s.actualReps IS NOT NULL
+""")
+    suspend fun getMLTrainingData(): List<MLTrainingData>
 
     @Query("SELECT * FROM exercises")
     suspend fun getAllExercisesOneShot(): List<ExerciseEntity>

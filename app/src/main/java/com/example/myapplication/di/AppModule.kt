@@ -4,9 +4,12 @@ import android.content.Context
 import android.os.StrictMode
 import android.util.Log
 import androidx.room.Room
+import com.example.myapplication.BuildConfig
 import com.example.myapplication.data.local.AppDatabase
 import com.example.myapplication.data.local.MemoryDao
 import com.example.myapplication.data.local.WorkoutDao
+import com.example.myapplication.data.remote.CognitoCredentialsProvider
+import com.example.myapplication.data.repository.AuthRepository
 import com.example.myapplication.util.DatabasePassphraseManager
 import dagger.Module
 import dagger.Provides
@@ -94,5 +97,17 @@ object AppModule {
     @Singleton
     fun provideMemoryDao(database: AppDatabase): MemoryDao {
         return database.memoryDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideCognitoCredentialsProvider(
+        authRepository: AuthRepository
+    ): CognitoCredentialsProvider {
+        return CognitoCredentialsProvider(
+            authRepository = authRepository,
+            identityPoolId = BuildConfig.COGNITO_IDENTITY_POOL_ID,
+            region = BuildConfig.AWS_REGION
+        )
     }
 }

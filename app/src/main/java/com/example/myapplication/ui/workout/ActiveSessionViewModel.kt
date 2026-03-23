@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import com.example.myapplication.data.repository.MLDataUploader
 import com.example.myapplication.data.local.ExerciseEntity
 import com.example.myapplication.data.local.WorkoutSetEntity
 import com.example.myapplication.data.remote.BedrockClient
@@ -74,7 +75,8 @@ class ActiveSessionViewModel @Inject constructor(
     private val memoryDao: MemoryDao,
     private val audioStreamer: ContinuousAudioStreamer,
     private val nativeAutoCoachVoice: NativeAutoCoachVoice,
-    private val microphoneManager: MicrophoneManager // Added this!
+    private val microphoneManager: MicrophoneManager,
+    private val mlDataUploader: MLDataUploader
 ) : ViewModel() {
 
     // --- 1. STATE PROPERTIES ---
@@ -341,6 +343,12 @@ class ActiveSessionViewModel @Inject constructor(
                 .build()
 
             WorkManager.getInstance(application).enqueue(syncRequest)
+
+            try {
+                mlDataUploader.uploadTrainingData()
+            } catch (e: Exception) {
+                Log.e("ActiveSession", "Failed to upload ML data to S3", e)
+            }
         }
     }
 
