@@ -126,7 +126,8 @@ data class CompletedWorkoutEntity(
     val date: Long,
     val reps: Int,
     val rpe: Int,
-    val weight: Int
+    val weight: Int,
+    val isSynced: Boolean = false
 ) {
     val totalReps: Int
         get() = reps

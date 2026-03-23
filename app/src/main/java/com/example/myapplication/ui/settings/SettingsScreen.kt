@@ -231,6 +231,31 @@ fun SettingsScreen(
 
             HorizontalDivider()
 
+            // --- SECTION: SUPPORT ---
+            Text(
+                "Support",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+
+            val context = androidx.compose.ui.platform.LocalContext.current
+            Button(
+                onClick = {
+                    val intent = android.content.Intent(android.content.Intent.ACTION_SENDTO).apply {
+                        data = android.net.Uri.parse("mailto:")
+                        putExtra(android.content.Intent.EXTRA_EMAIL, arrayOf("traviseckenroth@gmail.com"))
+                        putExtra(android.content.Intent.EXTRA_SUBJECT, "App Feedback")
+                    }
+                    context.startActivity(android.content.Intent.createChooser(intent, "Send Feedback"))
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Send Feedback")
+            }
+
+            HorizontalDivider()
+
             // --- SECTION: ACCOUNT (SIGN OUT) ---
             Text(
                 "Account",
@@ -340,7 +365,6 @@ fun SettingsDropdownTile(
     }
 }
 
-// THIS WAS PULLED OUT SO IT ACTUALLY WORKS!
 @Composable
 fun VoiceModelSettingsSection(
     viewModel: VoiceModelViewModel = hiltViewModel()

@@ -110,6 +110,13 @@ interface WorkoutDao {
     fun getCompletedWorkoutsWithExercise(): Flow<List<CompletedWorkoutWithExercise>>
 
     @Transaction
+    @Query("SELECT * FROM completed_workouts WHERE isSynced = 0")
+    fun getUnsyncedWorkoutsWithExercise(): kotlinx.coroutines.flow.Flow<List<CompletedWorkoutWithExercise>>
+
+    @Query("UPDATE completed_workouts SET isSynced = 1 WHERE id IN (:ids)")
+    suspend fun markAsSynced(ids: List<Long>): Int
+
+    @Transaction
     @Query("SELECT * FROM completed_workouts WHERE date >= :startTime")
     fun getCompletedWorkoutsRecent(startTime: Long): Flow<List<CompletedWorkoutWithExercise>>
 
