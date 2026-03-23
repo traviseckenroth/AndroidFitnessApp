@@ -795,7 +795,7 @@ fun RestDayRecoveryCard(
                     ) {
                         Icon(Icons.Default.FitnessCenter, null, tint = FormaTeal, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("GENERATE ACCESSORY WORK", color = FormaTeal)
+                        Text("GENERATE WORKOUT", color = FormaTeal)
                     }
                 }
             }
