@@ -2,6 +2,7 @@
 package com.example.myapplication.data.repository
 
 import android.util.Log
+import com.example.myapplication.data.local.BriefingCacheEntity
 import com.example.myapplication.data.local.ContentSourceEntity
 import com.example.myapplication.data.local.WorkoutDao
 import kotlinx.coroutines.Dispatchers
@@ -18,24 +19,25 @@ import javax.inject.Singleton
 class ContentRepository @Inject constructor(
     private val workoutDao: WorkoutDao
 ) {
-    // Cache for Daily Briefing to prevent unnecessary refreshes
-    private var cachedBriefing: String = ""
-    private var cachedInterestTags: Set<String> = emptySet()
-    private var cachedWorkoutTitle: String? = null
-
-    fun getCachedBriefing(interests: List<String>, workoutTitle: String?): String? {
-        val interestSet = interests.toSet()
-        // We only return the cache if interests haven't changed AND workout title is same
-        if (cachedBriefing.isNotEmpty() && cachedInterestTags == interestSet && cachedWorkoutTitle == workoutTitle) {
-            return cachedBriefing
+    suspend fun getCachedBriefing(contentHash: Int, workoutTitle: String?): String? = withContext(Dispatchers.IO) {
+        val cached = workoutDao.getLatestBriefing()
+        if (cached != null && cached.contentHash == contentHash && cached.workoutTitle == workoutTitle) {
+            // Check if cache is reasonably fresh (e.g., less than 24 hours old)
+            if (System.currentTimeMillis() - cached.timestamp < 24 * 60 * 60 * 1000) {
+                return@withContext cached.briefingText
+            }
         }
-        return null
+        null
     }
 
-    fun updateBriefingCache(briefing: String, interests: List<String>, workoutTitle: String?) {
-        cachedBriefing = briefing
-        cachedInterestTags = interests.toSet()
-        cachedWorkoutTitle = workoutTitle
+    suspend fun updateBriefingCache(briefing: String, contentHash: Int, workoutTitle: String?) = withContext(Dispatchers.IO) {
+        workoutDao.insertBriefing(
+            BriefingCacheEntity(
+                contentHash = contentHash,
+                briefingText = briefing,
+                workoutTitle = workoutTitle
+            )
+        )
     }
 
     suspend fun fetchRealContent(query: String): List<ContentSourceEntity> = withContext(Dispatchers.IO) {

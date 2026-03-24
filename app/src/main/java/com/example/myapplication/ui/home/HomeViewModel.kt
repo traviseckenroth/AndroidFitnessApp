@@ -1,14 +1,19 @@
 // File: app/src/main/java/com/example/myapplication/ui/home/HomeViewModel.kt
 package com.example.myapplication.ui.home
 
+import android.content.Context
 import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.Data
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.example.myapplication.data.local.ContentSourceEntity
 import com.example.myapplication.data.local.DailyWorkoutEntity
 import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.data.local.WorkoutDao
+import com.example.myapplication.data.local.UserSubscriptionEntity
 import com.example.myapplication.data.remote.BedrockClient
 import com.example.myapplication.data.remote.CommunityPick
 import com.example.myapplication.data.repository.CommunityRepository
@@ -16,11 +21,14 @@ import com.example.myapplication.data.repository.ContentRepository
 import com.example.myapplication.data.repository.HealthConnectManager
 import com.example.myapplication.data.repository.PlanProgress
 import com.example.myapplication.data.repository.PlanRepository
+import com.example.myapplication.service.DiscoveryWorker
 import com.example.myapplication.ui.navigation.ActiveWorkout
 import com.example.myapplication.ui.navigation.StretchingSession
 import com.example.myapplication.util.FormaScore
 import com.example.myapplication.util.ReadinessEngine
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,14 +45,35 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.net.URLEncoder
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
 
+data class HomeUiState(
+    val selectedDate: LocalDate = LocalDate.now(),
+    val isGenerating: Boolean = false,
+    val selectedCategory: String = "All",
+    val knowledgeBriefing: String = "",
+    val isBriefingLoading: Boolean = false,
+    val errorMessage: String? = null,
+    val formaScore: FormaScore? = null,
+    val showHealthConnectOnboarding: Boolean = false,
+    val planProgress: PlanProgress? = null,
+    val userName: String = "User",
+    val workoutDates: List<LocalDate> = emptyList(),
+    val dailyWorkout: DailyWorkoutEntity? = null,
+    val filteredContent: List<ContentSourceEntity> = emptyList(),
+    val communityPick: CommunityPick? = null,
+    val subscriptions: List<UserSubscriptionEntity> = emptyList(),
+    val healthConnectAvailability: Int = HealthConnectClient.SDK_UNAVAILABLE
+)
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val repository: PlanRepository,
     private val bedrockClient: BedrockClient,
     private val workoutDao: WorkoutDao,
@@ -67,7 +96,6 @@ class HomeViewModel @Inject constructor(
     private val _navigationEvents = MutableSharedFlow<Any>()
     val navigationEvents = _navigationEvents.asSharedFlow()
 
-    // Briefing State
     private val _knowledgeBriefing = MutableStateFlow("")
     val knowledgeBriefing: StateFlow<String> = _knowledgeBriefing.asStateFlow()
 
@@ -80,13 +108,11 @@ class HomeViewModel @Inject constructor(
     private val _formaScore = MutableStateFlow<FormaScore?>(null)
     val formaScore: StateFlow<FormaScore?> = _formaScore.asStateFlow()
 
-    // Health Connect Onboarding State
     private val _showHealthConnectOnboarding = MutableStateFlow(false)
     val showHealthConnectOnboarding: StateFlow<Boolean> = _showHealthConnectOnboarding.asStateFlow()
 
     val healthConnectAvailability = healthConnectManager.availability
 
-    // Reactive Flow for Active Plan Progress
     val planProgress: StateFlow<PlanProgress?> = repository.getActivePlanProgressFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
@@ -107,7 +133,7 @@ class HomeViewModel @Inject constructor(
         )
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val dailyWorkout: StateFlow<DailyWorkoutEntity?> = _selectedDate
+    private val dailyWorkoutFlow = _selectedDate
         .flatMapLatest { date ->
             val epochMillis = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
             repository.getWorkoutForDate(epochMillis)
@@ -121,9 +147,10 @@ class HomeViewModel @Inject constructor(
     val subscriptions = workoutDao.getAllSubscriptions()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), initialValue = emptyList())
 
+    private val subscriptionsFlow = workoutDao.getAllSubscriptions()
     private val _rawSubscribedContent = workoutDao.getSubscribedContent()
     
-    val filteredContent: StateFlow<List<ContentSourceEntity>> = combine(
+    private val filteredContentFlow = combine(
         _rawSubscribedContent,
         _selectedCategory
     ) { content, category ->
@@ -134,10 +161,50 @@ class HomeViewModel @Inject constructor(
             else -> content
         }
         filtered.sortedWith(compareByDescending<ContentSourceEntity> { it.dateFetched }.thenByDescending { it.sourceId })
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }
 
-    val communityPick: StateFlow<CommunityPick?> = communityRepository.getTopCommunityPick()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    private val communityPickFlow = communityRepository.getTopCommunityPick()
+
+    val uiState: StateFlow<HomeUiState> = combine(
+        _selectedDate,
+        _isGenerating,
+        _selectedCategory,
+        _knowledgeBriefing,
+        _isBriefingLoading,
+        _errorMessage,
+        _formaScore,
+        _showHealthConnectOnboarding,
+        planProgress,
+        userName,
+        workoutDates,
+        dailyWorkoutFlow,
+        filteredContentFlow,
+        communityPickFlow,
+        subscriptionsFlow
+    ) { args ->
+        HomeUiState(
+            selectedDate = args[0] as LocalDate,
+            isGenerating = args[1] as Boolean,
+            selectedCategory = args[2] as String,
+            knowledgeBriefing = args[3] as String,
+            isBriefingLoading = args[4] as Boolean,
+            errorMessage = args[5] as String?,
+            formaScore = args[6] as FormaScore?,
+            showHealthConnectOnboarding = args[7] as Boolean,
+            planProgress = args[8] as PlanProgress?,
+            userName = args[9] as String,
+            workoutDates = args[10] as List<LocalDate>,
+            dailyWorkout = args[11] as DailyWorkoutEntity?,
+            filteredContent = args[12] as List<ContentSourceEntity>,
+            communityPick = args[13] as CommunityPick?,
+            subscriptions = args[14] as List<UserSubscriptionEntity>,
+            healthConnectAvailability = healthConnectAvailability
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = HomeUiState()
+    )
 
     init {
         observeContextForIntel()
@@ -175,9 +242,12 @@ class HomeViewModel @Inject constructor(
 
     private fun calculateFormaScore() {
         viewModelScope.launch {
-            dailyWorkout.collectLatest { workout ->
+            uiState.map { it.dailyWorkout }.distinctUntilChanged().collectLatest { workout ->
                 val title = workout?.title ?: "training"
-                val score = readinessEngine.calculateReadiness(title)
+                // Move heavy logic off the UI thread
+                val score = withContext(Dispatchers.Default) {
+                    readinessEngine.calculateReadiness(title)
+                }
                 _formaScore.value = score
             }
         }
@@ -185,76 +255,19 @@ class HomeViewModel @Inject constructor(
 
     private fun observeContextForIntel() {
         viewModelScope.launch {
-            subscriptions
-                .map { it.map { s -> s.tagName }.toSet() }
+            uiState.map { state -> state.subscriptions.map { it.tagName }.toSet() }
                 .distinctUntilChanged()
                 .collectLatest { tagSet ->
                     if (tagSet.isNotEmpty()) {
-                        tagSet.forEach { tagName ->
-                            try {
-                                contentRepository.fetchRealContent(tagName)
-                                
-                                // --- Expanded Social Media Sources ---
-                                val cleanTag = tagName.replace(" ", "").lowercase()
-                                val encodedTag = URLEncoder.encode(tagName, "UTF-8")
-
-                                // 1. Instagram
-                                workoutDao.insertContentSource(
-                                    ContentSourceEntity(
-                                        title = "Instagram: #$tagName",
-                                        summary = "Latest trending posts and training reels for $tagName.",
-                                        url = "https://www.instagram.com/explore/tags/$cleanTag/",
-                                        imageUrl = "https://www.instagram.com/static/images/ico/favicon-192.png/68d99ad29166.png",
-                                        mediaType = "Social",
-                                        sportTag = tagName,
-                                        dateFetched = System.currentTimeMillis()
-                                    )
-                                )
-
-                                // 2. Reddit Community
-                                val redditSub = if (tagName.contains("Hyrox", true)) "hyrox" else if (tagName.contains("CrossFit", true)) "crossfit" else "fitness"
-                                workoutDao.insertContentSource(
-                                    ContentSourceEntity(
-                                        title = "Reddit: r/$redditSub",
-                                        summary = "Join the community discussion and see what's trending in $tagName.",
-                                        url = "https://www.reddit.com/r/$redditSub/new/",
-                                        imageUrl = "https://www.redditstatic.com/desktop2x/img/favicon/android-icon-192x192.png",
-                                        mediaType = "Social",
-                                        sportTag = tagName,
-                                        dateFetched = System.currentTimeMillis()
-                                    )
-                                )
-
-                                // 3. YouTube Training Clips
-                                workoutDao.insertContentSource(
-                                    ContentSourceEntity(
-                                        title = "YouTube: $tagName Training",
-                                        summary = "Watch recent training footage and competition highlights for $tagName.",
-                                        url = "https://www.youtube.com/results?search_query=$encodedTag+training+highlights",
-                                        imageUrl = "https://www.youtube.com/s/desktop/28e5c60b/img/favicon_144x144.png",
-                                        mediaType = "Video",
-                                        sportTag = tagName,
-                                        dateFetched = System.currentTimeMillis()
-                                    )
-                                )
-
-                                // 4. X (Twitter) Hashtag
-                                workoutDao.insertContentSource(
-                                    ContentSourceEntity(
-                                        title = "X: #$tagName Updates",
-                                        summary = "Real-time news and athlete updates for $tagName.",
-                                        url = "https://twitter.com/hashtag/$cleanTag",
-                                        imageUrl = "https://abs.twimg.com/favicons/twitter.2.ico",
-                                        mediaType = "Social",
-                                        sportTag = tagName,
-                                        dateFetched = System.currentTimeMillis()
-                                    )
-                                )
-
-                            } catch (e: Exception) {
-                                Log.e("HomeViewModel", "Error fetching content for $tagName: ${e.message}")
-                            }
-                        }
+                        val inputData = Data.Builder()
+                            .putStringArray("tagNames", tagSet.toTypedArray())
+                            .build()
+                        
+                        val discoveryWork = OneTimeWorkRequestBuilder<DiscoveryWorker>()
+                            .setInputData(inputData)
+                            .build()
+                        
+                        WorkManager.getInstance(context).enqueue(discoveryWork)
                     }
                 }
         }
@@ -263,26 +276,23 @@ class HomeViewModel @Inject constructor(
     private fun observeContentForBriefing() {
         viewModelScope.launch {
             combine(
-                subscriptions.map { it.map { s -> s.tagName }.toSet() }.distinctUntilChanged(),
-                dailyWorkout.map { it?.title }.distinctUntilChanged(),
-                _rawSubscribedContent.map { it.size }.distinctUntilChanged()
-            ) { interestTags, workoutTitle, contentSize ->
-                Triple(interestTags, workoutTitle, contentSize)
-            }.collectLatest { (interestTags, workoutTitle, _) ->
-                if (interestTags.isEmpty()) {
-                    _knowledgeBriefing.value = ""
-                    return@collectLatest
-                }
-
-                val interestList = interestTags.toList()
-                val cached = contentRepository.getCachedBriefing(interestList, workoutTitle)
+                uiState.map { it.subscriptions.map { s -> s.tagName }.toSet() }.distinctUntilChanged(),
+                uiState.map { it.dailyWorkout?.title }.distinctUntilChanged(),
+                _rawSubscribedContent.map { list ->
+                    // Optimization: Hash of first 10 item IDs to detect content changes specifically for what's sent to AI
+                    list.take(10).map { it.sourceId }.hashCode()
+                }.distinctUntilChanged()
+            ) { _, workoutTitle, contentHash ->
+                workoutTitle to contentHash
+            }.collectLatest { (workoutTitle, contentHash) ->
+                val cached = contentRepository.getCachedBriefing(contentHash, workoutTitle)
                 
                 if (cached != null) {
                     _knowledgeBriefing.value = cached
                 } else {
                     val currentContent = _rawSubscribedContent.first()
                     if (currentContent.isNotEmpty()) {
-                        generateKnowledgeBriefing(currentContent, interestList, workoutTitle)
+                        generateKnowledgeBriefing(currentContent, contentHash, workoutTitle)
                     }
                 }
             }
@@ -291,7 +301,7 @@ class HomeViewModel @Inject constructor(
 
     private fun generateKnowledgeBriefing(
         content: List<ContentSourceEntity>,
-        interests: List<String>,
+        contentHash: Int,
         workoutTitle: String?
     ) {
         if (_isBriefingLoading.value) return
@@ -299,7 +309,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _isBriefingLoading.value = true
             val briefing = bedrockClient.generateKnowledgeBriefing(content.take(10), workoutTitle)
-            contentRepository.updateBriefingCache(briefing, interests = interests, workoutTitle = workoutTitle)
+            contentRepository.updateBriefingCache(briefing, contentHash = contentHash, workoutTitle = workoutTitle)
             _knowledgeBriefing.value = briefing
             _isBriefingLoading.value = false
         }
@@ -308,7 +318,8 @@ class HomeViewModel @Inject constructor(
     fun forceRefreshBriefing() {
         viewModelScope.launch {
             val content = _rawSubscribedContent.first()
-            generateKnowledgeBriefing(content, subscriptions.value.map { it.tagName }, dailyWorkout.value?.title)
+            val contentHash = content.take(10).map { it.sourceId }.hashCode()
+            generateKnowledgeBriefing(content, contentHash, uiState.value.dailyWorkout?.title)
         }
     }
 
@@ -325,7 +336,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun upvoteCommunityPick() {
-        val pickId = communityPick.value?.id ?: return
+        val pickId = uiState.value.communityPick?.id ?: return
         viewModelScope.launch {
             try {
                 communityRepository.upvoteExistingPick(pickId)
@@ -350,7 +361,7 @@ class HomeViewModel @Inject constructor(
             _isGenerating.value = true
             _errorMessage.value = null
             try {
-                var activePlan = repository.getActivePlan() ?: repository.getLatestPlan()
+                val activePlan = repository.getActivePlan() ?: repository.getLatestPlan()
                 if (activePlan == null) {
                     _isGenerating.value = false
                     _errorMessage.value = "An AI generated plan is required to generate stretching and accessory workouts."
@@ -382,6 +393,63 @@ class HomeViewModel @Inject constructor(
                         ActiveWorkout(workoutId = workoutId)
                     }
                     _navigationEvents.emit(route)
+                }
+            } catch (e: Exception) {
+                Log.e("HomeViewModel", "Generation error: ${e.message}")
+                _errorMessage.value = "Failed to generate workout: ${e.message}"
+            } finally {
+                _isGenerating.value = false
+            }
+        }
+    }
+
+    fun generateSingleDayWorkout(programType: String, durationMinutes: Int) {
+        viewModelScope.launch {
+            _isGenerating.value = true
+            try {
+                val activePlan = repository.getActivePlan()
+                val planId = activePlan?.planId ?: 0L
+
+                val history = repository.getWorkoutHistory().take(1).first()
+                val availableExercises = repository.getAllExercises().take(1).first()
+
+                // Fetch user preferences for accurate generation
+                val excludedEq = userPrefs.excludedEquipment.first()
+                val age = userPrefs.userAge.first()
+                val height = userPrefs.userHeight.first()
+                val weight = userPrefs.userWeight.first()
+
+                val dateMillis = _selectedDate.value.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+                // FIX: Switch from generateAccessoryWorkout to generateWorkoutPlan.
+                // The accessory prompt specifically limits the AI to short "add-on" volume.
+                // generateWorkoutPlan uses your full logic engine to scale sets/reps perfectly to the requested duration.
+                val aiResponse = bedrockClient.generateWorkoutPlan(
+                    goal = "Standalone Session",
+                    programType = programType,
+                    days = listOf("Today"),
+                    duration = durationMinutes / 60f, // Convert to hours so the AI multiplies it back to exact minutes
+                    workoutHistory = history,
+                    allExercises = availableExercises,
+                    excludedEquipment = excludedEq,
+                    userAge = age,
+                    userHeight = height,
+                    userWeight = weight,
+                    block = 1
+                )
+
+                if (aiResponse.schedule.isNotEmpty()) {
+                    val generatedDay = aiResponse.schedule.first()
+                    val workoutId = repository.saveSingleDayWorkout(
+                        planId = planId,
+                        date = dateMillis,
+                        title = generatedDay.title,
+                        exercises = generatedDay.exercises
+                    )
+
+                    _navigationEvents.emit(ActiveWorkout(workoutId = workoutId))
+                } else {
+                    _errorMessage.value = "AI failed to generate a session. Please try again."
                 }
             } catch (e: Exception) {
                 Log.e("HomeViewModel", "Generation error: ${e.message}")

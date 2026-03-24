@@ -33,3 +33,15 @@ data class UserSubscriptionEntity(
     @PrimaryKey val tagName: String, // e.g., "Hyrox" or "Hunter McIntyre"
     val type: String // "Sport" or "Athlete"
 )
+
+/**
+ * Caches the AI-generated daily briefing.
+ */
+@Entity(tableName = "briefing_cache")
+data class BriefingCacheEntity(
+    @PrimaryKey val id: Int = 0, // We only need one briefing at a time
+    val contentHash: Int,
+    val briefingText: String,
+    val workoutTitle: String?,
+    val timestamp: Long = System.currentTimeMillis()
+)

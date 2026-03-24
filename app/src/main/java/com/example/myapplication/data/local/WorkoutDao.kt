@@ -184,6 +184,9 @@ interface WorkoutDao {
     @Query("SELECT * FROM workout_plans WHERE planId = :planId")
     suspend fun getPlanById(planId: Long): WorkoutPlanEntity?
 
+    @Query("SELECT * FROM workout_plans WHERE name = :name LIMIT 1")
+    suspend fun getPlanByName(name: String): WorkoutPlanEntity?
+
     // --- WRITES ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPlan(plan: WorkoutPlanEntity): Long
@@ -269,6 +272,9 @@ interface WorkoutDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertContentSource(content: ContentSourceEntity): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertContentSources(content: List<ContentSourceEntity>): List<Long>
+
     @Query("""
         SELECT * FROM content_sources 
         WHERE sportTag IN (SELECT tagName FROM user_subscriptions)
@@ -279,6 +285,13 @@ interface WorkoutDao {
 
     @Query("SELECT * FROM content_sources WHERE sourceId = :id")
     fun getContentSourceById(id: Long): Flow<ContentSourceEntity?>
+
+    // --- BRIEFING CACHE ---
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBriefing(briefing: BriefingCacheEntity): Long
+
+    @Query("SELECT * FROM briefing_cache WHERE id = 0")
+    suspend fun getLatestBriefing(): BriefingCacheEntity?
 
     // --- CONTINUOUS PLANNING (ITERATIVE MESOCYCLE) ---
     @Query("""

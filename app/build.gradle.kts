@@ -93,6 +93,10 @@ dependencies {
     implementation("aws.sdk.kotlin:cognitoidentityprovider:1.0.41")
 
     // --- Compose ---
+        // Optimization: Ensure you are NOT using kapt and ksp simultaneously for Room
+        ksp(libs.androidx.room.compiler)
+        implementation(libs.androidx.room.runtime)
+        implementation(libs.androidx.room.ktx)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)

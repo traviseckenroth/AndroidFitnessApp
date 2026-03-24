@@ -8,8 +8,12 @@ import com.example.myapplication.BuildConfig
 import com.example.myapplication.data.local.AppDatabase
 import com.example.myapplication.data.local.MemoryDao
 import com.example.myapplication.data.local.WorkoutDao
+import com.example.myapplication.data.remote.BedrockClient
 import com.example.myapplication.data.remote.CognitoCredentialsProvider
 import com.example.myapplication.data.repository.AuthRepository
+import com.example.myapplication.data.repository.HealthConnectManager
+import com.example.myapplication.data.repository.PromptRepository
+import com.example.myapplication.data.local.UserPreferencesRepository
 import com.example.myapplication.util.DatabasePassphraseManager
 import dagger.Module
 import dagger.Provides
@@ -109,5 +113,23 @@ object AppModule {
             identityPoolId = BuildConfig.COGNITO_IDENTITY_POOL_ID,
             region = BuildConfig.AWS_REGION
         )
+    }
+
+    @Provides
+    @Singleton
+    fun provideBedrockClient(
+        authRepository: AuthRepository,
+        promptRepository: PromptRepository,
+        userPrefs: UserPreferencesRepository
+    ): BedrockClient {
+        return BedrockClient(authRepository, promptRepository, userPrefs)
+    }
+
+    @Provides
+    @Singleton
+    fun provideHealthConnectManager(
+        @ApplicationContext context: Context
+    ): HealthConnectManager {
+        return HealthConnectManager(context)
     }
 }

@@ -116,9 +116,9 @@ class PlanRepository @Inject constructor(
         )
 
         val adjustedSchedule = enforceTimeConstraints(aiResponse.schedule, duration.toFloat())
-        
+
         val totalWeeks = aiResponse.mesocycleLengthWeeks.coerceIn(4, 6)
-        val deloadWeekIndex = totalWeeks 
+        val deloadWeekIndex = totalWeeks
 
         val fullPlanData = mutableMapOf<DailyWorkoutEntity, List<WorkoutSetEntity>>()
 
@@ -330,15 +330,29 @@ class PlanRepository @Inject constructor(
             .trim()
             .replaceFirstChar { it.uppercase() }
     }
+
     suspend fun saveSingleDayWorkout(
         planId: Long,
         date: Long,
         title: String,
         exercises: List<GeneratedExercise>
     ): Long {
+        // OPTIMIZED: Reuse existing "Standalone Workouts" plan container if it exists
+        val standalonePlanName = "Standalone Workouts"
+        val existingPlan = workoutDao.getPlanByName(standalonePlanName)
+        
+        val targetPlanId = existingPlan?.planId ?: workoutDao.insertPlan(
+            WorkoutPlanEntity(
+                name = standalonePlanName,
+                startDate = System.currentTimeMillis(),
+                goal = "General Fitness",
+                programType = "Custom"
+            )
+        )
+
         val workoutId = workoutDao.insertDailyWorkout(
             DailyWorkoutEntity(
-                planId = planId,
+                planId = targetPlanId,
                 scheduledDate = date,
                 title = title,
                 isCompleted = false

@@ -17,9 +17,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         WorkoutEntity::class,
         ContentSourceEntity::class,
         UserSubscriptionEntity::class,
-        UserMemoryEntity::class
+        UserMemoryEntity::class,
+        BriefingCacheEntity::class
     ],
-    version = 41,
+    version = 42,
     exportSchema = false)
 
 

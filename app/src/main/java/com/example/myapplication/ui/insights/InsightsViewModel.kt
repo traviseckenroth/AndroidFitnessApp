@@ -307,7 +307,7 @@ class InsightsViewModel @Inject constructor(
                     }
 
                     val interestList = interestTags.toList()
-                    val cached = contentRepository.getCachedBriefing(interestList, workoutTitle)
+                    val cached = contentRepository.getCachedBriefing(interestList.hashCode(), workoutTitle)
 
                     if (cached != null) {
                         _uiState.update { it.copy(knowledgeBriefing = cached) }
@@ -331,7 +331,7 @@ class InsightsViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isBriefingLoading = true) }
             val briefing = bedrockClient.generateKnowledgeBriefing(content.take(10), workoutTitle)
-            contentRepository.updateBriefingCache(briefing, interests, workoutTitle)
+            contentRepository.updateBriefingCache(briefing, interests.hashCode(), workoutTitle)
             _uiState.update { it.copy(knowledgeBriefing = briefing, isBriefingLoading = false) }
         }
     }
